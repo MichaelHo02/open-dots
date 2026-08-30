@@ -4,6 +4,8 @@ A WebMCP film floor. People write, board, and cut on the desks. Agents call the 
 
 Built for the [WebMCP Challenge](https://webmcp.devpost.com/).
 
+**Live URL:** [https://pixel-film-studio.vercel.app](https://pixel-film-studio.vercel.app)
+
 The seeded picture is **Equal Value**: two stand-ins billed at the same number, waiting on a T-mark while the degree of black decides who is actually in frame. The floor will not roll a shot until a 32×18 pixel frame still reads a face on that black. That is the minimum picture quality.
 
 ## Why this is a WebMCP use case
