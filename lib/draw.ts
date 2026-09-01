@@ -88,7 +88,7 @@ export function paintBrush(
   brushSize: number,
   color: string,
 ): string[] {
-  const stamp = Math.max(1, Math.min(4, Math.round(brushSize)));
+  const stamp = Math.max(1, Math.round(brushSize));
   const paint = hexColor(color);
   const next = clonePixels(pixels);
   const x0 = Math.floor(x);

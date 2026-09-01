@@ -1,6 +1,7 @@
 import { clonePixels, idx, inBounds } from "./draw";
 import {
   assertNever,
+  normalizeTextSize,
   type Size,
   type TextFont,
   type TextMark,
@@ -171,16 +172,7 @@ const MONO: Record<string, Glyph> = {
 const FALLBACK = glyph("01110", "10001", "10001", "10001", "10001", "10001", "01110");
 
 export function textScale(size: TextSize): number {
-  switch (size) {
-    case "s":
-      return 1;
-    case "m":
-      return 2;
-    case "l":
-      return 3;
-    default:
-      return assertNever(size, "Unknown text size");
-  }
+  return normalizeTextSize(size);
 }
 
 function fontGlyphs(font: TextFont): Record<string, Glyph> {

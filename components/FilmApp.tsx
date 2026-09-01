@@ -7,25 +7,26 @@ import {
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   DRAW_TOOLS,
+  MAX_ASSETS,
   MAX_WIDTH,
   MIN_WIDTH,
-  TEXT_FONTS,
   TEXT_FRAMES,
-  TEXT_SIZES,
-  BRUSH_SIZES,
+  MIN_BRUSH_SIZE,
+  MAX_BRUSH_SIZE,
+  MIN_TEXT_SIZE,
+  MAX_TEXT_SIZE,
   assertNever,
   brushSizeLabel,
-  fontLabel,
   frameHint,
   frameLabel,
-  sizeLabel,
   type DrawTool,
 } from "@/lib/types";
 import { FrameSample } from "./BubbleFrame";
 import { ChromeIcon, toolIconName } from "./ChromeIcons";
-import { OpenDotsLogo } from "./OpenDotsLogo";
+import { OpenDotsLogo, OpenDotsWordmark } from "./OpenDotsLogo";
 import { PagePreview, AssetThumb } from "./PagePreview";
 import { PixelCanvas } from "./PixelCanvas";
+import { TextSizePreview } from "./TextSizePreview";
 import { PresentMode } from "./PresentMode";
 import { WebMCPBridge } from "./WebMCPBridge";
 
@@ -73,8 +74,8 @@ export function FilmApp() {
     tool,
     color,
     frame,
-    textFont,
     textSize,
+    textFont,
     shapeFilled,
     brushSize,
     selectedAssetId,
@@ -97,10 +98,10 @@ export function FilmApp() {
       data-workshop={workshopOpen ? "true" : undefined}
     >
       <header className="top-nav">
-        <p className="brand">
+        <div className="brand" aria-label="Open Dots">
           <OpenDotsLogo size={22} />
-          Open Dots
-        </p>
+          <OpenDotsWordmark />
+        </div>
         <nav className="tool-list" aria-label="Tools">
           {DRAW_TOOLS.map((item) => (
             <button
@@ -145,28 +146,32 @@ export function FilmApp() {
           <section className="sidebar-section sidebar-assets" aria-label="Assets">
             <div className="sidebar-assets-head">
               <p className="sidebar-label">Assets</p>
+            </div>
+            {!film.assets.length && !workshopOpen ? (
               <button
                 type="button"
-                className="pill"
+                className="asset-new-card"
                 onClick={() => api.openWorkshop()}
-                disabled={film.assets.length >= 48}
+                aria-label="New asset"
               >
-                <ChromeIcon name="page" />
-                New asset
+                <ChromeIcon name="page" size={28} />
+                <span className="asset-new-card-label">New asset</span>
               </button>
-            </div>
-            {!film.assets.length ? (
-              <p className="sidebar-help">
-                Create a reusable stamp with New asset, then click a thumbnail to
-                stamp it on the page.
-              </p>
-            ) : null}
-            {!film.assets.length ? (
-              <div className="sidebar-placeholder" aria-hidden="true">
-                <ChromeIcon name="asset" size={32} />
-              </div>
-            ) : (
+            ) : film.assets.length > 0 ? (
               <ul className="asset-list">
+                {film.assets.length < MAX_ASSETS ? (
+                  <li className="asset-new-slot">
+                    <button
+                      type="button"
+                      className="asset-new-compact"
+                      onClick={() => api.openWorkshop()}
+                      aria-label="New asset"
+                    >
+                      <ChromeIcon name="page" size={18} />
+                      <span>New asset</span>
+                    </button>
+                  </li>
+                ) : null}
                 {film.assets.map((asset) => (
                   <li key={asset.id}>
                     <button
@@ -202,10 +207,10 @@ export function FilmApp() {
                   </li>
                 ))}
               </ul>
-            )}
+            ) : null}
           </section>
 
-          {simpleTool ? (
+          {simpleTool && !workshopOpen ? (
             <section className="sidebar-section" aria-label="Tool hint">
               <p className="sidebar-label">{toolLabel(tool)}</p>
               <p className="sidebar-help">{hint}</p>
@@ -213,40 +218,46 @@ export function FilmApp() {
           ) : null}
 
           {tool === "text" ? (
-            <>
-              <section className="sidebar-section" aria-label="Font">
-                <p className="sidebar-label">Font</p>
-                <div className="choice-row">
-                  {TEXT_FONTS.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="pill"
-                      data-active={textFont === item}
-                      onClick={() => api.setTextFont(item)}
-                    >
-                      {fontLabel(item)}
-                    </button>
-                  ))}
-                </div>
-              </section>
-              <section className="sidebar-section" aria-label="Text size">
-                <p className="sidebar-label">Text size</p>
-                <div className="choice-row">
-                  {TEXT_SIZES.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="pill"
-                      data-active={textSize === item}
-                      onClick={() => api.setTextSize(item)}
-                    >
-                      {sizeLabel(item)}
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </>
+            <section className="sidebar-section" aria-label="Text size">
+              <p className="sidebar-label">Text size</p>
+              <div className="number-stepper" role="group" aria-label="Text size scale">
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  aria-label="Decrease text size"
+                  disabled={textSize <= MIN_TEXT_SIZE}
+                  onClick={() => api.setTextSize(textSize - 1)}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  className="stepper-input"
+                  min={MIN_TEXT_SIZE}
+                  max={MAX_TEXT_SIZE}
+                  step={1}
+                  value={textSize}
+                  aria-label="Text size scale"
+                  onChange={(event) =>
+                    api.setTextSize(Number(event.target.value))
+                  }
+                />
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  aria-label="Increase text size"
+                  disabled={textSize >= MAX_TEXT_SIZE}
+                  onClick={() => api.setTextSize(textSize + 1)}
+                >
+                  +
+                </button>
+              </div>
+              <TextSizePreview
+                textSize={textSize}
+                textFont={textFont}
+                color={color}
+              />
+            </section>
           ) : null}
 
           {tool === "shape" ? (
@@ -296,10 +307,8 @@ export function FilmApp() {
 
           {workshopOpen ? (
             <section className="sidebar-section" aria-label="Workshop hint">
-              <p className="sidebar-label">Asset workshop</p>
-              <p className="sidebar-help">
-                Editing a stamp, not the page. Draw here, then Done to save or
-                Cancel to discard.
+              <p className="sidebar-help workshop-sidebar-hint">
+                Drawing a stamp — Done saves to your library.
               </p>
             </section>
           ) : selectedAssetId ? (
@@ -390,20 +399,20 @@ export function FilmApp() {
             {tool === "pencil" || tool === "eraser" ? (
               <section className="access-group access-brush" aria-label="Brush size">
                 <p className="sidebar-label">Size</p>
-                <div className="choice-row">
-                  {BRUSH_SIZES.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="pill"
-                      data-active={brushSize === item}
-                      aria-label={`Brush ${brushSizeLabel(item)}`}
-                      onClick={() => api.setBrushSize(item)}
-                    >
-                      {brushSizeLabel(item)}
-                    </button>
-                  ))}
-                </div>
+                <label className="scale-field panel-scale">
+                  <input
+                    type="range"
+                    min={MIN_BRUSH_SIZE}
+                    max={MAX_BRUSH_SIZE}
+                    step={1}
+                    value={brushSize}
+                    aria-label="Brush size"
+                    onChange={(event) =>
+                      api.setBrushSize(Number(event.target.value))
+                    }
+                  />
+                </label>
+                <span className="size">{brushSizeLabel(brushSize)}</span>
               </section>
             ) : null}
           </div>
@@ -421,36 +430,40 @@ export function FilmApp() {
           </main>
 
           <nav className="strip screen-only" aria-label="Pages">
-            <button
-              type="button"
-              className="pill primary"
-              onClick={() => api.addPage()}
-            >
-              <ChromeIcon name="page" />
-              Page
-            </button>
-            {film.pages.map((page, index) => (
-              <button
-                key={page.id}
-                type="button"
-                className="thumb"
-                data-active={index === film.activeIndex}
-                aria-label={`Page ${index + 1}`}
-                onClick={() => api.selectPage(index)}
-              >
-                <PagePreview page={page} />
-              </button>
-            ))}
-            {film.pages.length > 1 ? (
+            <div className="strip-thumbs">
+              {film.pages.map((page, index) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  className="thumb"
+                  data-active={index === film.activeIndex}
+                  aria-label={`Page ${index + 1}`}
+                  onClick={() => api.selectPage(index)}
+                >
+                  <PagePreview page={page} />
+                </button>
+              ))}
+            </div>
+            <div className="strip-actions">
               <button
                 type="button"
-                className="pill ghost"
-                onClick={() => api.removePage(film.activeIndex)}
+                className="pill primary"
+                onClick={() => api.addPage()}
               >
-                <ChromeIcon name="delete" />
-                Delete
+                <ChromeIcon name="page" />
+                Page
               </button>
-            ) : null}
+              {film.pages.length > 1 ? (
+                <button
+                  type="button"
+                  className="pill ghost"
+                  onClick={() => api.removePage(film.activeIndex)}
+                >
+                  <ChromeIcon name="delete" />
+                  Delete
+                </button>
+              ) : null}
+            </div>
           </nav>
         </div>
       </div>

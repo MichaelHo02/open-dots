@@ -4,13 +4,15 @@ export const TRANSPARENT = EMPTY;
 /** Opaque painted white — distinct from EMPTY so white strokes cover the checker. */
 export const PAPER = "#ffffff";
 export const MIN_WIDTH = 48;
-export const MAX_WIDTH = 192;
+export const MAX_WIDTH = 256;
 export const DEFAULT_WIDTH = 128;
 export const DEFAULT_HEIGHT = 72;
 export const MAX_ASSETS = 48;
 export const MAX_ASSET_NAME = 32;
 export const MAX_ASSET_SIDE = 96;
-export const ASSET_SIZE_PRESETS = [16, 24, 32, 48, 64] as const;
+/** Max pixels per draw_pixels call — full pages need add_asset + stamp_assets. */
+export const MAX_DRAW_PIXELS = 4096;
+export const ASSET_SIZE_PRESETS = [16, 24, 32, 48, 64, 96] as const;
 export type AssetSizePreset = (typeof ASSET_SIZE_PRESETS)[number];
 export const DEFAULT_ASSET_WIDTH = 32;
 export const DEFAULT_ASSET_HEIGHT = 32;
@@ -38,15 +40,22 @@ export type ShapeKind = TextFrame;
 
 export const TEXT_FONTS = ["inter", "geist-mono"] as const;
 export type TextFont = (typeof TEXT_FONTS)[number];
+export const DEFAULT_TEXT_FONT: TextFont = "inter";
 
-export const TEXT_SIZES = ["s", "m", "l"] as const;
-export type TextSize = (typeof TEXT_SIZES)[number];
+/** Glyph scale factor (1×–8×); height ≈ 7px × scale on the pixel grid. */
+export const MIN_TEXT_SIZE = 1;
+export const MAX_TEXT_SIZE = 8;
+export const DEFAULT_TEXT_SIZE = 2;
+export type TextSize = number;
 
-export const BRUSH_SIZES = [1, 2, 3, 4] as const;
-export type BrushSize = (typeof BRUSH_SIZES)[number];
+/** Square brush stamp size (1×1–24×24); separate from page density. */
+export const MIN_BRUSH_SIZE = 1;
+export const MAX_BRUSH_SIZE = 24;
+export const DEFAULT_BRUSH_SIZE = 1;
+export type BrushSize = number;
 
-export const SHAPE_SCALES = TEXT_SIZES;
-export type ShapeScale = TextSize;
+export const SHAPE_SCALES = ["s", "m", "l"] as const;
+export type ShapeScale = (typeof SHAPE_SCALES)[number];
 
 export const PALETTE = [
   "#000000",
@@ -209,6 +218,20 @@ export interface FilmApi {
   moveText: (id: string, x: number, y: number) => boolean;
   removeText: (id: string) => boolean;
   paint: (x: number, y: number, recordUndo?: boolean) => void;
+  getAsset: (id: string) => Asset | null;
+  drawAssetPixels: (
+    id: string,
+    dots: Array<{ x: number; y: number; color: string }>,
+  ) => number;
+  duplicateAsset: (id: string, name?: string) => Asset | null;
+  clearRect: (input: {
+    target: "page" | "asset";
+    assetId?: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => boolean;
   drawPixels: (dots: Array<{ x: number; y: number; color: string }>) => number;
   rect: (
     x: number,
@@ -334,7 +357,12 @@ export function isTextFont(value: unknown): value is TextFont {
 }
 
 export function isTextSize(value: unknown): value is TextSize {
-  return TEXT_SIZES.some((size) => size === value);
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= MIN_TEXT_SIZE &&
+    value <= MAX_TEXT_SIZE
+  );
 }
 
 export function isShapeScale(value: unknown): value is ShapeScale {
@@ -356,8 +384,41 @@ export function normalizeFont(value: unknown): TextFont {
   }
 }
 
-export function normalizeSize(value: unknown): TextSize {
+export function normalizeTextSize(value: unknown): TextSize {
   if (isTextSize(value)) {
+    return value;
+  }
+  switch (value) {
+    case "s":
+    case "small":
+    case "sm":
+      return 1;
+    case "m":
+    case "medium":
+    case "md":
+      return DEFAULT_TEXT_SIZE;
+    case "l":
+    case "large":
+    case "lg":
+      return 3;
+    default: {
+      const n =
+        typeof value === "number" ? Math.round(value) : Number(value);
+      if (Number.isFinite(n)) {
+        return Math.max(MIN_TEXT_SIZE, Math.min(MAX_TEXT_SIZE, n));
+      }
+      return DEFAULT_TEXT_SIZE;
+    }
+  }
+}
+
+/** @deprecated Use normalizeTextSize — kept for imports that mean text scale. */
+export function normalizeSize(value: unknown): TextSize {
+  return normalizeTextSize(value);
+}
+
+export function normalizeScale(value: unknown): ShapeScale {
+  if (isShapeScale(value)) {
     return value;
   }
   switch (value) {
@@ -375,10 +436,6 @@ export function normalizeSize(value: unknown): TextSize {
   }
 }
 
-export function normalizeScale(value: unknown): ShapeScale {
-  return normalizeSize(value);
-}
-
 export function fontLabel(font: TextFont): string {
   switch (font) {
     case "inter":
@@ -390,49 +447,36 @@ export function fontLabel(font: TextFont): string {
   }
 }
 
-export function sizeLabel(size: TextSize): string {
-  switch (size) {
-    case "s":
-      return "S";
-    case "m":
-      return "M";
-    case "l":
-      return "L";
-    default:
-      return assertNever(size, "Unknown size");
-  }
+export function textSizeLabel(size: TextSize): string {
+  return `${normalizeTextSize(size)}×`;
 }
 
 export function isBrushSize(value: unknown): value is BrushSize {
-  return BRUSH_SIZES.some((size) => size === value);
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= MIN_BRUSH_SIZE &&
+    value <= MAX_BRUSH_SIZE
+  );
 }
 
 export function normalizeBrushSize(value: unknown): BrushSize {
   if (isBrushSize(value)) {
-    return value;
+    return Math.round(value);
   }
   const n = typeof value === "number" ? Math.round(value) : Number(value);
-  if (isBrushSize(n)) {
-    return n;
+  if (Number.isFinite(n)) {
+    return Math.max(MIN_BRUSH_SIZE, Math.min(MAX_BRUSH_SIZE, n));
   }
-  return 1;
+  return DEFAULT_BRUSH_SIZE;
 }
 
 export function brushSizeLabel(size: BrushSize): string {
-  return `${size}×${size}`;
+  return `${normalizeBrushSize(size)}×${normalizeBrushSize(size)}`;
 }
 
 export function textSizePx(size: TextSize): number {
-  switch (size) {
-    case "s":
-      return 14;
-    case "m":
-      return 18;
-    case "l":
-      return 28;
-    default:
-      return assertNever(size, "Unknown size");
-  }
+  return 7 * normalizeTextSize(size);
 }
 
 export function normalizeFrame(value: unknown): TextFrame {

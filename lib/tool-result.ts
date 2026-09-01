@@ -82,3 +82,60 @@ export function asHexGrid(value: unknown): string[] | undefined {
   }
   return pixels;
 }
+
+/** Row-major pixels from an array of comma-separated #rrggbb rows. */
+export function asPixelRows(
+  value: unknown,
+  width: number,
+  height: number,
+): string[] | undefined {
+  if (!Array.isArray(value) || width < 1 || height < 1) {
+    return undefined;
+  }
+  if (value.length !== height) {
+    return undefined;
+  }
+  const pixels: string[] = [];
+  for (const row of value) {
+    if (typeof row !== "string") {
+      return undefined;
+    }
+    const cells = row.split(",").map((cell) => cell.trim());
+    if (cells.length !== width) {
+      return undefined;
+    }
+    for (const cell of cells) {
+      pixels.push(cell === "" ? "" : cell);
+    }
+  }
+  return pixels;
+}
+
+export function solidPixelGrid(
+  width: number,
+  height: number,
+  color: string,
+): string[] {
+  return Array.from({ length: width * height }, () => color);
+}
+
+export function emptyPixelGrid(width: number, height: number): string[] {
+  return Array.from({ length: width * height }, () => "");
+}
+
+/** Row-major pixels as comma-separated #rrggbb rows (empty string = transparent). */
+export function pixelsToRows(
+  pixels: string[],
+  width: number,
+  height: number,
+): string[] {
+  const rows: string[] = [];
+  for (let y = 0; y < height; y += 1) {
+    const cells: string[] = [];
+    for (let x = 0; x < width; x += 1) {
+      cells.push(pixels[y * width + x] ?? "");
+    }
+    rows.push(cells.join(","));
+  }
+  return rows;
+}

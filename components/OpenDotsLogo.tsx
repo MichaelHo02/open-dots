@@ -1,11 +1,7 @@
 "use client";
 
-import { DotmSquare1 } from "@/components/ui/dotm-square-1";
+import { DotmCircular7 } from "@/components/ui/dotm-circular-7";
 
-/**
- * Open Dots brand mark — dotm-square-1 (Neon Drift) from dotmatrix by zzzzshawn.
- * https://dotmatrix.zzzzshawn.cloud/
- */
 export function OpenDotsLogo({
   size = 22,
   animated = true,
@@ -17,14 +13,21 @@ export function OpenDotsLogo({
 
   return (
     <span className="open-dots-logo" aria-hidden>
-      <DotmSquare1
+      <DotmCircular7
         size={size}
         dotSize={dotSize}
         color="currentColor"
-        pattern="full"
         animated={animated}
         ariaLabel="Open Dots"
       />
+    </span>
+  );
+}
+
+export function OpenDotsWordmark() {
+  return (
+    <span className="brand-wordmark" aria-hidden>
+      Open Dots
     </span>
   );
 }

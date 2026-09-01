@@ -51,7 +51,10 @@ import {
   normalizePalette,
   normalizePaletteName,
   normalizeScale,
-  normalizeSize,
+  DEFAULT_TEXT_FONT,
+  DEFAULT_TEXT_SIZE,
+  DEFAULT_BRUSH_SIZE,
+  normalizeTextSize,
   normalizeStoredPixel,
   pageSize,
   parseHex,
@@ -122,10 +125,10 @@ let clientReady = false;
 let tool: DrawTool = "pencil";
 let color = "#000000";
 let frame: TextFrame = "circle";
-let textFont: TextFont = "inter";
-let textSize: TextSize = "m";
+let textFont: TextFont = DEFAULT_TEXT_FONT;
+let textSize: TextSize = DEFAULT_TEXT_SIZE;
 let shapeFilled = false;
-let brushSize: BrushSize = 1;
+let brushSize: BrushSize = DEFAULT_BRUSH_SIZE;
 let selectedAssetId: string | null = null;
 let workshopOpen = false;
 let workshopDraft: WorkshopDraft | null = null;
@@ -186,7 +189,7 @@ function normalizeTextMark(mark: LegacyMark): TextMark {
     body: mark.body ?? "",
     color: mark.color || "#000000",
     font: normalizeFont(mark.font),
-    size: normalizeSize(mark.size),
+    size: normalizeTextSize(mark.size),
   };
 }
 
@@ -758,7 +761,7 @@ function createApi(
       emit();
     },
     setTextSize: (next) => {
-      textSize = next;
+      textSize = normalizeTextSize(next);
       const page = activePage();
       if (page && selectedId && selectedKind === "text") {
         patchTexts(
@@ -1057,8 +1060,8 @@ function createApi(
         y: normalizeTextCoord(input.y, size.height),
         body: input.body ?? "",
         color: hexColor(input.color, currentColor),
-        font: input.font ? normalizeFont(input.font) : currentFont,
-        size: input.size ? normalizeSize(input.size) : currentSize,
+        font: input.font ? normalizeFont(input.font) : DEFAULT_TEXT_FONT,
+        size: input.size ? normalizeTextSize(input.size) : currentSize,
       };
       selectedId = mark.id;
       selectedKind = "text";
@@ -1235,6 +1238,89 @@ function createApi(
         assets: current.assets.filter((item) => item.id !== id),
       });
       return true;
+    },
+    getAsset: (id) => assetById(id) ?? null,
+    drawAssetPixels: (id, dots) => {
+      const current = getSnapshot();
+      const asset = assetById(id);
+      if (!asset) {
+        return 0;
+      }
+      const size = { width: asset.width, height: asset.height };
+      const next = setPixels(asset.pixels, size, dots);
+      const painted = dots.filter((dot) => inBounds(dot.x, dot.y, size)).length;
+      commit({
+        ...current,
+        assets: current.assets.map((item) =>
+          item.id === id ? { ...item, pixels: next } : item,
+        ),
+      });
+      return painted;
+    },
+    duplicateAsset: (id, name) => {
+      const current = getSnapshot();
+      if (current.assets.length >= MAX_ASSETS) {
+        return null;
+      }
+      const source = assetById(id);
+      if (!source) {
+        return null;
+      }
+      const label = (name?.trim() || `${source.name} copy`).slice(
+        0,
+        MAX_ASSET_NAME,
+      );
+      const asset = normalizeAsset(
+        {
+          name: label,
+          width: source.width,
+          height: source.height,
+          pixels: clonePixels(source.pixels),
+        },
+        false,
+      );
+      if (!asset) {
+        return null;
+      }
+      commit({ ...current, assets: [...current.assets, asset] });
+      return asset;
+    },
+    clearRect: (input) => {
+      const x = Math.floor(input.x);
+      const y = Math.floor(input.y);
+      const width = Math.max(1, Math.floor(input.width));
+      const height = Math.max(1, Math.floor(input.height));
+      if (input.target === "page") {
+        const page = activePage();
+        if (!page) {
+          return false;
+        }
+        dropFloating();
+        pushUndo();
+        patchActive(fillRect(page.pixels, liveSize(), x, y, width, height, EMPTY));
+        return true;
+      }
+      if (input.target === "asset") {
+        const assetId = input.assetId;
+        if (!assetId) {
+          return false;
+        }
+        const current = getSnapshot();
+        const asset = assetById(assetId);
+        if (!asset) {
+          return false;
+        }
+        const size = { width: asset.width, height: asset.height };
+        const next = fillRect(asset.pixels, size, x, y, width, height, EMPTY);
+        commit({
+          ...current,
+          assets: current.assets.map((item) =>
+            item.id === assetId ? { ...item, pixels: next } : item,
+          ),
+        });
+        return true;
+      }
+      return false;
     },
     stampAsset: (input) => {
       const asset = assetById(input.id);
@@ -1457,7 +1543,7 @@ export function FilmProvider({ children }: { children: ReactNode }) {
   const currentSize = useSyncExternalStore(
     subscribe,
     () => textSize,
-    () => "m" as TextSize,
+    () => DEFAULT_TEXT_SIZE,
   );
   const currentFilled = useSyncExternalStore(
     subscribe,
@@ -1467,7 +1553,7 @@ export function FilmProvider({ children }: { children: ReactNode }) {
   const currentBrushSize = useSyncExternalStore(
     subscribe,
     () => brushSize,
-    () => 1 as BrushSize,
+    () => DEFAULT_BRUSH_SIZE as BrushSize,
   );
   const currentAssetId = useSyncExternalStore(
     subscribe,

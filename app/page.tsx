@@ -1,5 +1,3 @@
-"use client";
-
 import { FilmApp } from "@/components/FilmApp";
 import { FilmProvider } from "@/lib/film-store";
 

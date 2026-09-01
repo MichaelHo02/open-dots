@@ -1,16 +1,24 @@
 import {
+  DEFAULT_ASSET_HEIGHT,
+  DEFAULT_ASSET_WIDTH,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
+  MAX_ASSET_SIDE,
+  MAX_WIDTH,
+  MIN_WIDTH,
+  MAX_ASSETS,
+  MAX_DRAW_PIXELS,
   SHAPE_SCALES,
   TEXT_FONTS,
   TEXT_FRAMES,
-  TEXT_SIZES,
+  MAX_TEXT_SIZE,
+  MIN_TEXT_SIZE,
   clampUnit,
   isEmptyPage,
   normalizeFont,
   normalizeFrame,
   normalizeScale,
-  normalizeSize,
+  normalizeTextSize,
   pageSize,
   type FilmApi,
 } from "./types";
@@ -19,8 +27,12 @@ import {
   asHexGrid,
   asInteger,
   asNumber,
+  asPixelRows,
   asString,
   asDots,
+  emptyPixelGrid,
+  pixelsToRows,
+  solidPixelGrid,
   toolError,
   toolResult,
 } from "./tool-result";
@@ -68,6 +80,123 @@ function assetSummary(api: FilmApi) {
   }));
 }
 
+const ASSET_WORKFLOW =
+  `Lego-style workflow for complex scenes: decompose a reference into small reusable assets (floor tile, furniture, character sprites ≤${MAX_ASSET_SIDE}×${MAX_ASSET_SIDE}), add_asset each one, then stamp_assets to compose the page. Do not paint entire pages pixel-by-pixel — a 128×72 canvas has 9,216 cells; draw_pixels caps at ${MAX_DRAW_PIXELS} per call.`;
+
+const QUALITY_ASSET_WORKFLOW =
+  `High-quality sprite workflow: (1) set_palette for a cohesive theme; (2) add_asset with template \"empty\" at 8×8–48×48 (32×32 is a good default); (3) draw_asset_pixels in regional chunks — a full 32×32 = 1,024 pixels, well under the ${MAX_DRAW_PIXELS} cap; (4) get_asset to preview rows and fix mistakes; (5) clear_rect on the asset to erase a region before redraw; (6) duplicate_asset for color variants; (7) stamp_assets back-to-front (floor → furniture → characters). Never one-shot a complex sprite in add_asset — iterate with draw_asset_pixels.`;
+
+function applyPixelOffset(
+  dots: Array<{ x: number; y: number; color: string }>,
+  offsetX: number,
+  offsetY: number,
+): Array<{ x: number; y: number; color: string }> {
+  if (offsetX === 0 && offsetY === 0) {
+    return dots;
+  }
+  return dots.map((dot) => ({
+    ...dot,
+    x: dot.x + offsetX,
+    y: dot.y + offsetY,
+  }));
+}
+
+function drawPixelsLimitError(count: number) {
+  const cells = DEFAULT_WIDTH * DEFAULT_HEIGHT;
+  return `At most ${MAX_DRAW_PIXELS} pixels per draw_pixels call (got ${count}). For sprites or scenes, use add_asset with pixels or rows (each side ≤${MAX_ASSET_SIDE}) then stamp_assets. A default ${DEFAULT_WIDTH}×${DEFAULT_HEIGHT} page has ${cells.toLocaleString()} cells — page-wide painting is intentionally impractical.`;
+}
+
+type StampInput = {
+  id: string;
+  x: number;
+  y: number;
+  scale?: number;
+  width?: number;
+  height?: number;
+};
+
+function parseStampList(
+  value: unknown,
+): StampInput[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const stamps: StampInput[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      return undefined;
+    }
+    const row = item as Record<string, unknown>;
+    const id = asString(row.id);
+    const x = asInteger(row.x);
+    const y = asInteger(row.y);
+    if (!id || x === undefined || y === undefined) {
+      return undefined;
+    }
+    stamps.push({
+      id,
+      x,
+      y,
+      scale: asNumber(row.scale),
+      width: asInteger(row.width),
+      height: asInteger(row.height),
+    });
+  }
+  return stamps;
+}
+
+function resolveAssetPixels(input: Record<string, unknown>): {
+  width: number;
+  height: number;
+  pixels: string[];
+} | null {
+  const width = asInteger(input.width);
+  const height = asInteger(input.height);
+  const template = asString(input.template);
+  const fill = asString(input.fill);
+
+  if (template === "empty") {
+    if (width === undefined || height === undefined) {
+      return null;
+    }
+    if (width < 1 || height < 1 || width > MAX_ASSET_SIDE || height > MAX_ASSET_SIDE) {
+      return null;
+    }
+    return { width, height, pixels: emptyPixelGrid(width, height) };
+  }
+
+  if (fill) {
+    if (width === undefined || height === undefined) {
+      return null;
+    }
+    if (width < 1 || height < 1 || width > MAX_ASSET_SIDE || height > MAX_ASSET_SIDE) {
+      return null;
+    }
+    return { width, height, pixels: solidPixelGrid(width, height, fill) };
+  }
+
+  if (width !== undefined && height !== undefined && input.rows !== undefined) {
+    const pixels = asPixelRows(input.rows, width, height);
+    if (!pixels) {
+      return null;
+    }
+    return { width, height, pixels };
+  }
+
+  const flat = asHexGrid(input.pixels);
+  if (flat && width !== undefined && height !== undefined) {
+    if (flat.length !== width * height) {
+      return null;
+    }
+    if (width < 1 || height < 1 || width > MAX_ASSET_SIDE || height > MAX_ASSET_SIDE) {
+      return null;
+    }
+    return { width, height, pixels: flat };
+  }
+
+  return null;
+}
+
 function summarize(api: FilmApi) {
   const { film } = api;
   return {
@@ -98,36 +227,12 @@ function summarize(api: FilmApi) {
   };
 }
 
-const LEGACY_ASSET_TOOL_ALIASES: Array<[string, string]> = [
-  ["list_tiles", "list_assets"],
-  ["add_tile", "add_asset"],
-  ["stamp_tile", "stamp_asset"],
-  ["remove_tile", "remove_asset"],
-];
-
-function withLegacyAssetToolAliases(tools: WebMCPTool[]): WebMCPTool[] {
-  const aliases = LEGACY_ASSET_TOOL_ALIASES.flatMap(([legacyName, currentName]) => {
-    const current = tools.find((tool) => tool.name === currentName);
-    if (!current) {
-      return [];
-    }
-    return [
-      {
-        ...current,
-        name: legacyName,
-        description: `${current.description} (deprecated — use ${currentName})`,
-      },
-    ];
-  });
-  return [...tools, ...aliases];
-}
-
 export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
   const tools: WebMCPTool[] = [
     {
       name: "get_film",
       description:
-        "Read the book: each page’s density, text marks (words, font, size), the asset library (id, name, size — not pixel grids), the Color swatches (palette), optional theme name, and which page is on the canvas. Does not return pixel grids.",
+        `Read the book: each page’s density, text marks, asset library (id, name, size — not pixel grids), Color swatches, and active page. ${ASSET_WORKFLOW} ${QUALITY_ASSET_WORKFLOW}`,
       annotations: { readOnlyHint: true },
       inputSchema: { type: "object", properties: {} },
       execute: async () => toolResult(summarize(apiRef.current)),
@@ -135,13 +240,13 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "set_canvas",
       description:
-        "Set how many pixels fit on the active page. Width is 48–192; height follows 16:9. Other pages keep their own density. Existing art on this page is cropped or padded.",
+        `Set how many pixels fit on the active page. Width is ${MIN_WIDTH}–${MAX_WIDTH}; height follows 16:9. Other pages keep their own density. Existing art on this page is cropped or padded.`,
       inputSchema: {
         type: "object",
         properties: {
           width: {
             type: "integer",
-            description: "Pixels across the canvas, 48–192. Height follows 16:9.",
+            description: `Pixels across the canvas, ${MIN_WIDTH}–${MAX_WIDTH}. Height follows 16:9.`,
           },
         },
         required: ["width"],
@@ -266,7 +371,7 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "add_page",
       description:
-        "Append a new page and select it. Omit draw for a blank canvas. Pass draw as a visual beat to paint pixel art. Pass story to place a line of text on the page (not a shape).",
+        `Append a new page and select it. For complex art, compose with add_asset + stamp_assets. Optional story places a line of text via place_text. Optional draw runs a simple procedural slide (night, rain, city) — not for dense reference art.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -338,7 +443,7 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "place_text",
       description:
-        "Rasterize story words into page pixels at x,y (0–1 or pixel coords). font is inter or geist-mono; size is s, m, or l (1×, 2×, 3× glyph scale). Use place_shape for decorations, not captions.",
+        "Rasterize story words into page pixels at x,y (0–1 or pixel coords). font defaults to inter; size is glyph scale 1–8 (default 2). Use place_shape for decorations, not captions.",
       inputSchema: {
         type: "object",
         properties: {
@@ -349,12 +454,13 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           font: {
             type: "string",
             enum: [...TEXT_FONTS],
-            description: "inter or geist-mono",
+            description: "inter (default) or geist-mono",
           },
           size: {
-            type: "string",
-            enum: [...TEXT_SIZES],
-            description: "Text size: s, m, or l",
+            type: "integer",
+            minimum: MIN_TEXT_SIZE,
+            maximum: MAX_TEXT_SIZE,
+            description: "Glyph scale 1–8 (legacy s/m/l also accepted)",
           },
         },
         required: ["body"],
@@ -374,7 +480,7 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           font:
             input.font !== undefined ? normalizeFont(input.font) : undefined,
           size:
-            input.size !== undefined ? normalizeSize(input.size) : undefined,
+            input.size !== undefined ? normalizeTextSize(input.size) : undefined,
         });
         if (!mark) {
           return toolError("No active page");
@@ -447,63 +553,23 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "set_text",
-      description: "Change the words of a text mark on the active page.",
+      name: "list_assets",
+      description:
+        `List the film asset library (max ${MAX_ASSETS} assets, each side ≤${MAX_ASSET_SIDE}px). Returns id, name, and size — not pixel grids. Use get_asset to read pixels for inspection. After add_asset, call list_assets for ids before stamp_assets. ${QUALITY_ASSET_WORKFLOW}`,
+      annotations: { readOnlyHint: true },
+      inputSchema: { type: "object", properties: {} },
+      execute: async () => toolResult({ assets: assetSummary(apiRef.current) }),
+    },
+    {
+      name: "get_asset",
+      description:
+        `Read one asset’s full pixel buffer for inspection and iterative fixes. Returns id, name, width, height, rows (comma-separated #rrggbb per row; \"\" = transparent), and pixels (row-major flat array). Use after draw_asset_pixels to verify shading and outlines before stamp_assets. ${QUALITY_ASSET_WORKFLOW}`,
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {
-          id: { type: "string" },
-          body: { type: "string" },
+          id: { type: "string", description: "Asset id from add_asset or list_assets" },
         },
-        required: ["id", "body"],
-      },
-      execute: async (input) => {
-        const id = asString(input.id);
-        const body = asString(input.body);
-        if (!id || body === undefined) {
-          return toolError("id and body are required");
-        }
-        const ok = apiRef.current.setText(id, body);
-        if (!ok) {
-          return toolError("Text mark not found");
-        }
-        return toolResult({ id, body });
-      },
-    },
-    {
-      name: "move_text",
-      description: "Move a text mark on the active page. x and y are 0–1 or pixel coordinates.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          id: { type: "string" },
-          x: { type: "number" },
-          y: { type: "number" },
-        },
-        required: ["id", "x", "y"],
-      },
-      execute: async (input) => {
-        const id = asString(input.id);
-        const api = apiRef.current;
-        const size = activeSize(api);
-        const x = asUnit(input.x, size.width);
-        const y = asUnit(input.y, size.height);
-        if (!id || x === undefined || y === undefined) {
-          return toolError("id, x, and y are required");
-        }
-        const ok = api.moveText(id, x, y);
-        if (!ok) {
-          return toolError("Text mark not found");
-        }
-        return toolResult({ id, x, y });
-      },
-    },
-    {
-      name: "remove_text",
-      description: "Remove a text mark from the active page.",
-      inputSchema: {
-        type: "object",
-        properties: { id: { type: "string" } },
         required: ["id"],
       },
       execute: async (input) => {
@@ -511,35 +577,156 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
         if (!id) {
           return toolError("id is required");
         }
-        const ok = apiRef.current.removeText(id);
-        if (!ok) {
-          return toolError("Text mark not found");
+        const asset = apiRef.current.getAsset(id);
+        if (!asset) {
+          return toolError(`Asset not found: ${id}`);
         }
-        return toolResult({ id, removed: true });
+        return toolResult({
+          id: asset.id,
+          name: asset.name,
+          width: asset.width,
+          height: asset.height,
+          rows: pixelsToRows(asset.pixels, asset.width, asset.height),
+          pixels: asset.pixels,
+        });
       },
     },
     {
-      name: "list_assets",
+      name: "draw_asset_pixels",
       description:
-        "List the film asset library. Returns id, name, and size — not pixel grids.",
-      annotations: { readOnlyHint: true },
-      inputSchema: { type: "object", properties: {} },
-      execute: async () => toolResult({ assets: assetSummary(apiRef.current) }),
+        `Paint up to ${MAX_DRAW_PIXELS} pixels into an existing asset buffer (regional edits). Each {x,y,color} is relative to the asset top-left (0,0). Optional offsetX/offsetY shift all coords — tile a 16×16 motif at (16,0) with offsetX:16. A full 64×64 asset = 4,096 pixels (fits in one call). Empty string color erases to transparent. Workflow: add_asset template empty → draw_asset_pixels in chunks → get_asset to verify → stamp_assets. ${QUALITY_ASSET_WORKFLOW}`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Asset id to paint into" },
+          pixels: {
+            type: "array",
+            maxItems: MAX_DRAW_PIXELS,
+            items: {
+              type: "object",
+              properties: {
+                x: { type: "integer", description: "Column within asset (0 = left)" },
+                y: { type: "integer", description: "Row within asset (0 = top)" },
+                color: {
+                  type: "string",
+                  description: "#rrggbb or \"\" to erase",
+                },
+              },
+              required: ["x", "y", "color"],
+            },
+          },
+          offsetX: {
+            type: "integer",
+            description: "Added to every x (default 0) — use to tile regions",
+          },
+          offsetY: {
+            type: "integer",
+            description: "Added to every y (default 0)",
+          },
+        },
+        required: ["id", "pixels"],
+      },
+      execute: async (input) => {
+        const id = asString(input.id);
+        if (!id) {
+          return toolError("id is required");
+        }
+        const dots = asDots(input.pixels);
+        if (!dots?.length) {
+          return toolError("pixels must be a non-empty array of {x,y,color}");
+        }
+        if (dots.length > MAX_DRAW_PIXELS) {
+          return toolError(drawPixelsLimitError(dots.length));
+        }
+        const asset = apiRef.current.getAsset(id);
+        if (!asset) {
+          return toolError(`Asset not found: ${id}`);
+        }
+        const offsetX = asInteger(input.offsetX) ?? 0;
+        const offsetY = asInteger(input.offsetY) ?? 0;
+        const adjusted = applyPixelOffset(dots, offsetX, offsetY);
+        const painted = apiRef.current.drawAssetPixels(id, adjusted);
+        return toolResult({
+          id,
+          painted,
+          width: asset.width,
+          height: asset.height,
+        });
+      },
+    },
+    {
+      name: "duplicate_asset",
+      description:
+        `Fork an existing asset for variants (e.g. alternate outfit, mirrored pose). Optional name; defaults to \"<original> copy\". Returns new id, name, width, height. Refine the copy with draw_asset_pixels. Library max ${MAX_ASSETS} assets.`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Source asset id" },
+          name: {
+            type: "string",
+            description: "Label for the copy; defaults to \"<original> copy\"",
+          },
+        },
+        required: ["id"],
+      },
+      execute: async (input) => {
+        const id = asString(input.id);
+        if (!id) {
+          return toolError("id is required");
+        }
+        const asset = apiRef.current.duplicateAsset(
+          id,
+          asString(input.name),
+        );
+        if (!asset) {
+          return toolError(
+            `Cannot duplicate: asset not found, library full (max ${MAX_ASSETS}), or invalid name`,
+          );
+        }
+        return toolResult({
+          id: asset.id,
+          name: asset.name,
+          width: asset.width,
+          height: asset.height,
+          sourceId: id,
+        });
+      },
     },
     {
       name: "add_asset",
       description:
-        "Save a reusable pixel asset. Pass pixels plus width and height, or copy a rectangle from a page (x, y, width, height, optional pageIndex).",
+        `Save a reusable pixel sprite to the film library (≤${MAX_ASSET_SIDE}×${MAX_ASSET_SIDE}px). For quality art, start with template \"empty\" + width + height (e.g. 32×32), then refine with draw_asset_pixels in chunks — do not try to one-shot complex sprites here. Options: (1) template \"empty\" + width + height — blank transparent canvas (preferred start); (2) draw_asset_pixels after empty create — iterate regions; (3) pixels (row-major #rrggbb flat array, \"\" transparent) + width + height for simple fills; (4) rows (comma-separated #rrggbb per row) + width + height; (5) fill (#rrggbb) + width + height for a solid block; (6) copy a page rect with x, y, width, height (optional pageIndex). Default blank size is ${DEFAULT_ASSET_WIDTH}×${DEFAULT_ASSET_HEIGHT}. Call get_asset to verify before stamping. ${QUALITY_ASSET_WORKFLOW}`,
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Label shown in the Assets list" },
-          width: { type: "integer" },
-          height: { type: "integer" },
+          width: {
+            type: "integer",
+            description: `Width in pixels, 1–${MAX_ASSET_SIDE}`,
+          },
+          height: {
+            type: "integer",
+            description: `Height in pixels, 1–${MAX_ASSET_SIDE}`,
+          },
           pixels: {
             type: "array",
             items: { type: "string" },
             description: "Row-major #rrggbb colors; empty string is transparent",
+          },
+          rows: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Alternative to pixels: one comma-separated #rrggbb row per line; must match width×height",
+          },
+          template: {
+            type: "string",
+            enum: ["empty"],
+            description: "With width+height, create a transparent blank asset",
+          },
+          fill: {
+            type: "string",
+            description: "With width+height, fill the asset with one #rrggbb color",
           },
           x: { type: "integer", description: "Page rect left, if copying from a page" },
           y: { type: "integer", description: "Page rect top, if copying from a page" },
@@ -555,18 +742,26 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
         if (!name?.trim()) {
           return toolError("name is required");
         }
-        const asset = apiRef.current.addAsset({
-          name,
-          width: asInteger(input.width),
-          height: asInteger(input.height),
-          pixels: asHexGrid(input.pixels),
-          x: asInteger(input.x),
-          y: asInteger(input.y),
-          pageIndex: asInteger(input.pageIndex),
-        });
+        const resolved = resolveAssetPixels(input);
+        const asset = resolved
+          ? apiRef.current.addAsset({
+              name,
+              width: resolved.width,
+              height: resolved.height,
+              pixels: resolved.pixels,
+            })
+          : apiRef.current.addAsset({
+              name,
+              width: asInteger(input.width),
+              height: asInteger(input.height),
+              pixels: asHexGrid(input.pixels),
+              x: asInteger(input.x),
+              y: asInteger(input.y),
+              pageIndex: asInteger(input.pageIndex),
+            });
         if (!asset) {
           return toolError(
-            "Need a labeled asset: pixels+width+height, or a page rect (x,y,width,height)",
+            `Need a valid asset: pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect (x,y,width,height). pixels.length must equal width×height.`,
           );
         }
         return toolResult({
@@ -580,16 +775,19 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "stamp_asset",
       description:
-        "Stamp a saved asset onto the active page at pixel x, y. Optional scale (1 = native size) or width/height for nearest-neighbor resize.",
+        `Stamp one saved asset onto the active page at pixel x,y (top-left). scale=1 is native 1:1 (recommended for pixel-crisp art); scale 2 doubles both dimensions with nearest-neighbor. Optional width/height override scale. For many placements, prefer stamp_assets. Layer order: stamp background tiles and furniture first, characters last. Verify sprites with get_asset before stamping. ${ASSET_WORKFLOW}`,
       inputSchema: {
         type: "object",
         properties: {
-          id: { type: "string" },
-          x: { type: "integer" },
-          y: { type: "integer" },
-          scale: { type: "number", description: "Uniform scale; 1 is native size" },
-          width: { type: "integer", description: "Destination width in pixels" },
-          height: { type: "integer", description: "Destination height in pixels" },
+          id: { type: "string", description: "Asset id from add_asset or list_assets" },
+          x: { type: "integer", description: "Left edge in page pixels" },
+          y: { type: "integer", description: "Top edge in page pixels" },
+          scale: {
+            type: "number",
+            description: "Uniform scale; 1 is native size, 2 doubles width and height",
+          },
+          width: { type: "integer", description: "Destination width in pixels (overrides scale)" },
+          height: { type: "integer", description: "Destination height in pixels (overrides scale)" },
         },
         required: ["id", "x", "y"],
       },
@@ -622,6 +820,88 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
+      name: "stamp_assets",
+      description:
+        `Stamp many assets onto the active page in one call (max ${MAX_ASSETS} stamps). Each item needs id, x, y; optional scale (default 1 = native 1:1) or width/height per stamp. Order matters — later stamps paint over earlier ones. Compose back-to-front: sky/background → floor tiles → walls/furniture → props → characters. Use get_asset to verify each sprite before stamping. On failure, reports which stamp index failed and why. ${QUALITY_ASSET_WORKFLOW}`,
+      inputSchema: {
+        type: "object",
+        properties: {
+          stamps: {
+            type: "array",
+            maxItems: MAX_ASSETS,
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                x: { type: "integer" },
+                y: { type: "integer" },
+                scale: { type: "number" },
+                width: { type: "integer" },
+                height: { type: "integer" },
+              },
+              required: ["id", "x", "y"],
+            },
+            description: "Stamps applied in array order (back-to-front)",
+          },
+        },
+        required: ["stamps"],
+      },
+      execute: async (input) => {
+        const stamps = parseStampList(input.stamps);
+        if (!stamps?.length) {
+          return toolError(
+            "stamps must be a non-empty array of {id, x, y} with integer x and y",
+          );
+        }
+        if (stamps.length > MAX_ASSETS) {
+          return toolError(`At most ${MAX_ASSETS} stamps per call (got ${stamps.length})`);
+        }
+        const api = apiRef.current;
+        if (!api.active) {
+          return toolError("No active page — call add_page or select_page first");
+        }
+        const placed: Array<{
+          index: number;
+          id: string;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        }> = [];
+        for (let index = 0; index < stamps.length; index += 1) {
+          const stamp = stamps[index]!;
+          if (!api.getAsset(stamp.id)) {
+            return toolError(
+              `Stamp ${index}: asset not found "${stamp.id}". Call list_assets for valid ids.`,
+            );
+          }
+          const result = api.stampAsset({
+            id: stamp.id,
+            x: stamp.x,
+            y: stamp.y,
+            scale: stamp.scale,
+            width: stamp.width,
+            height: stamp.height,
+            keepFloating: false,
+          });
+          if (!result) {
+            return toolError(
+              `Stamp ${index}: failed to place "${stamp.id}" at (${stamp.x},${stamp.y}) — asset missing or no active page`,
+            );
+          }
+          placed.push({
+            index,
+            id: stamp.id,
+            x: result.x,
+            y: result.y,
+            width: result.width,
+            height: result.height,
+          });
+        }
+        return toolResult({ stamped: placed.length, stamps: placed });
+      },
+    },
+    {
       name: "remove_asset",
       description: "Remove an asset from the film library by id.",
       inputSchema: {
@@ -642,146 +922,111 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "set_pixel",
-      description:
-        "Paint one pixel on the active page. Origin is top-left. Color is #rrggbb. Call get_film for the current grid size.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          x: { type: "integer" },
-          y: { type: "integer" },
-          color: { type: "string", description: "#rrggbb" },
-        },
-        required: ["x", "y", "color"],
-      },
-      execute: async (input) => {
-        const x = asInteger(input.x);
-        const y = asInteger(input.y);
-        const color = asString(input.color);
-        if (x === undefined || y === undefined || !color) {
-          return toolError("x, y, and color are required");
-        }
-        apiRef.current.drawPixels([{ x, y, color }]);
-        return toolResult({ x, y, color });
-      },
-    },
-    {
       name: "draw_pixels",
-      description: "Paint many pixels at once on the active page. Prefer this over repeated set_pixel calls.",
+      description:
+        `Paint up to ${MAX_DRAW_PIXELS} pixels on the active page for tiny touch-ups or tiled regional fills. Each {x,y,color} is page coords; optional offsetX/offsetY shift all coords — tile 32×32 chunks across a page (e.g. offsetX:32 for the next column). For sprites and scenes, build assets with add_asset + draw_asset_pixels, then stamp_assets — not page-wide pixel arrays.`,
       inputSchema: {
         type: "object",
         properties: {
           pixels: {
             type: "array",
+            maxItems: MAX_DRAW_PIXELS,
             items: {
               type: "object",
               properties: {
-                x: { type: "integer" },
-                y: { type: "integer" },
-                color: { type: "string" },
+                x: { type: "integer", description: "Page column (0 = left)" },
+                y: { type: "integer", description: "Page row (0 = top)" },
+                color: {
+                  type: "string",
+                  description: "#rrggbb or \"\" to erase",
+                },
               },
               required: ["x", "y", "color"],
             },
+          },
+          offsetX: {
+            type: "integer",
+            description: "Added to every x (default 0) — use to tile 32×32 regions",
+          },
+          offsetY: {
+            type: "integer",
+            description: "Added to every y (default 0)",
           },
         },
         required: ["pixels"],
       },
       execute: async (input) => {
         const dots = asDots(input.pixels);
-        if (!dots) {
-          return toolError("pixels must be an array of {x,y,color}");
+        if (!dots?.length) {
+          return toolError("pixels must be a non-empty array of {x,y,color}");
         }
-        const painted = apiRef.current.drawPixels(dots.slice(0, 2000));
-        return toolResult({ painted });
+        if (dots.length > MAX_DRAW_PIXELS) {
+          return toolError(drawPixelsLimitError(dots.length));
+        }
+        const offsetX = asInteger(input.offsetX) ?? 0;
+        const offsetY = asInteger(input.offsetY) ?? 0;
+        const adjusted = applyPixelOffset(dots, offsetX, offsetY);
+        const painted = apiRef.current.drawPixels(adjusted);
+        return toolResult({ painted, offsetX, offsetY });
       },
     },
     {
-      name: "fill_rect",
-      description: "Fill a rectangle on the active page.",
+      name: "clear_rect",
+      description:
+        `Erase a rectangular region to transparent (page) or transparent (asset). Use before redraw to fix mistakes without recreating the whole buffer. target \"page\" clears on the active page; target \"asset\" requires assetId. Coords are top-left x,y plus width×height in pixels.`,
       inputSchema: {
         type: "object",
         properties: {
-          x: { type: "integer" },
-          y: { type: "integer" },
-          width: { type: "integer" },
-          height: { type: "integer" },
-          color: { type: "string" },
+          target: {
+            type: "string",
+            enum: ["page", "asset"],
+            description: "Whether to clear on the active page or an asset buffer",
+          },
+          assetId: {
+            type: "string",
+            description: "Required when target is asset",
+          },
+          x: { type: "integer", description: "Left edge" },
+          y: { type: "integer", description: "Top edge" },
+          width: { type: "integer", description: "Region width in pixels" },
+          height: { type: "integer", description: "Region height in pixels" },
         },
-        required: ["x", "y", "width", "height", "color"],
+        required: ["target", "x", "y", "width", "height"],
       },
       execute: async (input) => {
+        const target = asString(input.target);
         const x = asInteger(input.x);
         const y = asInteger(input.y);
         const width = asInteger(input.width);
         const height = asInteger(input.height);
-        const color = asString(input.color);
-        if (
-          x === undefined ||
-          y === undefined ||
-          width === undefined ||
-          height === undefined ||
-          !color
-        ) {
-          return toolError("x, y, width, height, and color are required");
+        if (!target || (target !== "page" && target !== "asset")) {
+          return toolError('target must be "page" or "asset"');
         }
-        apiRef.current.rect(x, y, width, height, color);
-        return toolResult({ x, y, width, height, color });
-      },
-    },
-    {
-      name: "draw_line",
-      description: "Draw a 1-pixel line on the active page.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          x0: { type: "integer" },
-          y0: { type: "integer" },
-          x1: { type: "integer" },
-          y1: { type: "integer" },
-          color: { type: "string" },
-        },
-        required: ["x0", "y0", "x1", "y1", "color"],
-      },
-      execute: async (input) => {
-        const x0 = asInteger(input.x0);
-        const y0 = asInteger(input.y0);
-        const x1 = asInteger(input.x1);
-        const y1 = asInteger(input.y1);
-        const color = asString(input.color);
-        if (
-          x0 === undefined ||
-          y0 === undefined ||
-          x1 === undefined ||
-          y1 === undefined ||
-          !color
-        ) {
-          return toolError("x0, y0, x1, y1, and color are required");
+        if (x === undefined || y === undefined || width === undefined || height === undefined) {
+          return toolError("x, y, width, and height are required integers");
         }
-        apiRef.current.line(x0, y0, x1, y1, color);
-        return toolResult({ x0, y0, x1, y1, color });
-      },
-    },
-    {
-      name: "flood_fill",
-      description: "Flood-fill from a pixel on the active page.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          x: { type: "integer" },
-          y: { type: "integer" },
-          color: { type: "string" },
-        },
-        required: ["x", "y", "color"],
-      },
-      execute: async (input) => {
-        const x = asInteger(input.x);
-        const y = asInteger(input.y);
-        const color = asString(input.color);
-        if (x === undefined || y === undefined || !color) {
-          return toolError("x, y, and color are required");
+        if (width < 1 || height < 1) {
+          return toolError("width and height must be at least 1");
         }
-        apiRef.current.fill(x, y, color);
-        return toolResult({ x, y, color });
+        const assetId = asString(input.assetId);
+        if (target === "asset" && !assetId) {
+          return toolError("assetId is required when target is asset");
+        }
+        const ok = apiRef.current.clearRect({
+          target,
+          assetId,
+          x,
+          y,
+          width,
+          height,
+        });
+        if (!ok) {
+          if (target === "page") {
+            return toolError("No active page");
+          }
+          return toolError(`Asset not found: ${assetId}`);
+        }
+        return toolResult({ target, assetId: assetId ?? null, x, y, width, height, cleared: true });
       },
     },
     {
@@ -793,34 +1038,8 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
         return toolResult({ empty: true });
       },
     },
-    {
-      name: "draw_scene",
-      description:
-        "Paint pixel art onto the active page from a visual description. Use this to turn a story beat into a slide. Keywords: night, rain, city, forest, sea, two figures, closeup, neon.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          prompt: {
-            type: "string",
-            description: "What should appear on this slide",
-          },
-        },
-        required: ["prompt"],
-      },
-      execute: async (input) => {
-        const prompt = asString(input.prompt)?.trim();
-        if (!prompt) {
-          return toolError("prompt is required");
-        }
-        apiRef.current.drawScene(prompt);
-        return toolResult({
-          prompt,
-          size: activeSize(apiRef.current),
-        });
-      },
-    },
   ];
-  return withLegacyAssetToolAliases(tools);
+  return tools;
 }
 
 export async function registerFilmTools(
