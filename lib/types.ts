@@ -1,167 +1,209 @@
-export const SHOT_STATUSES = [
-  "unshot",
-  "setup",
-  "rolling",
-  "in_can",
-  "needs_pickup",
-  "locked",
+export const EMPTY = "#ffffff";
+export const MIN_WIDTH = 48;
+export const MAX_WIDTH = 192;
+export const DEFAULT_WIDTH = 128;
+export const DEFAULT_HEIGHT = 72;
+
+export const DRAW_TOOLS = ["pencil", "eraser", "fill", "type"] as const;
+export type DrawTool = (typeof DRAW_TOOLS)[number];
+
+export const TEXT_FRAMES = [
+  "speech",
+  "thought",
+  "shout",
+  "caption",
+  "plain",
+] as const;
+export type TextFrame = (typeof TEXT_FRAMES)[number];
+
+export const PALETTE = [
+  "#000000",
+  "#ffffff",
+  "#dceeb1",
+  "#c5b0f4",
+  "#f4ecd6",
+  "#efd4d4",
+  "#c8e6cd",
+  "#f3c9b6",
+  "#1f1d3d",
+  "#ff3d8b",
 ] as const;
 
-export type ShotStatus = (typeof SHOT_STATUSES)[number];
+export interface Size {
+  width: number;
+  height: number;
+}
 
-export const PRODUCTION_FORMATS = [
-  "short",
-  "feature",
-  "series-pilot",
-  "music-video",
-] as const;
+export interface TextMark {
+  id: string;
+  x: number;
+  y: number;
+  body: string;
+  color: string;
+  frame: TextFrame;
+}
 
-export type ProductionFormat = (typeof PRODUCTION_FORMATS)[number];
-
-export const STUDIO_TABS = [
-  "floor",
-  "script",
-  "board",
-  "shots",
-  "timeline",
-  "dailies",
-] as const;
-
-export type StudioTab = (typeof STUDIO_TABS)[number];
-
-export const NOTE_AUTHORS = ["human", "agent"] as const;
-
-export type NoteAuthor = (typeof NOTE_AUTHORS)[number];
-
-export interface PixelFrame {
+export interface Page {
+  id: string;
   width: number;
   height: number;
   pixels: string[];
-  prompt: string;
+  texts: TextMark[];
 }
 
-export interface Character {
-  id: string;
-  name: string;
-  role: string;
-  palette: string;
-  notes: string;
+export interface Film {
+  brief: string;
+  pages: Page[];
+  activeIndex: number;
 }
 
-export interface Scene {
-  id: string;
-  number: number;
-  heading: string;
-  synopsis: string;
-}
-
-export interface Shot {
-  id: string;
-  sceneId: string;
-  number: string;
-  title: string;
-  description: string;
-  location: string;
-  characterIds: string[];
-  durationSec: number;
-  status: ShotStatus;
-  camera: string;
-  lens: string;
-  frame: PixelFrame | null;
-  notes: string;
-}
-
-export interface ProductionNote {
-  id: string;
-  at: string;
-  author: NoteAuthor;
-  body: string;
-}
-
-export interface Production {
-  id: string;
-  title: string;
-  logline: string;
-  genre: string;
-  format: ProductionFormat;
-  targetMinutes: number;
-  script: string;
-  scenes: Scene[];
-  shots: Shot[];
-  characters: Character[];
-  notes: ProductionNote[];
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AgentLogEntry {
-  id: string;
-  at: string;
-  tool: string;
-  summary: string;
-  ok: boolean;
-}
-
-export interface StudioSnapshot {
-  productions: Production[];
-  activeId: string | null;
-  tab: StudioTab;
-  logs: AgentLogEntry[];
+export interface FilmApi {
+  film: Film;
+  tool: DrawTool;
+  color: string;
+  frame: TextFrame;
+  setTool: (tool: DrawTool) => void;
+  setColor: (color: string) => void;
+  setFrame: (frame: TextFrame) => void;
+  setBrief: (brief: string) => void;
+  setDensity: (width: number) => void;
+  addPage: (input?: { story?: string; draw?: string }) => Page;
+  selectPage: (index: number) => boolean;
+  removePage: (index: number) => boolean;
+  addText: (input: {
+    x: number;
+    y: number;
+    body?: string;
+    color?: string;
+    frame?: TextFrame;
+  }) => TextMark | null;
+  setText: (id: string, body: string) => boolean;
+  moveText: (id: string, x: number, y: number) => boolean;
+  removeText: (id: string) => boolean;
+  paint: (x: number, y: number, recordUndo?: boolean) => void;
+  drawPixels: (dots: Array<{ x: number; y: number; color: string }>) => number;
+  rect: (
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    color: string,
+  ) => void;
+  line: (
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    color: string,
+  ) => void;
+  fill: (x: number, y: number, color?: string) => void;
+  clearPage: () => void;
+  drawScene: (prompt: string) => void;
+  undo: () => boolean;
+  active: Page | null;
 }
 
 export function assertNever(value: never, message: string): never {
   throw new Error(`${message}: ${String(value)}`);
 }
 
-export function shotStatusLabel(status: ShotStatus): string {
-  switch (status) {
-    case "unshot":
-      return "Unshot";
-    case "setup":
-      return "Setup";
-    case "rolling":
-      return "Rolling";
-    case "in_can":
-      return "In the can";
-    case "needs_pickup":
-      return "Needs pickup";
-    case "locked":
-      return "Locked";
+export function isTextFrame(value: unknown): value is TextFrame {
+  return TEXT_FRAMES.some((frame) => frame === value);
+}
+
+export function frameLabel(frame: TextFrame): string {
+  switch (frame) {
+    case "speech":
+      return "Speech";
+    case "thought":
+      return "Thought";
+    case "shout":
+      return "Shout";
+    case "caption":
+      return "Caption";
+    case "plain":
+      return "Line";
     default:
-      return assertNever(status, "Unknown shot status");
+      return assertNever(frame, "Unknown frame");
   }
 }
 
-export function formatLabel(format: ProductionFormat): string {
-  switch (format) {
-    case "short":
-      return "Short";
-    case "feature":
-      return "Feature";
-    case "series-pilot":
-      return "Series pilot";
-    case "music-video":
-      return "Music video";
+export function frameHint(frame: TextFrame): string {
+  switch (frame) {
+    case "speech":
+      return "Click the page to place a speech bubble";
+    case "thought":
+      return "Click the page to place a thought bubble";
+    case "shout":
+      return "Click the page to place a shout bubble";
+    case "caption":
+      return "Click the page to place a caption box";
+    case "plain":
+      return "Click the page to write a line";
     default:
-      return assertNever(format, "Unknown format");
+      return assertNever(frame, "Unknown frame");
   }
 }
 
-export function tabLabel(tab: StudioTab): string {
-  switch (tab) {
-    case "floor":
-      return "Floor";
-    case "script":
-      return "Script";
-    case "board":
-      return "Board";
-    case "shots":
-      return "Shots";
-    case "timeline":
-      return "Timeline";
-    case "dailies":
-      return "Dailies";
+export function framePlaceholder(frame: TextFrame): string {
+  switch (frame) {
+    case "speech":
+      return "Hello…";
+    case "thought":
+      return "Hmm…";
+    case "shout":
+      return "Wow!";
+    case "caption":
+      return "Meanwhile…";
+    case "plain":
+      return "Write here…";
     default:
-      return assertNever(tab, "Unknown tab");
+      return assertNever(frame, "Unknown frame");
   }
+}
+
+export function pageSize(page: Pick<Page, "width" | "height">): Size {
+  return { width: page.width, height: page.height };
+}
+
+export function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+export function clampWidth(value: number): number {
+  return Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(value)));
+}
+
+export function landscapeSize(width: number): Size {
+  const nextW = clampWidth(width);
+  return {
+    width: nextW,
+    height: Math.max(8, Math.round((nextW * 9) / 16)),
+  };
+}
+
+export function emptyPixels(width: number, height: number): string[] {
+  return Array.from({ length: width * height }, () => EMPTY);
+}
+
+export function resizePixels(
+  pixels: string[],
+  from: Size,
+  to: Size,
+): string[] {
+  const next = emptyPixels(to.width, to.height);
+  const copyW = Math.min(from.width, to.width);
+  const copyH = Math.min(from.height, to.height);
+  for (let y = 0; y < copyH; y += 1) {
+    for (let x = 0; x < copyW; x += 1) {
+      next[y * to.width + x] = pixels[y * from.width + x] ?? EMPTY;
+    }
+  }
+  return next;
+}
+
+export function isEmptyPage(page: Page): boolean {
+  const blankPixels = page.pixels.every((pixel) => pixel === EMPTY);
+  const blankText = (page.texts ?? []).every((mark) => !mark.body.trim());
+  return blankPixels && blankText;
 }

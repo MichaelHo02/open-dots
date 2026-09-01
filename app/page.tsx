@@ -1,12 +1,12 @@
 "use client";
 
-import { StudioApp } from "@/components/StudioApp";
-import { StudioProvider } from "@/lib/studio-store";
+import { FilmApp } from "@/components/FilmApp";
+import { FilmProvider } from "@/lib/film-store";
 
 export default function Home() {
   return (
-    <StudioProvider>
-      <StudioApp />
-    </StudioProvider>
+    <FilmProvider>
+      <FilmApp />
+    </FilmProvider>
   );
 }

@@ -31,9 +31,32 @@ export function asNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-export function asStringArray(value: unknown): string[] | undefined {
+export function asInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+  return undefined;
+}
+
+export function asDots(
+  value: unknown,
+): Array<{ x: number; y: number; color: string }> | undefined {
   if (!Array.isArray(value)) {
     return undefined;
   }
-  return value.filter((item): item is string => typeof item === "string");
+  const dots: Array<{ x: number; y: number; color: string }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = item as { x?: unknown; y?: unknown; color?: unknown };
+    const x = asInteger(row.x);
+    const y = asInteger(row.y);
+    const color = asString(row.color);
+    if (x === undefined || y === undefined || !color) {
+      continue;
+    }
+    dots.push({ x, y, color });
+  }
+  return dots;
 }

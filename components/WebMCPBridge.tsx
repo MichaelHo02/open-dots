@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { registerStudioTools } from "@/lib/register-tools";
-import { useStudio } from "@/lib/studio-store";
+import { registerFilmTools } from "@/lib/register-tools";
+import { useFilm } from "@/lib/film-store";
 
 export function WebMCPBridge() {
-  const api = useStudio();
+  const api = useFilm();
   const apiRef = useRef(api);
   const [status, setStatus] = useState<"booting" | "live" | "error">("booting");
   const [native, setNative] = useState(false);
@@ -19,7 +19,7 @@ export function WebMCPBridge() {
     const controller = new AbortController();
     let cancelled = false;
 
-    registerStudioTools(apiRef, controller.signal)
+    registerFilmTools(apiRef, controller.signal)
       .then((result) => {
         if (cancelled) {
           return;
@@ -47,16 +47,16 @@ export function WebMCPBridge() {
       className={`webmcp-badge ${status}`}
       title={
         native
-          ? "Native document.modelContext (Chrome flag or ChatGPT browser)"
-          : "Spec polyfill is exposing document.modelContext on this page"
+          ? "Native document.modelContext"
+          : "Polyfill document.modelContext — agents can still draw"
       }
     >
       <span className="dot" />
       {status === "live"
-        ? `${native ? "Native" : "Polyfill"} WebMCP · ${count} tools`
+        ? `WebMCP · ${count}`
         : status === "error"
           ? "WebMCP error"
-          : "WebMCP booting"}
+          : "…"}
     </div>
   );
 }
