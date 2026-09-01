@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pixel Book",
+  title: "Open Dots",
   description:
-    "A picture-book canvas. Draw the scene, drop speech bubbles, then present the story.",
+    "A picture-book canvas. Draw the scene, place words and shapes, then present the story.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

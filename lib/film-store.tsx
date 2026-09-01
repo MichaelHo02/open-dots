@@ -8,38 +8,80 @@ import {
   type ReactNode,
 } from "react";
 import {
+  blitStamp,
   clonePixels,
   drawLine,
+  extractStamp,
   fillRect,
   floodFill,
   hexColor,
   inBounds,
+  paintBrush,
   paintScene,
-  setPixel,
+  rasterizeShape,
+  restoreUnder,
+  sampleUnder,
+  scaleStamp,
   setPixels,
+  shapeScalePixels,
 } from "./draw";
 import { createId } from "./id";
+import {
+  normalizeTextCoord,
+  rasterizeTextRun,
+  syncTextRuns,
+  toPixelMark,
+} from "./pixel-font";
 import {
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   EMPTY,
+  MAX_PALETTE,
+  MAX_ASSET_NAME,
+  MAX_ASSET_SIDE,
+  MAX_ASSETS,
+  assertNever,
   clampUnit,
+  defaultPalette,
   emptyPixels,
-  isTextFrame,
   landscapeSize,
+  normalizeFont,
+  normalizeFrame,
+  normalizeBrushSize,
+  normalizePalette,
+  normalizePaletteName,
+  normalizeScale,
+  normalizeSize,
+  normalizeStoredPixel,
   pageSize,
+  parseHex,
   resizePixels,
+  type BrushSize,
   type DrawTool,
   type Film,
   type FilmApi,
+  type FloatingPixels,
+  type MarkKind,
   type Page,
+  type PixelStamp,
+  type ShapeKind,
   type Size,
+  type TextFont,
   type TextFrame,
   type TextMark,
+  type TextSize,
+  type Asset,
+  type WorkshopDraft,
+  DEFAULT_ASSET_HEIGHT,
+  DEFAULT_ASSET_WIDTH,
 } from "./types";
 
-const STORAGE_KEY = "pixel-film-studio:v8";
+const STORAGE_KEY = "pixel-film-studio:v12";
 const LEGACY_KEYS = [
+  "pixel-film-studio:v11",
+  "pixel-film-studio:v10",
+  "pixel-film-studio:v9",
+  "pixel-film-studio:v8",
   "pixel-film-studio:v7",
   "pixel-film-studio:v6",
   "pixel-film-studio:v5",
@@ -71,20 +113,39 @@ const SEED: Film = {
     },
   ],
   activeIndex: 0,
+  palette: defaultPalette(),
+  assets: [],
 };
 
 let memory = SEED;
 let clientReady = false;
 let tool: DrawTool = "pencil";
 let color = "#000000";
-let frame: TextFrame = "speech";
+let frame: TextFrame = "circle";
+let textFont: TextFont = "inter";
+let textSize: TextSize = "m";
+let shapeFilled = false;
+let brushSize: BrushSize = 1;
+let selectedAssetId: string | null = null;
+let workshopOpen = false;
+let workshopDraft: WorkshopDraft | null = null;
+let workshopRevision = 0;
+let selectedId: string | null = null;
+let selectedKind: MarkKind | null = null;
+let floating: FloatingPixels | null = null;
 const undos: string[][] = [];
+const workshopUndos: string[][] = [];
 const listeners = new Set<() => void>();
 
 function emit() {
   for (const listener of listeners) {
     listener();
   }
+}
+
+function touchWorkshopDraft() {
+  workshopRevision += 1;
+  emit();
 }
 
 function persist(film: Film) {
@@ -96,11 +157,7 @@ function persist(film: Film) {
 }
 
 function guessPixelSize(pixels: string[], width?: number, height?: number): Size {
-  if (
-    width &&
-    height &&
-    pixels.length === width * height
-  ) {
+  if (width && height && pixels.length === width * height) {
     return { width, height };
   }
   const root = Math.round(Math.sqrt(pixels.length));
@@ -110,42 +167,135 @@ function guessPixelSize(pixels: string[], width?: number, height?: number): Size
   return landscapeSize(width ?? DEFAULT_WIDTH);
 }
 
-function migrateTexts(page: {
-  texts?: TextMark[];
+type LegacyMark = Partial<TextMark> & {
+  frame?: unknown;
+  kind?: unknown;
+  scale?: unknown;
+  filled?: unknown;
+  color?: string;
+  x?: number;
+  y?: number;
+  id?: string;
+};
+
+function normalizeTextMark(mark: LegacyMark): TextMark {
+  return {
+    id: mark.id || createId("text"),
+    x: typeof mark.x === "number" ? mark.x : 0.08,
+    y: typeof mark.y === "number" ? mark.y : 0.78,
+    body: mark.body ?? "",
+    color: mark.color || "#000000",
+    font: normalizeFont(mark.font),
+    size: normalizeSize(mark.size),
+  };
+}
+
+function migrateMarks(page: {
+  texts?: LegacyMark[];
+  shapes?: LegacyMark[];
   story?: string;
   caption?: string;
-}): TextMark[] {
-  if (page.texts?.length) {
-    return page.texts.map((mark) => ({
-      id: mark.id || createId("text"),
-      x: clampUnit(mark.x),
-      y: clampUnit(mark.y),
-      body: mark.body ?? "",
-      color: mark.color || "#000000",
-      frame: isTextFrame(mark.frame) ? mark.frame : "plain",
-    }));
+}): { texts: TextMark[]; shapes: LegacyMark[] } {
+  const hasShapeArray = Array.isArray(page.shapes);
+  const shapes = hasShapeArray ? [...(page.shapes ?? [])] : [];
+  const texts: TextMark[] = [];
+
+  for (const mark of page.texts ?? []) {
+    const framed = !hasShapeArray && mark.frame != null;
+    if (framed) {
+      if (mark.body?.trim()) {
+        texts.push(normalizeTextMark(mark));
+      } else {
+        shapes.push(mark);
+      }
+      continue;
+    }
+    texts.push(normalizeTextMark(mark));
   }
-  const leftover = page.story ?? page.caption;
-  if (!leftover?.trim()) {
-    return [];
+
+  if (!page.texts?.length) {
+    const leftover = page.story ?? page.caption;
+    if (leftover?.trim()) {
+      texts.push(
+        normalizeTextMark({
+          body: leftover,
+          x: 0.08,
+          y: 0.78,
+        }),
+      );
+    }
   }
-  return [
-    {
-      id: createId("text"),
-      x: 0.08,
-      y: 0.78,
-      body: leftover,
-      color: "#000000",
-      frame: "caption",
-    },
-  ];
+
+  return { texts, shapes };
+}
+
+function bakeLegacyShape(pixels: string[], size: Size, mark: LegacyMark): string[] {
+  const kind = normalizeFrame(mark.kind ?? mark.frame);
+  const scale = normalizeScale(mark.scale);
+  const dim = shapeScalePixels(scale, size);
+  const width = kind === "rectangle" ? Math.max(2, Math.round(dim * 1.6)) : dim;
+  const height = dim;
+  const x0 = Math.round((typeof mark.x === "number" ? mark.x : 0.5) * size.width);
+  const y0 = Math.round((typeof mark.y === "number" ? mark.y : 0.4) * size.height);
+  const stamp = rasterizeShape(
+    kind,
+    x0,
+    y0,
+    x0 + width - 1,
+    y0 + height - 1,
+    mark.color || "#000000",
+    Boolean(mark.filled),
+  );
+  return blitStamp(pixels, size, stamp);
+}
+
+function normalizeAsset(
+  raw: Partial<Asset>,
+  paperAsEmpty = false,
+): Asset | null {
+  const width = Math.round(raw.width ?? 0);
+  const height = Math.round(raw.height ?? 0);
+  if (
+    width < 1 ||
+    height < 1 ||
+    width > MAX_ASSET_SIDE ||
+    height > MAX_ASSET_SIDE
+  ) {
+    return null;
+  }
+  const source = Array.isArray(raw.pixels) ? raw.pixels : [];
+  if (source.length !== width * height) {
+    return null;
+  }
+  const pixels = source.map((item) =>
+    normalizeStoredPixel(item, paperAsEmpty),
+  );
+  const name =
+    typeof raw.name === "string" && raw.name.trim()
+      ? raw.name.trim().slice(0, MAX_ASSET_NAME)
+      : "Asset";
+  return {
+    id: raw.id || createId("asset"),
+    name,
+    width,
+    height,
+    pixels,
+  };
 }
 
 function migratePage(
-  page: Partial<Page> & { story?: string; caption?: string },
+  page: Partial<Page> & {
+    story?: string;
+    caption?: string;
+    texts?: LegacyMark[];
+    shapes?: LegacyMark[];
+  },
   fallback: Size,
+  paperAsEmpty = false,
 ): Page {
-  const pixels = page.pixels ?? [];
+  const pixels = (page.pixels ?? []).map((item) =>
+    normalizeStoredPixel(item, paperAsEmpty),
+  );
   const fromStored = page.width ? landscapeSize(page.width) : null;
   let size: Size;
   if (fromStored && pixels.length === fromStored.width * fromStored.height) {
@@ -177,29 +327,63 @@ function migratePage(
         )
       : emptyPixels(size.width, size.height);
   }
+  const marks = migrateMarks(page);
+  for (const mark of marks.shapes) {
+    nextPixels = bakeLegacyShape(nextPixels, size, mark);
+  }
+  for (const mark of marks.texts) {
+    if (!mark.body.trim()) {
+      continue;
+    }
+    const pixelMark = toPixelMark(mark, size);
+    nextPixels = rasterizeTextRun(nextPixels, size, pixelMark);
+  }
   return {
     id: page.id || createId("page"),
     width: size.width,
     height: size.height,
-    texts: migrateTexts(page),
+    texts: [],
     pixels: nextPixels,
   };
 }
 
-function normalizeFilm(parsed: Partial<Film> & { width?: number; height?: number }): Film | null {
+function normalizeFilm(
+  parsed: Partial<Film> & {
+    width?: number;
+    height?: number;
+    /** @deprecated legacy storage key */
+    tiles?: Partial<Asset>[];
+  },
+  paperAsEmpty = false,
+): Film | null {
   if (!parsed.pages?.length) {
     return null;
   }
   const fallback = landscapeSize(
     parsed.width ?? parsed.pages[0]?.width ?? DEFAULT_WIDTH,
   );
+  const assets: Asset[] = [];
+  for (const item of parsed.assets ?? parsed.tiles ?? []) {
+    const asset = normalizeAsset(item, false);
+    if (asset) {
+      assets.push(asset);
+    }
+    if (assets.length >= MAX_ASSETS) {
+      break;
+    }
+  }
   return {
     brief: parsed.brief ?? "",
-    pages: parsed.pages.map((page) => migratePage(page, fallback)),
+    pages: parsed.pages.map((page) =>
+      migratePage(page, fallback, paperAsEmpty),
+    ),
     activeIndex: Math.min(
       Math.max(0, parsed.activeIndex ?? 0),
       parsed.pages.length - 1,
     ),
+    palette: normalizePalette(parsed.palette) ?? defaultPalette(),
+    paletteName: normalizePaletteName(parsed.paletteName),
+    assets,
   };
 }
 
@@ -207,7 +391,7 @@ function readStored(): Film | null {
   try {
     const current = window.localStorage.getItem(STORAGE_KEY);
     if (current) {
-      return normalizeFilm(JSON.parse(current) as Partial<Film>);
+      return normalizeFilm(JSON.parse(current) as Partial<Film>, false);
     }
     const legacy =
       LEGACY_KEYS.map((key) => window.localStorage.getItem(key)).find(Boolean) ??
@@ -216,11 +400,14 @@ function readStored(): Film | null {
       return null;
     }
     const parsed = JSON.parse(legacy) as Partial<Film>;
-    return normalizeFilm({
-      ...parsed,
-      width: DEFAULT_WIDTH,
-      height: DEFAULT_HEIGHT,
-    });
+    return normalizeFilm(
+      {
+        ...parsed,
+        width: DEFAULT_WIDTH,
+        height: DEFAULT_HEIGHT,
+      },
+      true,
+    );
   } catch {
     return null;
   }
@@ -249,6 +436,51 @@ function pushUndo() {
   }
 }
 
+function pushWorkshopUndo() {
+  if (!workshopDraft) {
+    return;
+  }
+  workshopUndos.push(clonePixels(workshopDraft.pixels));
+  if (workshopUndos.length > UNDO_LIMIT) {
+    workshopUndos.shift();
+  }
+}
+
+type PaintSurface = {
+  pixels: string[];
+  size: Size;
+  commit: (pixels: string[]) => void;
+  pushUndoFn: () => void;
+};
+
+function getPaintSurface(): PaintSurface | null {
+  if (workshopOpen && workshopDraft) {
+    const size = {
+      width: workshopDraft.width,
+      height: workshopDraft.height,
+    };
+    return {
+      pixels: workshopDraft.pixels,
+      size,
+      commit: (pixels) => {
+        workshopDraft = { ...workshopDraft!, pixels };
+        touchWorkshopDraft();
+      },
+      pushUndoFn: pushWorkshopUndo,
+    };
+  }
+  const page = activePage();
+  if (!page) {
+    return null;
+  }
+  return {
+    pixels: page.pixels,
+    size: pageSize(page),
+    commit: patchActive,
+    pushUndoFn: pushUndo,
+  };
+}
+
 function applyDensity(film: Film, width: number): Film {
   const page = activePage(film);
   if (!page) {
@@ -260,6 +492,7 @@ function applyDensity(film: Film, width: number): Film {
     return film;
   }
   undos.length = 0;
+  floating = null;
   return {
     ...film,
     pages: film.pages.map((item, index) =>
@@ -269,13 +502,25 @@ function applyDensity(film: Film, width: number): Film {
             width: size.width,
             height: size.height,
             pixels: resizePixels(item.pixels, from, size),
+            texts: [],
           }
         : item,
     ),
   };
 }
 
-function patchActivePage(patch: Partial<Pick<Page, "pixels" | "texts" | "width" | "height">>) {
+function patchTexts(page: Page, nextTexts: TextMark[], recordUndo = true) {
+  if (recordUndo) {
+    pushUndo();
+  }
+  const size = pageSize(page);
+  const pixels = syncTextRuns(page.pixels, size, page.texts, nextTexts);
+  patchActivePage({ pixels, texts: nextTexts });
+}
+
+function patchActivePage(
+  patch: Partial<Pick<Page, "pixels" | "texts" | "width" | "height">>,
+) {
   const film = memory;
   const page = activePage(film);
   if (!page) {
@@ -326,34 +571,418 @@ function liveSize(): Size {
   return pageSize(page);
 }
 
+function clearSelection() {
+  selectedId = null;
+  selectedKind = null;
+}
+
+function dropFloating() {
+  floating = null;
+}
+
+function clampStampOrigin(stamp: PixelStamp, size: Size): PixelStamp {
+  return {
+    ...stamp,
+    x: Math.max(0, Math.min(stamp.x, size.width - stamp.width)),
+    y: Math.max(0, Math.min(stamp.y, size.height - stamp.height)),
+  };
+}
+
+function placeStamp(
+  stamp: PixelStamp,
+  keepFloating: boolean,
+): PixelStamp | null {
+  const page = activePage();
+  if (!page) {
+    return null;
+  }
+  const size = liveSize();
+  const placed = clampStampOrigin(stamp, size);
+  pushUndo();
+  const under = sampleUnder(page.pixels, size, placed);
+  floating = keepFloating ? { ...placed, under } : null;
+  patchActive(blitStamp(page.pixels, size, placed));
+  return placed;
+}
+
+function assetById(id: string): Asset | undefined {
+  return getSnapshot().assets.find((item) => item.id === id);
+}
+
+function stampFromAsset(
+  asset: Asset,
+  x: number,
+  y: number,
+  destWidth?: number,
+  destHeight?: number,
+): PixelStamp {
+  const base: PixelStamp = {
+    x,
+    y,
+    width: asset.width,
+    height: asset.height,
+    pixels: asset.pixels,
+  };
+  if (destWidth == null && destHeight == null) {
+    return base;
+  }
+  const targetW = destWidth ?? asset.width;
+  const targetH = destHeight ?? asset.height;
+  const scale = Math.max(targetW / asset.width, targetH / asset.height);
+  const width = Math.max(1, Math.round(asset.width * scale));
+  const height = Math.max(1, Math.round(asset.height * scale));
+  return scaleStamp(base, width, height);
+}
+
 function createApi(
-  film: Film,
+  _film: Film,
   currentTool: DrawTool,
   currentColor: string,
   currentFrame: TextFrame,
+  currentFont: TextFont,
+  currentSize: TextSize,
+  currentFilled: boolean,
+  currentBrushSize: BrushSize,
+  _currentAssetId: string | null,
+  _currentSelectedId: string | null,
+  _currentSelectedKind: MarkKind | null,
+  _currentFloating: FloatingPixels | null,
 ): FilmApi {
   return {
-    film,
-    tool: currentTool,
-    color: currentColor,
-    frame: currentFrame,
-    active: activePage(film),
+    get film() {
+      return getSnapshot();
+    },
+    get tool() {
+      return tool;
+    },
+    get color() {
+      return color;
+    },
+    get frame() {
+      return frame;
+    },
+    get textFont() {
+      return textFont;
+    },
+    get textSize() {
+      return textSize;
+    },
+    get shapeFilled() {
+      return shapeFilled;
+    },
+    get brushSize() {
+      return brushSize;
+    },
+    get selectedAssetId() {
+      return selectedAssetId;
+    },
+    get workshopOpen() {
+      return workshopOpen;
+    },
+    get workshopDraft() {
+      return workshopDraft;
+    },
+    get floating() {
+      return floating;
+    },
+    get selectedId() {
+      return selectedId;
+    },
+    get selectedKind() {
+      return selectedKind;
+    },
+    get active() {
+      return activePage();
+    },
     setTool: (next) => {
+      if (next === tool) {
+        return;
+      }
+      if (next !== "move") {
+        dropFloating();
+      }
       tool = next;
+      switch (next) {
+        case "text":
+          if (selectedKind !== "text") {
+            clearSelection();
+          }
+          selectedAssetId = null;
+          break;
+        case "shape":
+          clearSelection();
+          selectedAssetId = null;
+          break;
+        case "move":
+        case "pencil":
+        case "eraser":
+        case "fill":
+          clearSelection();
+          break;
+        default:
+          return assertNever(next, "Unknown tool");
+      }
       emit();
     },
     setColor: (next) => {
       color = hexColor(next, currentColor);
+      const page = activePage();
+      if (page && selectedId && selectedKind === "text") {
+        patchTexts(
+          page,
+          page.texts.map((mark) =>
+            mark.id === selectedId ? { ...mark, color } : mark,
+          ),
+        );
+        return;
+      }
       emit();
     },
     setFrame: (next) => {
       frame = next;
+      selectedAssetId = null;
       emit();
+    },
+    setTextFont: (next) => {
+      textFont = next;
+      const page = activePage();
+      if (page && selectedId && selectedKind === "text") {
+        patchTexts(
+          page,
+          page.texts.map((mark) =>
+            mark.id === selectedId ? { ...mark, font: next } : mark,
+          ),
+        );
+        return;
+      }
+      emit();
+    },
+    setTextSize: (next) => {
+      textSize = next;
+      const page = activePage();
+      if (page && selectedId && selectedKind === "text") {
+        patchTexts(
+          page,
+          page.texts.map((mark) =>
+            mark.id === selectedId ? { ...mark, size: next } : mark,
+          ),
+        );
+        return;
+      }
+      emit();
+    },
+    setShapeFilled: (next) => {
+      shapeFilled = next;
+      emit();
+    },
+    setBrushSize: (next) => {
+      brushSize = normalizeBrushSize(next);
+      emit();
+    },
+    selectAsset: (id) => {
+      if (!id) {
+        selectedAssetId = null;
+        emit();
+        return true;
+      }
+      if (!assetById(id)) {
+        return false;
+      }
+      if (selectedAssetId === id) {
+        selectedAssetId = null;
+        emit();
+        return true;
+      }
+      selectedAssetId = id;
+      dropFloating();
+      emit();
+      return true;
+    },
+    openWorkshop: (assetId) => {
+      const current = getSnapshot();
+      dropFloating();
+      workshopUndos.length = 0;
+      if (assetId) {
+        const asset = assetById(assetId);
+        if (!asset) {
+          return false;
+        }
+        workshopDraft = {
+          id: asset.id,
+          name: asset.name,
+          width: asset.width,
+          height: asset.height,
+          pixels: clonePixels(asset.pixels),
+        };
+      } else {
+        if (current.assets.length >= MAX_ASSETS) {
+          return false;
+        }
+        workshopDraft = {
+          id: null,
+          name: `Asset ${current.assets.length + 1}`,
+          width: DEFAULT_ASSET_WIDTH,
+          height: DEFAULT_ASSET_HEIGHT,
+          pixels: emptyPixels(DEFAULT_ASSET_WIDTH, DEFAULT_ASSET_HEIGHT),
+        };
+      }
+      workshopOpen = true;
+      selectedAssetId = null;
+      touchWorkshopDraft();
+      return true;
+    },
+    closeWorkshop: (save = true) => {
+      if (!workshopOpen) {
+        return false;
+      }
+      if (save && workshopDraft) {
+        const asset = normalizeAsset(
+          {
+            id: workshopDraft.id ?? undefined,
+            name: workshopDraft.name,
+            width: workshopDraft.width,
+            height: workshopDraft.height,
+            pixels: workshopDraft.pixels,
+          },
+          false,
+        );
+        if (asset) {
+          const current = getSnapshot();
+          if (workshopDraft.id) {
+            commit({
+              ...current,
+              assets: current.assets.map((item) =>
+                item.id === workshopDraft!.id ? asset : item,
+              ),
+            });
+            selectedAssetId = asset.id;
+          } else if (current.assets.length < MAX_ASSETS) {
+            commit({
+              ...current,
+              assets: [...current.assets, asset],
+            });
+            selectedAssetId = asset.id;
+          }
+        }
+      }
+      workshopOpen = false;
+      workshopDraft = null;
+      workshopUndos.length = 0;
+      dropFloating();
+      touchWorkshopDraft();
+      return true;
+    },
+    setWorkshopName: (name) => {
+      if (!workshopDraft) {
+        return;
+      }
+      workshopDraft = {
+        ...workshopDraft,
+        name: name.trim().slice(0, MAX_ASSET_NAME) || workshopDraft.name,
+      };
+      touchWorkshopDraft();
+    },
+    setWorkshopSize: (size) => {
+      if (!workshopDraft) {
+        return false;
+      }
+      const next = Math.max(8, Math.min(MAX_ASSET_SIDE, Math.round(size)));
+      if (next === workshopDraft.width && next === workshopDraft.height) {
+        return true;
+      }
+      pushWorkshopUndo();
+      workshopDraft = {
+        ...workshopDraft,
+        width: next,
+        height: next,
+        pixels: resizePixels(
+          workshopDraft.pixels,
+          { width: workshopDraft.width, height: workshopDraft.height },
+          { width: next, height: next },
+        ),
+      };
+      dropFloating();
+      touchWorkshopDraft();
+      return true;
+    },
+    selectMark: (id, kind) => {
+      if (!id) {
+        clearSelection();
+        emit();
+        return true;
+      }
+      const page = activePage();
+      if (!page) {
+        return false;
+      }
+      const want = kind ?? (page.texts.some((mark) => mark.id === id) ? "text" : null);
+      if (want === "text") {
+        const mark = page.texts.find((item) => item.id === id);
+        if (!mark) {
+          return false;
+        }
+        selectedId = id;
+        selectedKind = "text";
+        tool = "text";
+        textFont = mark.font;
+        textSize = mark.size;
+        color = mark.color;
+        dropFloating();
+        emit();
+        return true;
+      }
+      return false;
     },
     setBrief: (brief) => {
       commit({ ...getSnapshot(), brief });
     },
+    setPalette: (colors, name) => {
+      const next = normalizePalette(colors);
+      if (!next) {
+        return false;
+      }
+      if (!next.includes(color)) {
+        color = next[0];
+      }
+      commit({
+        ...getSnapshot(),
+        palette: next,
+        paletteName: normalizePaletteName(name),
+      });
+      return true;
+    },
+    addSwatch: (value) => {
+      const hex = parseHex(value);
+      if (!hex) {
+        return false;
+      }
+      const current = getSnapshot();
+      if (current.palette.includes(hex)) {
+        return true;
+      }
+      if (current.palette.length >= MAX_PALETTE) {
+        return false;
+      }
+      commit({
+        ...current,
+        palette: [...current.palette, hex],
+      });
+      return true;
+    },
+    resetPalette: () => {
+      const next = defaultPalette();
+      if (!next.includes(color)) {
+        color = next[0];
+      }
+      const current = getSnapshot();
+      commit({
+        ...current,
+        palette: next,
+        paletteName: undefined,
+      });
+    },
     setDensity: (width) => {
+      dropFloating();
       commit(applyDensity(getSnapshot(), width));
     },
     addPage: (input = {}) => {
@@ -364,19 +993,20 @@ function createApi(
         page.pixels = paintScene(input.draw.trim(), size);
       }
       if (input.story?.trim()) {
-        page.texts = [
-          {
-            id: createId("text"),
-            x: 0.08,
-            y: 0.78,
-            body: input.story.trim(),
-            color: currentColor,
-            frame: "caption",
-          },
-        ];
+        const storyMark = {
+          id: createId("text"),
+          x: normalizeTextCoord(0.08, size.width),
+          y: normalizeTextCoord(0.78, size.height),
+          body: input.story.trim(),
+          color: currentColor,
+          font: currentFont,
+          size: currentSize,
+        };
+        page.pixels = rasterizeTextRun(page.pixels, size, storyMark);
       }
       const pages = [...current.pages, page];
       undos.length = 0;
+      dropFloating();
       commit({
         ...current,
         pages,
@@ -390,6 +1020,8 @@ function createApi(
         return false;
       }
       undos.length = 0;
+      clearSelection();
+      dropFloating();
       commit({ ...current, activeIndex: index });
       return true;
     },
@@ -404,6 +1036,7 @@ function createApi(
       }
       const pages = current.pages.filter((_, i) => i !== index);
       undos.length = 0;
+      dropFloating();
       commit({
         ...current,
         pages,
@@ -416,27 +1049,217 @@ function createApi(
       if (!page) {
         return null;
       }
+      dropFloating();
+      const size = pageSize(page);
       const mark: TextMark = {
         id: createId("text"),
-        x: clampUnit(input.x),
-        y: clampUnit(input.y),
+        x: normalizeTextCoord(input.x, size.width),
+        y: normalizeTextCoord(input.y, size.height),
         body: input.body ?? "",
         color: hexColor(input.color, currentColor),
-        frame: input.frame && isTextFrame(input.frame) ? input.frame : currentFrame,
+        font: input.font ? normalizeFont(input.font) : currentFont,
+        size: input.size ? normalizeSize(input.size) : currentSize,
       };
-      patchActivePage({ texts: [...page.texts, mark] });
+      selectedId = mark.id;
+      selectedKind = "text";
+      tool = "text";
+      patchTexts(page, [...page.texts, mark]);
       return mark;
+    },
+    stampShape: (input) => {
+      const kind: ShapeKind =
+        input.kind != null ? normalizeFrame(input.kind) : currentFrame;
+      const stamp = rasterizeShape(
+        kind,
+        input.x0,
+        input.y0,
+        input.x1,
+        input.y1,
+        hexColor(input.color, currentColor),
+        input.filled ?? currentFilled,
+      );
+      return placeStamp(stamp, input.keepFloating ?? true);
+    },
+    liftMarquee: (x, y, width, height) => {
+      const surface = getPaintSurface();
+      if (!surface) {
+        return false;
+      }
+      const { pixels, size, commit, pushUndoFn } = surface;
+      const box = {
+        x: Math.max(0, Math.floor(x)),
+        y: Math.max(0, Math.floor(y)),
+        width: Math.max(1, Math.floor(width)),
+        height: Math.max(1, Math.floor(height)),
+      };
+      box.width = Math.min(box.width, size.width - box.x);
+      box.height = Math.min(box.height, size.height - box.y);
+      if (box.width < 1 || box.height < 1) {
+        return false;
+      }
+      pushUndoFn();
+      const stamp = extractStamp(pixels, size, box.x, box.y, box.width, box.height);
+      const hole = fillRect(
+        pixels,
+        size,
+        box.x,
+        box.y,
+        box.width,
+        box.height,
+        EMPTY,
+      );
+      const under = stamp.pixels.map(() => EMPTY);
+      floating = { ...stamp, under };
+      selectedAssetId = null;
+      commit(blitStamp(hole, size, stamp));
+      return true;
+    },
+    moveFloating: (x, y, recordUndo = false) => {
+      const surface = getPaintSurface();
+      if (!surface || !floating) {
+        return false;
+      }
+      const { pixels, size, commit, pushUndoFn } = surface;
+      const next = clampStampOrigin(
+        { ...floating, x: Math.round(x), y: Math.round(y) },
+        size,
+      );
+      if (next.x === floating.x && next.y === floating.y) {
+        return true;
+      }
+      if (recordUndo) {
+        pushUndoFn();
+      }
+      const restored = restoreUnder(pixels, size, floating, floating.under);
+      const under = sampleUnder(restored, size, next);
+      floating = { ...next, under };
+      commit(blitStamp(restored, size, next));
+      return true;
+    },
+    anchorFloating: () => {
+      if (!floating) {
+        return;
+      }
+      dropFloating();
+      emit();
+    },
+    addAsset: (input) => {
+      const current = getSnapshot();
+      if (current.assets.length >= MAX_ASSETS) {
+        return null;
+      }
+      const name = input.name.trim().slice(0, MAX_ASSET_NAME);
+      if (!name) {
+        return null;
+      }
+      if (input.pixels && input.width && input.height) {
+        const asset = normalizeAsset({
+          name,
+          width: input.width,
+          height: input.height,
+          pixels: input.pixels,
+        }, false);
+        if (!asset) {
+          return null;
+        }
+        commit({ ...current, assets: [...current.assets, asset] });
+        return asset;
+      }
+      const pageIndex = input.pageIndex ?? current.activeIndex;
+      const page = current.pages[pageIndex];
+      if (!page || input.x == null || input.y == null || !input.width || !input.height) {
+        return null;
+      }
+      const size = pageSize(page);
+      const box = {
+        x: Math.max(0, Math.floor(input.x)),
+        y: Math.max(0, Math.floor(input.y)),
+        width: Math.max(1, Math.floor(input.width)),
+        height: Math.max(1, Math.floor(input.height)),
+      };
+      box.width = Math.min(box.width, size.width - box.x, MAX_ASSET_SIDE);
+      box.height = Math.min(box.height, size.height - box.y, MAX_ASSET_SIDE);
+      if (box.width < 1 || box.height < 1) {
+        return null;
+      }
+      const stamp = extractStamp(
+        page.pixels,
+        size,
+        box.x,
+        box.y,
+        box.width,
+        box.height,
+      );
+      const asset = normalizeAsset({
+        name,
+        width: stamp.width,
+        height: stamp.height,
+        pixels: stamp.pixels,
+      }, false);
+      if (!asset) {
+        return null;
+      }
+      commit({ ...current, assets: [...current.assets, asset] });
+      return asset;
+    },
+    addAssetFromFloating: (name) => {
+      if (!floating) {
+        return null;
+      }
+      const current = getSnapshot();
+      if (current.assets.length >= MAX_ASSETS) {
+        return null;
+      }
+      const asset = normalizeAsset({
+        name,
+        width: floating.width,
+        height: floating.height,
+        pixels: floating.pixels,
+      }, false);
+      if (!asset) {
+        return null;
+      }
+      commit({ ...current, assets: [...current.assets, asset] });
+      return asset;
+    },
+    removeAsset: (id) => {
+      const current = getSnapshot();
+      if (!current.assets.some((item) => item.id === id)) {
+        return false;
+      }
+      if (selectedAssetId === id) {
+        selectedAssetId = null;
+      }
+      commit({
+        ...current,
+        assets: current.assets.filter((item) => item.id !== id),
+      });
+      return true;
+    },
+    stampAsset: (input) => {
+      const asset = assetById(input.id);
+      if (!asset) {
+        return null;
+      }
+      let width = input.width;
+      let height = input.height;
+      if (input.scale != null && Number.isFinite(input.scale)) {
+        const scale = Math.max(0.25, input.scale);
+        width = Math.max(1, Math.round(asset.width * scale));
+        height = Math.max(1, Math.round(asset.height * scale));
+      }
+      const stamp = stampFromAsset(asset, input.x, input.y, width, height);
+      return placeStamp(stamp, input.keepFloating ?? true);
     },
     setText: (id, body) => {
       const page = activePage();
       if (!page?.texts.some((mark) => mark.id === id)) {
         return false;
       }
-      patchActivePage({
-        texts: page.texts.map((mark) =>
-          mark.id === id ? { ...mark, body } : mark,
-        ),
-      });
+      patchTexts(
+        page,
+        page.texts.map((mark) => (mark.id === id ? { ...mark, body } : mark)),
+      );
       return true;
     },
     moveText: (id, x, y) => {
@@ -444,13 +1267,19 @@ function createApi(
       if (!page?.texts.some((mark) => mark.id === id)) {
         return false;
       }
-      patchActivePage({
-        texts: page.texts.map((mark) =>
+      const size = pageSize(page);
+      patchTexts(
+        page,
+        page.texts.map((mark) =>
           mark.id === id
-            ? { ...mark, x: clampUnit(x), y: clampUnit(y) }
+            ? {
+                ...mark,
+                x: normalizeTextCoord(x, size.width),
+                y: normalizeTextCoord(y, size.height),
+              }
             : mark,
         ),
-      });
+      );
       return true;
     },
     removeText: (id) => {
@@ -458,32 +1287,57 @@ function createApi(
       if (!page?.texts.some((mark) => mark.id === id)) {
         return false;
       }
-      patchActivePage({
-        texts: page.texts.filter((mark) => mark.id !== id),
-      });
+      if (selectedId === id) {
+        clearSelection();
+      }
+      patchTexts(
+        page,
+        page.texts.filter((mark) => mark.id !== id),
+      );
       return true;
     },
     paint: (x, y, recordUndo = true) => {
-      if (currentTool === "type") {
+      switch (currentTool) {
+        case "text":
+        case "shape":
+        case "move":
+          return;
+        case "pencil":
+        case "eraser":
+        case "fill":
+          break;
+        default:
+          return assertNever(currentTool, "Unknown tool");
+      }
+      const surface = getPaintSurface();
+      if (!surface) {
         return;
       }
-      const size = liveSize();
+      const { pixels, size, commit, pushUndoFn } = surface;
       if (!inBounds(x, y, size)) {
         return;
       }
-      const page = activePage();
-      if (!page) {
-        return;
-      }
+      dropFloating();
       if (recordUndo) {
-        pushUndo();
+        pushUndoFn();
       }
-      if (currentTool === "fill") {
-        patchActive(floodFill(page.pixels, size, x, y, currentColor));
-        return;
+      switch (currentTool) {
+        case "fill":
+          commit(floodFill(pixels, size, x, y, currentColor));
+          return;
+        case "eraser":
+          commit(
+            paintBrush(pixels, size, x, y, currentBrushSize, EMPTY),
+          );
+          return;
+        case "pencil":
+          commit(
+            paintBrush(pixels, size, x, y, currentBrushSize, currentColor),
+          );
+          return;
+        default:
+          return assertNever(currentTool, "Unknown tool");
       }
-      const paintColor = currentTool === "eraser" ? EMPTY : currentColor;
-      patchActive(setPixel(page.pixels, size, x, y, paintColor));
     },
     drawPixels: (dots) => {
       const page = activePage();
@@ -491,6 +1345,7 @@ function createApi(
         return 0;
       }
       const size = liveSize();
+      dropFloating();
       pushUndo();
       const next = setPixels(page.pixels, size, dots);
       patchActive(next);
@@ -501,6 +1356,7 @@ function createApi(
       if (!page) {
         return;
       }
+      dropFloating();
       pushUndo();
       patchActive(fillRect(page.pixels, liveSize(), x, y, width, height, paint));
     },
@@ -509,6 +1365,7 @@ function createApi(
       if (!page) {
         return;
       }
+      dropFloating();
       pushUndo();
       patchActive(drawLine(page.pixels, liveSize(), x0, y0, x1, y1, paint));
     },
@@ -517,15 +1374,27 @@ function createApi(
       if (!page) {
         return;
       }
+      dropFloating();
       pushUndo();
       patchActive(floodFill(page.pixels, liveSize(), x, y, paint ?? currentColor));
     },
     clearPage: () => {
+      if (workshopOpen && workshopDraft) {
+        dropFloating();
+        pushWorkshopUndo();
+        workshopDraft = {
+          ...workshopDraft,
+          pixels: emptyPixels(workshopDraft.width, workshopDraft.height),
+        };
+        touchWorkshopDraft();
+        return;
+      }
       const page = activePage();
       if (!page) {
         return;
       }
       const size = liveSize();
+      dropFloating();
       pushUndo();
       patchActivePage({
         pixels: emptyPixels(size.width, size.height),
@@ -537,14 +1406,26 @@ function createApi(
       if (!page) {
         return;
       }
+      dropFloating();
       pushUndo();
       patchActive(paintScene(prompt, liveSize()));
     },
     undo: () => {
+      if (workshopOpen) {
+        const previous = workshopUndos.pop();
+        if (!previous || !workshopDraft) {
+          return false;
+        }
+        dropFloating();
+        workshopDraft = { ...workshopDraft, pixels: previous };
+        touchWorkshopDraft();
+        return true;
+      }
       const previous = undos.pop();
       if (!previous) {
         return false;
       }
+      dropFloating();
       patchActive(previous);
       return true;
     },
@@ -566,11 +1447,90 @@ export function FilmProvider({ children }: { children: ReactNode }) {
   const currentFrame = useSyncExternalStore(
     subscribe,
     () => frame,
-    () => "speech" as TextFrame,
+    () => "circle" as TextFrame,
+  );
+  const currentFont = useSyncExternalStore(
+    subscribe,
+    () => textFont,
+    () => "inter" as TextFont,
+  );
+  const currentSize = useSyncExternalStore(
+    subscribe,
+    () => textSize,
+    () => "m" as TextSize,
+  );
+  const currentFilled = useSyncExternalStore(
+    subscribe,
+    () => shapeFilled,
+    () => false,
+  );
+  const currentBrushSize = useSyncExternalStore(
+    subscribe,
+    () => brushSize,
+    () => 1 as BrushSize,
+  );
+  const currentAssetId = useSyncExternalStore(
+    subscribe,
+    () => selectedAssetId,
+    () => null,
+  );
+  const currentWorkshopOpen = useSyncExternalStore(
+    subscribe,
+    () => workshopOpen,
+    () => false,
+  );
+  const currentWorkshopDraft = useSyncExternalStore(
+    subscribe,
+    () => workshopDraft,
+    () => null,
+  );
+  const currentSelectedId = useSyncExternalStore(
+    subscribe,
+    () => selectedId,
+    () => null,
+  );
+  const currentSelectedKind = useSyncExternalStore(
+    subscribe,
+    () => selectedKind,
+    () => null,
+  );
+  const currentFloating = useSyncExternalStore(
+    subscribe,
+    () => floating,
+    () => null,
   );
   const api = useMemo(
-    () => createApi(film, currentTool, currentColor, currentFrame),
-    [currentColor, currentFrame, currentTool, film],
+    () =>
+      createApi(
+        film,
+        currentTool,
+        currentColor,
+        currentFrame,
+        currentFont,
+        currentSize,
+        currentFilled,
+        currentBrushSize,
+        currentAssetId,
+        currentSelectedId,
+        currentSelectedKind,
+        currentFloating,
+      ),
+    [
+      currentBrushSize,
+      currentColor,
+      currentFilled,
+      currentFloating,
+      currentFont,
+      currentFrame,
+      currentSelectedId,
+      currentSelectedKind,
+      currentSize,
+      currentAssetId,
+      currentWorkshopDraft,
+      currentWorkshopOpen,
+      currentTool,
+      film,
+    ],
   );
   return <FilmContext.Provider value={api}>{children}</FilmContext.Provider>;
 }
@@ -581,4 +1541,20 @@ export function useFilm() {
     throw new Error("useFilm must be used inside FilmProvider");
   }
   return value;
+}
+
+export function useWorkshopDraft(): WorkshopDraft | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => workshopDraft,
+    () => null,
+  );
+}
+
+export function useWorkshopRevision(): number {
+  return useSyncExternalStore(
+    subscribe,
+    () => workshopRevision,
+    () => 0,
+  );
 }

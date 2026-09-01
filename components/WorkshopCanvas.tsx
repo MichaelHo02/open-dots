@@ -1,35 +1,20 @@
 "use client";
 
 import {
-  useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
-import { PixelTextInput } from "./PixelTextInput";
+import { boundsFromCorners, paintPixelGrid } from "@/lib/draw";
+import { useFilm, useWorkshopDraft, useWorkshopRevision } from "@/lib/film-store";
+import { assertNever } from "@/lib/types";
 import { BrushPreview } from "./BrushPreview";
-import {
-  boundsFromCorners,
-  paintPixelGrid,
-  rasterizeShape,
-  scaleStamp,
-  stampPlacementFromDrag,
-} from "@/lib/draw";
-import { useFilm } from "@/lib/film-store";
-import {
-  DEFAULT_HEIGHT,
-  DEFAULT_WIDTH,
-  assertNever,
-  isPaintedPixel,
-  type PixelStamp,
-} from "@/lib/types";
 
 type Gesture =
   | { type: "paint" }
-  | { type: "shape"; x0: number; y0: number; x1: number; y1: number }
   | { type: "marquee"; x0: number; y0: number; x1: number; y1: number }
-  | { type: "asset"; x0: number; y0: number; x1: number; y1: number }
   | {
       type: "move";
       originX: number;
@@ -38,22 +23,6 @@ type Gesture =
       startY: number;
       recorded: boolean;
     };
-
-function paintStamp(
-  ctx: CanvasRenderingContext2D,
-  stamp: PixelStamp,
-) {
-  for (let ly = 0; ly < stamp.height; ly += 1) {
-    for (let lx = 0; lx < stamp.width; lx += 1) {
-      const color = stamp.pixels[ly * stamp.width + lx];
-      if (!isPaintedPixel(color)) {
-        continue;
-      }
-      ctx.fillStyle = color;
-      ctx.fillRect(stamp.x + lx, stamp.y + ly, 1, 1);
-    }
-  }
-}
 
 function paintMarquee(
   ctx: CanvasRenderingContext2D,
@@ -74,29 +43,17 @@ function paintMarquee(
   }
 }
 
-export function PixelCanvas() {
+export function WorkshopCanvas() {
+  const workshopDraft = useWorkshopDraft();
+  const workshopRevision = useWorkshopRevision();
   const {
-    active,
     paint,
     tool,
-    color,
-    frame,
-    shapeFilled,
-    selectedAssetId,
-    film,
+    brushSize,
     floating,
-    addText,
-    stampShape,
-    stampAsset,
     liftMarquee,
     moveFloating,
     anchorFloating,
-    setText,
-    removeText,
-    selectMark,
-    selectedId,
-    brushSize,
-    workshopOpen,
   } = useFilm();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef<HTMLCanvasElement>(null);
@@ -108,29 +65,21 @@ export function PixelCanvas() {
   const [preview, setPreview] = useState<Gesture | null>(null);
   const [overSelection, setOverSelection] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const width = active?.width ?? DEFAULT_WIDTH;
-  const height = active?.height ?? DEFAULT_HEIGHT;
-  const marking = tool === "text";
-  const selectedAsset = film.assets.find((item) => item.id === selectedAssetId) ?? null;
-  const activeText =
-    active?.texts.find((mark) => mark.id === selectedId) ?? null;
 
-  const render = useCallback(() => {
+  const width = workshopDraft?.width ?? 32;
+  const height = workshopDraft?.height ?? 32;
+
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
-    const page = active;
-    if (!canvas || !ctx || !page) {
+    if (!canvas || !ctx || !workshopDraft) {
       return;
     }
     canvas.width = width;
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
-    paintPixelGrid(ctx, page.pixels, width, height);
-  }, [active, height, width]);
-
-  useEffect(() => {
-    render();
-  }, [render]);
+    paintPixelGrid(ctx, workshopDraft.pixels, width, height);
+  }, [height, width, workshopDraft, workshopRevision]);
 
   useEffect(() => {
     const canvas = previewRef.current;
@@ -142,67 +91,11 @@ export function PixelCanvas() {
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, width, height);
-    if (!preview) {
+    if (!preview || preview.type !== "marquee") {
       return;
     }
-    switch (preview.type) {
-      case "paint":
-      case "move":
-        return;
-      case "shape": {
-        const stamp = rasterizeShape(
-          frame,
-          preview.x0,
-          preview.y0,
-          preview.x1,
-          preview.y1,
-          color,
-          shapeFilled,
-        );
-        paintStamp(ctx, stamp);
-        return;
-      }
-      case "marquee":
-        paintMarquee(ctx, preview.x0, preview.y0, preview.x1, preview.y1);
-        return;
-      case "asset": {
-        if (!selectedAsset) {
-          return;
-        }
-        const placement = stampPlacementFromDrag(
-          preview.x0,
-          preview.y0,
-          preview.x1,
-          preview.y1,
-          selectedAsset.width,
-          selectedAsset.height,
-        );
-        const stamp = placement.scaled
-          ? scaleStamp(
-              {
-                x: placement.x,
-                y: placement.y,
-                width: selectedAsset.width,
-                height: selectedAsset.height,
-                pixels: selectedAsset.pixels,
-              },
-              placement.width,
-              placement.height,
-            )
-          : {
-              x: placement.x,
-              y: placement.y,
-              width: selectedAsset.width,
-              height: selectedAsset.height,
-              pixels: selectedAsset.pixels,
-            };
-        paintStamp(ctx, stamp);
-        return;
-      }
-      default:
-        return assertNever(preview, "Unknown preview");
-    }
-  }, [color, frame, height, preview, selectedAsset, shapeFilled, width]);
+    paintMarquee(ctx, preview.x0, preview.y0, preview.x1, preview.y1);
+  }, [height, preview, width]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -249,21 +142,6 @@ export function PixelCanvas() {
     );
   }
 
-  function placeText(event: React.PointerEvent) {
-    if (!marking || event.button !== 0) {
-      return false;
-    }
-    const at = pixelFromEvent(event);
-    if (!at) {
-      return false;
-    }
-    const mark = addText({ x: at.x, y: at.y, color });
-    if (mark) {
-      event.stopPropagation();
-    }
-    return Boolean(mark);
-  }
-
   function startFloatingMove(at: { x: number; y: number }) {
     if (!floating || !hitFloating(at.x, at.y)) {
       return false;
@@ -277,6 +155,7 @@ export function PixelCanvas() {
       recorded: false,
     };
     setPreview(null);
+    setBrushPixel(null);
     setDragging(true);
     return true;
   }
@@ -289,41 +168,6 @@ export function PixelCanvas() {
       x1: at.x,
       y1: at.y,
     };
-    gesture.current = next;
-    setPreview(next);
-  }
-
-  function beginAssetGesture(event: React.PointerEvent<HTMLCanvasElement>) {
-    const at = pixelFromEvent(event);
-    if (!at || event.button !== 0 || !selectedAsset) {
-      return;
-    }
-    event.currentTarget.setPointerCapture(event.pointerId);
-    if (startFloatingMove(at)) {
-      return;
-    }
-    if (floating) {
-      anchorFloating();
-    }
-    const next: Gesture = { type: "asset", x0: at.x, y0: at.y, x1: at.x, y1: at.y };
-    gesture.current = next;
-    setPreview(next);
-    setBrushPixel(null);
-  }
-
-  function beginShapeGesture(event: React.PointerEvent<HTMLCanvasElement>) {
-    const at = pixelFromEvent(event);
-    if (!at || event.button !== 0) {
-      return;
-    }
-    event.currentTarget.setPointerCapture(event.pointerId);
-    if (startFloatingMove(at)) {
-      return;
-    }
-    if (floating) {
-      anchorFloating();
-    }
-    const next: Gesture = { type: "shape", x0: at.x, y0: at.y, x1: at.x, y1: at.y };
     gesture.current = next;
     setPreview(next);
     setBrushPixel(null);
@@ -356,40 +200,14 @@ export function PixelCanvas() {
       case "paint":
       case "move":
         return;
-      case "shape":
-        stampShape({
-          x0: current.x0,
-          y0: current.y0,
-          x1: current.x1,
-          y1: current.y1,
-          keepFloating: true,
-        });
-        return;
       case "marquee": {
-        const box = boundsFromCorners(current.x0, current.y0, current.x1, current.y1);
-        liftMarquee(box.x, box.y, box.width, box.height);
-        return;
-      }
-      case "asset": {
-        if (!selectedAsset) {
-          return;
-        }
-        const placement = stampPlacementFromDrag(
+        const box = boundsFromCorners(
           current.x0,
           current.y0,
           current.x1,
           current.y1,
-          selectedAsset.width,
-          selectedAsset.height,
         );
-        stampAsset({
-          id: selectedAsset.id,
-          x: placement.x,
-          y: placement.y,
-          width: placement.scaled ? placement.width : undefined,
-          height: placement.scaled ? placement.height : undefined,
-          keepFloating: true,
-        });
+        liftMarquee(box.x, box.y, box.width, box.height);
         return;
       }
       default:
@@ -397,13 +215,15 @@ export function PixelCanvas() {
     }
   }
 
+  if (!workshopDraft) {
+    return null;
+  }
+
   return (
     <div
       ref={boardRef}
-      className="stage-board"
+      className="stage-board workshop-board"
       data-tool={tool}
-      data-marking={marking}
-      data-asset-stamp={selectedAsset ? "true" : undefined}
       data-over-selection={overSelection ? "true" : undefined}
       data-dragging={dragging ? "true" : undefined}
       style={
@@ -423,23 +243,9 @@ export function PixelCanvas() {
         width={width}
         height={height}
         tabIndex={0}
-        aria-label="Pixel canvas"
+        aria-label="Asset pixel canvas"
         onPointerDown={(event) => {
-          if (selectedAsset && tool !== "text" && event.button === 0) {
-            beginAssetGesture(event);
-            event.preventDefault();
-            return;
-          }
           switch (tool) {
-            case "text":
-              if (placeText(event)) {
-                event.preventDefault();
-              }
-              return;
-            case "shape":
-              beginShapeGesture(event);
-              event.preventDefault();
-              return;
             case "move":
               beginMoveGesture(event);
               event.preventDefault();
@@ -456,19 +262,21 @@ export function PixelCanvas() {
               }
               return;
             }
+            case "text":
+            case "shape":
+              return;
             default:
               return assertNever(tool, "Unknown tool");
           }
         }}
         onPointerMove={(event) => {
           const at = pixelFromEvent(event);
-          if ((tool === "move" || tool === "shape" || selectedAsset) && floating) {
+          if (tool === "move" && floating) {
             setOverSelection(Boolean(at && hitFloating(at.x, at.y)));
           }
           if (
             (tool === "pencil" || tool === "eraser") &&
             !gesture.current &&
-            !selectedAsset &&
             at
           ) {
             setBrushPixel(at);
@@ -476,19 +284,14 @@ export function PixelCanvas() {
             setBrushPixel(null);
           }
           const current = gesture.current;
-          if (!current) {
-            return;
-          }
-          if (!at) {
+          if (!current || !at) {
             return;
           }
           switch (current.type) {
             case "paint":
               paint(at.x, at.y, false);
               return;
-            case "shape":
-            case "marquee":
-            case "asset": {
+            case "marquee": {
               const next = { ...current, x1: at.x, y1: at.y };
               gesture.current = next;
               setPreview(next);
@@ -536,37 +339,13 @@ export function PixelCanvas() {
           }}
         />
       ) : null}
-      <PixelTextInput
-        active={marking && activeText != null}
-        value={activeText?.body ?? ""}
-        onChange={(body) => {
-          if (selectedId) {
-            setText(selectedId, body);
-          }
-        }}
-        onCommit={() => {
-          if (!selectedId) {
-            return;
-          }
-          if (!activeText?.body.trim()) {
-            removeText(selectedId);
-            return;
-          }
-          selectMark(null);
-        }}
-      />
       <BrushPreview
         tool={tool}
         brushSize={brushSize}
         pixel={brushPixel}
         gridWidth={width}
         gridHeight={height}
-        hidden={
-          workshopOpen ||
-          dragging ||
-          preview != null ||
-          Boolean(selectedAsset)
-        }
+        hidden={dragging || preview != null}
       />
     </div>
   );

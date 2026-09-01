@@ -1,20 +1,52 @@
-export const EMPTY = "#ffffff";
+/** Unpainted cell. Renders transparent so the editor checker (or Present paper) shows through. */
+export const EMPTY = "";
+export const TRANSPARENT = EMPTY;
+/** Opaque painted white — distinct from EMPTY so white strokes cover the checker. */
+export const PAPER = "#ffffff";
 export const MIN_WIDTH = 48;
 export const MAX_WIDTH = 192;
 export const DEFAULT_WIDTH = 128;
 export const DEFAULT_HEIGHT = 72;
+export const MAX_ASSETS = 48;
+export const MAX_ASSET_NAME = 32;
+export const MAX_ASSET_SIDE = 96;
+export const ASSET_SIZE_PRESETS = [16, 24, 32, 48, 64] as const;
+export type AssetSizePreset = (typeof ASSET_SIZE_PRESETS)[number];
+export const DEFAULT_ASSET_WIDTH = 32;
+export const DEFAULT_ASSET_HEIGHT = 32;
 
-export const DRAW_TOOLS = ["pencil", "eraser", "fill", "type"] as const;
+export const DRAW_TOOLS = [
+  "pencil",
+  "eraser",
+  "fill",
+  "text",
+  "shape",
+  "move",
+] as const;
 export type DrawTool = (typeof DRAW_TOOLS)[number];
 
 export const TEXT_FRAMES = [
-  "speech",
-  "thought",
-  "shout",
-  "caption",
-  "plain",
+  "circle",
+  "rectangle",
+  "square",
+  "heart",
+  "star",
 ] as const;
 export type TextFrame = (typeof TEXT_FRAMES)[number];
+export const SHAPE_KINDS = TEXT_FRAMES;
+export type ShapeKind = TextFrame;
+
+export const TEXT_FONTS = ["inter", "geist-mono"] as const;
+export type TextFont = (typeof TEXT_FONTS)[number];
+
+export const TEXT_SIZES = ["s", "m", "l"] as const;
+export type TextSize = (typeof TEXT_SIZES)[number];
+
+export const BRUSH_SIZES = [1, 2, 3, 4] as const;
+export type BrushSize = (typeof BRUSH_SIZES)[number];
+
+export const SHAPE_SCALES = TEXT_SIZES;
+export type ShapeScale = TextSize;
 
 export const PALETTE = [
   "#000000",
@@ -29,18 +61,52 @@ export const PALETTE = [
   "#ff3d8b",
 ] as const;
 
+export const MIN_PALETTE = 4;
+export const MAX_PALETTE = 16;
+export const MAX_PALETTE_NAME = 32;
+
 export interface Size {
   width: number;
   height: number;
 }
 
+/** Editable text run — rendered only via rasterized `page.pixels`. x/y are pixel coords. */
 export interface TextMark {
   id: string;
   x: number;
   y: number;
   body: string;
   color: string;
-  frame: TextFrame;
+  font: TextFont;
+  size: TextSize;
+}
+
+export interface PixelStamp {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pixels: string[];
+}
+
+export interface FloatingPixels extends PixelStamp {
+  under: string[];
+}
+
+export interface Asset {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
+  pixels: string[];
+}
+
+export interface WorkshopDraft {
+  id: string | null;
+  name: string;
+  width: number;
+  height: number;
+  pixels: string[];
 }
 
 export interface Page {
@@ -55,17 +121,45 @@ export interface Film {
   brief: string;
   pages: Page[];
   activeIndex: number;
+  palette: string[];
+  paletteName?: string;
+  assets: Asset[];
 }
+
+export type MarkKind = "text";
 
 export interface FilmApi {
   film: Film;
   tool: DrawTool;
   color: string;
   frame: TextFrame;
+  textFont: TextFont;
+  textSize: TextSize;
+  shapeFilled: boolean;
+  brushSize: BrushSize;
+  selectedAssetId: string | null;
+  workshopOpen: boolean;
+  workshopDraft: WorkshopDraft | null;
+  floating: FloatingPixels | null;
+  selectedId: string | null;
+  selectedKind: MarkKind | null;
   setTool: (tool: DrawTool) => void;
   setColor: (color: string) => void;
   setFrame: (frame: TextFrame) => void;
+  setTextFont: (font: TextFont) => void;
+  setTextSize: (size: TextSize) => void;
+  setShapeFilled: (filled: boolean) => void;
+  setBrushSize: (size: BrushSize) => void;
+  selectAsset: (id: string | null) => boolean;
+  openWorkshop: (assetId?: string) => boolean;
+  closeWorkshop: (save?: boolean) => boolean;
+  setWorkshopName: (name: string) => void;
+  setWorkshopSize: (size: number) => boolean;
+  selectMark: (id: string | null, kind?: MarkKind) => boolean;
   setBrief: (brief: string) => void;
+  setPalette: (colors: string[], name?: string) => boolean;
+  addSwatch: (color: string) => boolean;
+  resetPalette: () => void;
   setDensity: (width: number) => void;
   addPage: (input?: { story?: string; draw?: string }) => Page;
   selectPage: (index: number) => boolean;
@@ -75,8 +169,42 @@ export interface FilmApi {
     y: number;
     body?: string;
     color?: string;
-    frame?: TextFrame;
+    font?: TextFont;
+    size?: TextSize;
   }) => TextMark | null;
+  stampShape: (input: {
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    color?: string;
+    kind?: ShapeKind;
+    filled?: boolean;
+    keepFloating?: boolean;
+  }) => PixelStamp | null;
+  liftMarquee: (x: number, y: number, width: number, height: number) => boolean;
+  moveFloating: (x: number, y: number, recordUndo?: boolean) => boolean;
+  anchorFloating: () => void;
+  addAsset: (input: {
+    name: string;
+    width?: number;
+    height?: number;
+    pixels?: string[];
+    x?: number;
+    y?: number;
+    pageIndex?: number;
+  }) => Asset | null;
+  addAssetFromFloating: (name: string) => Asset | null;
+  removeAsset: (id: string) => boolean;
+  stampAsset: (input: {
+    id: string;
+    x: number;
+    y: number;
+    scale?: number;
+    width?: number;
+    height?: number;
+    keepFloating?: boolean;
+  }) => PixelStamp | null;
   setText: (id: string, body: string) => boolean;
   moveText: (id: string, x: number, y: number) => boolean;
   removeText: (id: string) => boolean;
@@ -107,22 +235,237 @@ export function assertNever(value: never, message: string): never {
   throw new Error(`${message}: ${String(value)}`);
 }
 
+export function defaultPalette(): string[] {
+  return [...PALETTE];
+}
+
+export function parseHex(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return trimmed.toLowerCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    const r = trimmed[1];
+    const g = trimmed[2];
+    const b = trimmed[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return null;
+}
+
+function isEmptyToken(value: unknown): boolean {
+  if (value == null) {
+    return true;
+  }
+  if (typeof value !== "string") {
+    return false;
+  }
+  const token = value.trim().toLowerCase();
+  return (
+    token === EMPTY ||
+    token === "transparent" ||
+    token === "empty" ||
+    token === "#00000000"
+  );
+}
+
+/** Legacy books stored paper as EMPTY (`#ffffff`). New `#ffffff` is painted white. */
+export function normalizeStoredPixel(
+  value: unknown,
+  paperAsEmpty = false,
+): string {
+  if (isEmptyToken(value)) {
+    return EMPTY;
+  }
+  const hex = parseHex(value);
+  if (!hex) {
+    return EMPTY;
+  }
+  if (paperAsEmpty && hex === PAPER) {
+    return EMPTY;
+  }
+  return hex;
+}
+
+export function normalizePalette(input: unknown): string[] | null {
+  if (!Array.isArray(input)) {
+    return null;
+  }
+  const next: string[] = [];
+  const seen = new Set<string>();
+  for (const item of input) {
+    const hex = parseHex(item);
+    if (!hex || seen.has(hex)) {
+      continue;
+    }
+    seen.add(hex);
+    next.push(hex);
+    if (next.length >= MAX_PALETTE) {
+      break;
+    }
+  }
+  if (next.length < MIN_PALETTE) {
+    return null;
+  }
+  return next;
+}
+
+export function normalizePaletteName(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const next = value.trim().slice(0, MAX_PALETTE_NAME);
+  return next || undefined;
+}
+
 export function isTextFrame(value: unknown): value is TextFrame {
   return TEXT_FRAMES.some((frame) => frame === value);
 }
 
+export function isShapeKind(value: unknown): value is ShapeKind {
+  return isTextFrame(value);
+}
+
+export function isTextFont(value: unknown): value is TextFont {
+  return TEXT_FONTS.some((font) => font === value);
+}
+
+export function isTextSize(value: unknown): value is TextSize {
+  return TEXT_SIZES.some((size) => size === value);
+}
+
+export function isShapeScale(value: unknown): value is ShapeScale {
+  return SHAPE_SCALES.some((scale) => scale === value);
+}
+
+export function normalizeFont(value: unknown): TextFont {
+  if (isTextFont(value)) {
+    return value;
+  }
+  switch (value) {
+    case "mono":
+    case "geist":
+      return "geist-mono";
+    case "sans":
+      return "inter";
+    default:
+      return "inter";
+  }
+}
+
+export function normalizeSize(value: unknown): TextSize {
+  if (isTextSize(value)) {
+    return value;
+  }
+  switch (value) {
+    case "small":
+    case "sm":
+      return "s";
+    case "large":
+    case "lg":
+      return "l";
+    case "medium":
+    case "md":
+      return "m";
+    default:
+      return "m";
+  }
+}
+
+export function normalizeScale(value: unknown): ShapeScale {
+  return normalizeSize(value);
+}
+
+export function fontLabel(font: TextFont): string {
+  switch (font) {
+    case "inter":
+      return "Inter";
+    case "geist-mono":
+      return "Geist Mono";
+    default:
+      return assertNever(font, "Unknown font");
+  }
+}
+
+export function sizeLabel(size: TextSize): string {
+  switch (size) {
+    case "s":
+      return "S";
+    case "m":
+      return "M";
+    case "l":
+      return "L";
+    default:
+      return assertNever(size, "Unknown size");
+  }
+}
+
+export function isBrushSize(value: unknown): value is BrushSize {
+  return BRUSH_SIZES.some((size) => size === value);
+}
+
+export function normalizeBrushSize(value: unknown): BrushSize {
+  if (isBrushSize(value)) {
+    return value;
+  }
+  const n = typeof value === "number" ? Math.round(value) : Number(value);
+  if (isBrushSize(n)) {
+    return n;
+  }
+  return 1;
+}
+
+export function brushSizeLabel(size: BrushSize): string {
+  return `${size}×${size}`;
+}
+
+export function textSizePx(size: TextSize): number {
+  switch (size) {
+    case "s":
+      return 14;
+    case "m":
+      return 18;
+    case "l":
+      return 28;
+    default:
+      return assertNever(size, "Unknown size");
+  }
+}
+
+export function normalizeFrame(value: unknown): TextFrame {
+  if (isTextFrame(value)) {
+    return value;
+  }
+  switch (value) {
+    case "speech":
+    case "thought":
+      return "circle";
+    case "shout":
+      return "star";
+    case "caption":
+      return "rectangle";
+    case "plain":
+      return "square";
+    default:
+      return "circle";
+  }
+}
+
 export function frameLabel(frame: TextFrame): string {
   switch (frame) {
-    case "speech":
-      return "Speech";
-    case "thought":
-      return "Thought";
-    case "shout":
-      return "Shout";
-    case "caption":
-      return "Caption";
-    case "plain":
-      return "Line";
+    case "circle":
+      return "Circle";
+    case "rectangle":
+      return "Rectangle";
+    case "square":
+      return "Square";
+    case "heart":
+      return "Heart";
+    case "star":
+      return "Star";
     default:
       return assertNever(frame, "Unknown frame");
   }
@@ -130,16 +473,16 @@ export function frameLabel(frame: TextFrame): string {
 
 export function frameHint(frame: TextFrame): string {
   switch (frame) {
-    case "speech":
-      return "Click the page to place a speech bubble";
-    case "thought":
-      return "Click the page to place a thought bubble";
-    case "shout":
-      return "Click the page to place a shout bubble";
-    case "caption":
-      return "Click the page to place a caption box";
-    case "plain":
-      return "Click the page to write a line";
+    case "circle":
+      return "Drag on the page to size a circle";
+    case "rectangle":
+      return "Drag on the page to size a rectangle";
+    case "square":
+      return "Drag on the page to size a square";
+    case "heart":
+      return "Drag on the page to size a heart";
+    case "star":
+      return "Drag on the page to size a star";
     default:
       return assertNever(frame, "Unknown frame");
   }
@@ -147,20 +490,22 @@ export function frameHint(frame: TextFrame): string {
 
 export function framePlaceholder(frame: TextFrame): string {
   switch (frame) {
-    case "speech":
+    case "circle":
       return "Hello…";
-    case "thought":
-      return "Hmm…";
-    case "shout":
+    case "rectangle":
+      return "Once upon…";
+    case "square":
+      return "Hi…";
+    case "heart":
+      return "Love…";
+    case "star":
       return "Wow!";
-    case "caption":
-      return "Meanwhile…";
-    case "plain":
-      return "Write here…";
     default:
       return assertNever(frame, "Unknown frame");
   }
 }
+
+export const TEXT_PLACEHOLDER = "Once upon…";
 
 export function pageSize(page: Pick<Page, "width" | "height">): Size {
   return { width: page.width, height: page.height };
@@ -202,8 +547,12 @@ export function resizePixels(
   return next;
 }
 
+export function isPaintedPixel(color: string): boolean {
+  return !isEmptyToken(color);
+}
+
 export function isEmptyPage(page: Page): boolean {
-  const blankPixels = page.pixels.every((pixel) => pixel === EMPTY);
+  const blankPixels = page.pixels.every((pixel) => !isPaintedPixel(pixel));
   const blankText = (page.texts ?? []).every((mark) => !mark.body.trim());
   return blankPixels && blankText;
 }

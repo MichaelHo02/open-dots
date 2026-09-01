@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { BubbleFrame } from "./BubbleFrame";
-import type { Page } from "@/lib/types";
+import { paintPixelGrid } from "@/lib/draw";
+import { type Page, type Asset } from "@/lib/types";
 
 export function PagePreview({
   page,
@@ -23,12 +23,7 @@ export function PagePreview({
     canvas.width = width;
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        ctx.fillStyle = page.pixels[y * width + x] ?? "#ffffff";
-        ctx.fillRect(x, y, 1, 1);
-      }
-    }
+    paintPixelGrid(ctx, page.pixels, width, height);
   }, [height, page.pixels, width]);
 
   return (
@@ -39,11 +34,32 @@ export function PagePreview({
         height={height}
         style={{ aspectRatio: `${width} / ${height}` }}
       />
-      {page.texts.map((mark) => (
-        <BubbleFrame key={mark.id} mark={mark} className="thumb-bubble">
-          <span className="thumb-line">{mark.body}</span>
-        </BubbleFrame>
-      ))}
     </span>
+  );
+}
+
+export function AssetThumb({ asset }: { asset: Asset }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) {
+      return;
+    }
+    canvas.width = asset.width;
+    canvas.height = asset.height;
+    ctx.imageSmoothingEnabled = false;
+    paintPixelGrid(ctx, asset.pixels, asset.width, asset.height);
+  }, [asset]);
+
+  return (
+    <canvas
+      className="asset-thumb"
+      ref={canvasRef}
+      width={asset.width}
+      height={asset.height}
+      aria-hidden="true"
+    />
   );
 }

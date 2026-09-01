@@ -31,6 +31,10 @@ export function asNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+export function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
 export function asInteger(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isInteger(value)) {
     return value;
@@ -59,4 +63,22 @@ export function asDots(
     dots.push({ x, y, color });
   }
   return dots;
+}
+
+export function asHexGrid(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const pixels: string[] = [];
+  for (const item of value) {
+    if (item === "") {
+      pixels.push("");
+      continue;
+    }
+    if (typeof item !== "string") {
+      return undefined;
+    }
+    pixels.push(item);
+  }
+  return pixels;
 }

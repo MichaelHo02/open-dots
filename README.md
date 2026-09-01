@@ -1,6 +1,6 @@
 # Pixel Book
 
-A picture-book canvas. Draw each page, drop speech bubbles on the art, then present the story — or ask an agent to paint through WebMCP.
+A picture-book canvas. Draw each page, place words and shapes on the art, then present the story — or ask an agent to paint through WebMCP.
 
 Built for the [WebMCP Challenge](https://webmcp.devpost.com/). Theme tokens come from [DESIGN.md](./DESIGN.md) (`npx getdesign@latest add figma`).
 
@@ -8,24 +8,27 @@ Built for the [WebMCP Challenge](https://webmcp.devpost.com/). Theme tokens come
 
 ## What it is
 
-You land on a blank landscape page. Draw the scene, place words in speech / thought / shout / caption bubbles, then **Present** to flip through the book.
+You land on a blank landscape page. Draw the scene, place words with **Text** and pixel decorations with **Shape**, then **Present** to flip through the book.
 
-- **You** draw with pencil, eraser, and fill. **Type** drops a bubble on the page.
-- **An agent** uses `document.modelContext` tools to paint pages and place bubbles.
+- **You** draw with pencil, eraser, and fill. **Text** writes words (font + size). **Shape** drag-sizes a circle, rectangle, square, heart, or star into the pixel grid. Save a stamp as an **asset** and reuse it.
+- **An agent** uses `document.modelContext` tools to paint pages, place text, stamp pixel shapes, and manage the asset library.
 - **Present** reads the book full-screen. Arrow keys or the sides of the page turn slides.
 
 ## WebMCP tools
 
 | Tool | What it does |
 | --- | --- |
-| `get_film` | Page list, canvas size, and active index |
+| `get_film` | Page list, canvas size, palette, asset ids/names/sizes, and active index |
 | `set_canvas` | Density for the **active page** only |
 | `set_brief` | Optional note |
+| `set_palette` | Replace Color swatches with 4–16 `#rrggbb` colors (optional `name`); `add_swatch` / `reset_palette` |
 | `add_page` | New blank page, or `draw` a visual beat |
 | `select_page` / `remove_page` | Move around the book |
-| `place_text` / `set_text` / `move_text` / `remove_text` | Story text in a bubble (`frame`: speech, thought, shout, caption, plain) |
+| `place_text` / `set_text` / `move_text` / `remove_text` | Story words (`font`: inter / geist-mono, `size`: s / m / l) |
+| `place_shape` | Rasterize a pixel circle, rectangle, square, heart, or star |
+| `list_assets` / `add_asset` / `stamp_asset` / `remove_asset` | Reusable pixel assets |
 | `set_pixel` / `draw_pixels` | Paint |
-| `fill_rect` / `draw_line` / `flood_fill` | Shape tools |
+| `fill_rect` / `draw_line` / `flood_fill` | Pixel geometry |
 | `clear_page` | Back to blank |
 | `draw_scene` | Paint a beat from a description (night, rain, city, two figures, …) |
 

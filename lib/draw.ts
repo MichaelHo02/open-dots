@@ -1,4 +1,14 @@
-import { EMPTY, emptyPixels, type Size } from "./types";
+import {
+  EMPTY,
+  TRANSPARENT,
+  assertNever,
+  emptyPixels,
+  isPaintedPixel,
+  type PixelStamp,
+  type ShapeKind,
+  type ShapeScale,
+  type Size,
+} from "./types";
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -13,6 +23,9 @@ export function idx(x: number, y: number, size: Size): number {
 }
 
 export function hexColor(value: string | undefined, fallback = EMPTY): string {
+  if (value === EMPTY || value === TRANSPARENT) {
+    return EMPTY;
+  }
   if (!value) {
     return fallback;
   }
@@ -27,6 +40,25 @@ export function hexColor(value: string | undefined, fallback = EMPTY): string {
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
   return fallback;
+}
+
+export function paintPixelGrid(
+  ctx: CanvasRenderingContext2D,
+  pixels: string[],
+  width: number,
+  height: number,
+) {
+  ctx.clearRect(0, 0, width, height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const color = pixels[y * width + x];
+      if (!isPaintedPixel(color)) {
+        continue;
+      }
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
 }
 
 export function clonePixels(pixels: string[]): string[] {
@@ -45,6 +77,31 @@ export function setPixel(
   }
   const next = clonePixels(pixels);
   next[idx(x, y, size)] = hexColor(color);
+  return next;
+}
+
+export function paintBrush(
+  pixels: string[],
+  size: Size,
+  x: number,
+  y: number,
+  brushSize: number,
+  color: string,
+): string[] {
+  const stamp = Math.max(1, Math.min(4, Math.round(brushSize)));
+  const paint = hexColor(color);
+  const next = clonePixels(pixels);
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  for (let dy = 0; dy < stamp; dy += 1) {
+    for (let dx = 0; dx < stamp; dx += 1) {
+      const px = x0 + dx;
+      const py = y0 + dy;
+      if (inBounds(px, py, size)) {
+        next[idx(px, py, size)] = paint;
+      }
+    }
+  }
   return next;
 }
 
@@ -152,6 +209,336 @@ export function floodFill(
     stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
   }
   return next;
+}
+
+export function boundsFromCorners(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  square = false,
+): { x: number; y: number; width: number; height: number } {
+  const ax = Math.floor(x0);
+  const ay = Math.floor(y0);
+  const bx = Math.floor(x1);
+  const by = Math.floor(y1);
+  let x = Math.min(ax, bx);
+  let y = Math.min(ay, by);
+  let width = Math.abs(bx - ax) + 1;
+  let height = Math.abs(by - ay) + 1;
+  if (square) {
+    const side = Math.max(1, Math.min(width, height));
+    x = bx >= ax ? ax : ax - side + 1;
+    y = by >= ay ? ay : ay - side + 1;
+    width = side;
+    height = side;
+  }
+  return { x, y, width: Math.max(1, width), height: Math.max(1, height) };
+}
+
+export function shapeScalePixels(scale: ShapeScale, size: Size): number {
+  const base = Math.max(8, Math.round(Math.min(size.width, size.height) * 0.28));
+  switch (scale) {
+    case "s":
+      return Math.max(4, Math.round(base * 0.72));
+    case "m":
+      return base;
+    case "l":
+      return Math.round(base * 1.38);
+    default:
+      return assertNever(scale, "Unknown scale");
+  }
+}
+
+function maskRect(width: number, height: number): boolean[] {
+  return Array.from({ length: width * height }, () => true);
+}
+
+function maskEllipse(width: number, height: number): boolean[] {
+  const mask = Array.from({ length: width * height }, () => false);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const rx = Math.max(0.5, width / 2);
+  const ry = Math.max(0.5, height / 2);
+  for (let py = 0; py < height; py += 1) {
+    for (let px = 0; px < width; px += 1) {
+      const dx = (px - cx) / rx;
+      const dy = (py - cy) / ry;
+      mask[py * width + px] = dx * dx + dy * dy <= 1;
+    }
+  }
+  return mask;
+}
+
+function maskHeart(width: number, height: number): boolean[] {
+  const mask = Array.from({ length: width * height }, () => false);
+  for (let py = 0; py < height; py += 1) {
+    for (let px = 0; px < width; px += 1) {
+      const nx = ((px + 0.5) / width) * 2.4 - 1.2;
+      const ny = 1.15 - ((py + 0.5) / height) * 2.35;
+      const a = nx * nx + ny * ny - 1;
+      mask[py * width + px] = a * a * a - nx * nx * ny * ny * ny <= 0;
+    }
+  }
+  return mask;
+}
+
+function pointInPolygon(
+  x: number,
+  y: number,
+  verts: Array<{ x: number; y: number }>,
+): boolean {
+  let inside = false;
+  for (let i = 0, j = verts.length - 1; i < verts.length; j = i, i += 1) {
+    const xi = verts[i].x;
+    const yi = verts[i].y;
+    const xj = verts[j].x;
+    const yj = verts[j].y;
+    const intersect =
+      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 0) + xi;
+    if (intersect) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function maskStar(width: number, height: number): boolean[] {
+  const mask = Array.from({ length: width * height }, () => false);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const rx = Math.max(0.5, width / 2);
+  const ry = Math.max(0.5, height / 2);
+  const verts: Array<{ x: number; y: number }> = [];
+  const points = 5;
+  const inner = 0.4;
+  for (let i = 0; i < points * 2; i += 1) {
+    const r = i % 2 === 0 ? 1 : inner;
+    const angle = -Math.PI / 2 + (i * Math.PI) / points;
+    verts.push({
+      x: cx + Math.cos(angle) * rx * r,
+      y: cy + Math.sin(angle) * ry * r,
+    });
+  }
+  for (let py = 0; py < height; py += 1) {
+    for (let px = 0; px < width; px += 1) {
+      mask[py * width + px] = pointInPolygon(px, py, verts);
+    }
+  }
+  return mask;
+}
+
+function outlineMask(mask: boolean[], width: number, height: number): boolean[] {
+  const next = Array.from({ length: width * height }, () => false);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = y * width + x;
+      if (!mask[i]) {
+        continue;
+      }
+      const edge =
+        x === 0 ||
+        y === 0 ||
+        x === width - 1 ||
+        y === height - 1 ||
+        !mask[i - 1] ||
+        !mask[i + 1] ||
+        !mask[i - width] ||
+        !mask[i + width];
+      if (edge) {
+        next[i] = true;
+      }
+    }
+  }
+  return next;
+}
+
+function shapeMask(kind: ShapeKind, width: number, height: number): boolean[] {
+  switch (kind) {
+    case "rectangle":
+    case "square":
+      return maskRect(width, height);
+    case "circle":
+      return maskEllipse(width, height);
+    case "heart":
+      return maskHeart(width, height);
+    case "star":
+      return maskStar(width, height);
+    default:
+      return assertNever(kind, "Unknown shape");
+  }
+}
+
+export function rasterizeShape(
+  kind: ShapeKind,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  color: string,
+  filled: boolean,
+): PixelStamp {
+  const box = boundsFromCorners(x0, y0, x1, y1, kind === "square");
+  let mask = shapeMask(kind, box.width, box.height);
+  if (!filled) {
+    mask = outlineMask(mask, box.width, box.height);
+  }
+  const paint = hexColor(color);
+  return {
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    pixels: mask.map((on) => (on ? paint : TRANSPARENT)),
+  };
+}
+
+export function blitStamp(
+  pixels: string[],
+  size: Size,
+  stamp: PixelStamp,
+): string[] {
+  const next = clonePixels(pixels);
+  for (let ly = 0; ly < stamp.height; ly += 1) {
+    for (let lx = 0; lx < stamp.width; lx += 1) {
+      const color = stamp.pixels[ly * stamp.width + lx];
+      if (!isPaintedPixel(color)) {
+        continue;
+      }
+      const x = stamp.x + lx;
+      const y = stamp.y + ly;
+      if (inBounds(x, y, size)) {
+        next[idx(x, y, size)] = hexColor(color);
+      }
+    }
+  }
+  return next;
+}
+
+export function extractStamp(
+  pixels: string[],
+  size: Size,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): PixelStamp {
+  const next: string[] = [];
+  for (let ly = 0; ly < height; ly += 1) {
+    for (let lx = 0; lx < width; lx += 1) {
+      const px = x + lx;
+      const py = y + ly;
+      next.push(inBounds(px, py, size) ? (pixels[idx(px, py, size)] ?? EMPTY) : EMPTY);
+    }
+  }
+  return { x, y, width, height, pixels: next };
+}
+
+export function sampleUnder(
+  pixels: string[],
+  size: Size,
+  stamp: PixelStamp,
+): string[] {
+  const under: string[] = [];
+  for (let ly = 0; ly < stamp.height; ly += 1) {
+    for (let lx = 0; lx < stamp.width; lx += 1) {
+      const color = stamp.pixels[ly * stamp.width + lx];
+      if (!isPaintedPixel(color)) {
+        under.push(TRANSPARENT);
+        continue;
+      }
+      const x = stamp.x + lx;
+      const y = stamp.y + ly;
+      under.push(inBounds(x, y, size) ? (pixels[idx(x, y, size)] ?? EMPTY) : EMPTY);
+    }
+  }
+  return under;
+}
+
+export function restoreUnder(
+  pixels: string[],
+  size: Size,
+  stamp: PixelStamp,
+  under: string[],
+): string[] {
+  const next = clonePixels(pixels);
+  for (let ly = 0; ly < stamp.height; ly += 1) {
+    for (let lx = 0; lx < stamp.width; lx += 1) {
+      const i = ly * stamp.width + lx;
+      if (!isPaintedPixel(stamp.pixels[i])) {
+        continue;
+      }
+      const x = stamp.x + lx;
+      const y = stamp.y + ly;
+      if (inBounds(x, y, size)) {
+        next[idx(x, y, size)] = under[i] ?? EMPTY;
+      }
+    }
+  }
+  return next;
+}
+
+/** Click = native size at anchor; drag = uniform nearest-neighbor scale (aspect locked). */
+export function stampPlacementFromDrag(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  nativeWidth: number,
+  nativeHeight: number,
+): { x: number; y: number; width: number; height: number; scaled: boolean } {
+  const ax = Math.floor(x0);
+  const ay = Math.floor(y0);
+  const bx = Math.floor(x1);
+  const by = Math.floor(y1);
+  const rawW = Math.abs(bx - ax) + 1;
+  const rawH = Math.abs(by - ay) + 1;
+  const dragged = rawW > 1 || rawH > 1;
+
+  if (!dragged) {
+    return {
+      x: ax,
+      y: ay,
+      width: nativeWidth,
+      height: nativeHeight,
+      scaled: false,
+    };
+  }
+
+  const scale = Math.max(rawW / nativeWidth, rawH / nativeHeight);
+  const width = Math.max(1, Math.round(nativeWidth * scale));
+  const height = Math.max(1, Math.round(nativeHeight * scale));
+  const x = bx >= ax ? ax : ax - width + 1;
+  const y = by >= ay ? ay : ay - height + 1;
+
+  return { x, y, width, height, scaled: true };
+}
+
+export function scaleStamp(
+  stamp: PixelStamp,
+  destWidth: number,
+  destHeight: number,
+): PixelStamp {
+  const width = Math.max(1, Math.round(destWidth));
+  const height = Math.max(1, Math.round(destHeight));
+  if (width === stamp.width && height === stamp.height) {
+    return stamp;
+  }
+  const pixels: string[] = [];
+  for (let ly = 0; ly < height; ly += 1) {
+    for (let lx = 0; lx < width; lx += 1) {
+      const sx = Math.min(
+        stamp.width - 1,
+        Math.floor((lx * stamp.width) / width),
+      );
+      const sy = Math.min(
+        stamp.height - 1,
+        Math.floor((ly * stamp.height) / height),
+      );
+      pixels.push(stamp.pixels[sy * stamp.width + sx] ?? TRANSPARENT);
+    }
+  }
+  return { x: stamp.x, y: stamp.y, width, height, pixels };
 }
 
 function hashString(value: string): number {
