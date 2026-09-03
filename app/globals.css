@@ -2023,9 +2023,11 @@ input {
 }
 .gallery-brand, .reader-back { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; font-weight: 560; }
 .gallery-brand .open-dots-logo { color: var(--brand-accent); }
-.gallery-intro { max-width: 1280px; margin: 0 auto; padding: clamp(52px, 9vw, 112px) clamp(20px, 4vw, 56px) 44px; }
+.gallery-intro { max-width: 1280px; margin: 0 auto; padding: clamp(52px, 9vw, 112px) clamp(20px, 4vw, 56px) 44px; display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; overflow: hidden; }
+.gallery-intro > div { min-width: 0; }
 .gallery-intro h1 { max-width: 760px; margin: 0; font-size: clamp(48px, 7vw, 86px); font-weight: 340; line-height: .98; letter-spacing: -.03em; }
 .gallery-intro p { max-width: 600px; margin: 24px 0 0; font-size: clamp(18px, 2vw, 22px); line-height: 1.45; }
+.gallery-friends { width: clamp(150px, 22vw, 280px); height: auto; flex: 0 0 auto; image-rendering: pixelated; transform: translateY(20px) rotate(2deg); }
 .gallery-grid {
   max-width: 1280px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 56px) 80px;
   display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 32px 24px;
@@ -2040,7 +2042,8 @@ input {
 .story-card-copy span { flex-shrink: 0; color: #737373; font-family: var(--font-figma-mono), monospace; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
 .story-card:hover .story-card-copy strong { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
 .story-card:focus-visible { outline: 3px solid var(--brand-accent); outline-offset: 5px; }
-.gallery-empty { margin: 0 clamp(20px, 4vw, 56px) 80px; padding: clamp(40px, 8vw, 80px); text-align: center; background: var(--block-lime); border-radius: var(--radius-lg); }
+.gallery-empty { margin: 0 clamp(20px, 4vw, 56px) 80px; padding: clamp(32px, 6vw, 64px); text-align: center; background: var(--block-lime); border-radius: var(--radius-lg); }
+.gallery-empty-art { display: block; width: min(420px, 88%); height: auto; margin: 0 auto 20px; image-rendering: pixelated; }
 .gallery-empty h2 { margin: 0; font-size: clamp(32px, 5vw, 56px); font-weight: 400; }
 .gallery-empty p { margin: 12px 0 28px; font-size: 18px; }
 
@@ -2060,6 +2063,7 @@ input {
 @media (max-width: 600px) {
   .gallery-nav .pill, .reader-nav .pill { padding-inline: 10px; font-size: 14px; }
   .gallery-intro { padding-top: 48px; }
+  .gallery-friends { width: 118px; margin-right: -36px; }
   .gallery-grid { gap: 28px; }
   .reader-nav .gallery-brand span { display: none; }
   .reader-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
