@@ -369,7 +369,7 @@ function normalizeAsset(
     name,
     width,
     height,
-    pixels: frames[0] ?? pixels,
+    pixels,
     frames: frames.length > 1 ? frames : undefined,
     frameDuration: Math.max(100, Math.min(2000, Math.round(raw.frameDuration ?? 400))),
   };
@@ -1310,7 +1310,6 @@ function createApi(
           pixels: clonePixels(asset.pixels),
           frames: (asset.frames?.length ? asset.frames : [asset.pixels]).map(clonePixels),
           frameIndex: 0,
-          frameDuration: asset.frameDuration ?? 400,
         };
       } else {
         if (current.assets.length >= MAX_ASSETS) {
@@ -1324,7 +1323,6 @@ function createApi(
           pixels: emptyPixels(DEFAULT_ASSET_WIDTH, DEFAULT_ASSET_HEIGHT),
           frames: [emptyPixels(DEFAULT_ASSET_WIDTH, DEFAULT_ASSET_HEIGHT)],
           frameIndex: 0,
-          frameDuration: 400,
         };
       }
       workshopOpen = true;
@@ -1345,7 +1343,6 @@ function createApi(
             height: workshopDraft.height,
             pixels: workshopDraft.pixels,
             frames: workshopDraft.frames,
-            frameDuration: workshopDraft.frameDuration,
           },
           false,
         );
@@ -2152,28 +2149,19 @@ function createApi(
       return true;
     },
     getAsset: (id) => assetById(id) ?? null,
-    drawAssetPixels: (id, dots, frameIndex = 0, frameDuration) => {
+    drawAssetPixels: (id, dots) => {
       const current = getSnapshot();
       const asset = assetById(id);
-      if (!asset || frameIndex < 0 || frameIndex > (asset.frames?.length ?? 1)) {
+      if (!asset) {
         return 0;
       }
       const size = { width: asset.width, height: asset.height };
-      const frames = (asset.frames?.length ? asset.frames : [asset.pixels]).map(clonePixels);
-      if (frameIndex === frames.length) frames.push(clonePixels(frames.at(-1)!));
-      frames[frameIndex] = setPixels(frames[frameIndex]!, size, dots);
+      const next = setPixels(asset.pixels, size, dots);
       const painted = dots.filter((dot) => inBounds(dot.x, dot.y, size)).length;
       commit({
         ...current,
         assets: current.assets.map((item) =>
-          item.id === id ? {
-            ...item,
-            pixels: frames[0]!,
-            frames: frames.length > 1 ? frames : undefined,
-            frameDuration: frameDuration === undefined
-              ? item.frameDuration
-              : Math.max(100, Math.min(2000, Math.round(frameDuration))),
-          } : item,
+          item.id === id ? { ...item, pixels: next } : item,
         ),
       });
       return painted;

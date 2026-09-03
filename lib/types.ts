@@ -168,7 +168,6 @@ export interface WorkshopDraft {
   pixels: string[];
   frames: string[][];
   frameIndex: number;
-  frameDuration: number;
 }
 
 export interface PageLayer {
@@ -360,8 +359,6 @@ export interface FilmApi {
   drawAssetPixels: (
     id: string,
     dots: Array<{ x: number; y: number; color: string }>,
-    frameIndex?: number,
-    frameDuration?: number,
   ) => number;
   duplicateAsset: (id: string, name?: string) => Asset | null;
   clearRect: (input: {

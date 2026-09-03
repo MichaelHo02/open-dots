@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { paintPixelGrid, compositedPagePixels } from "@/lib/draw";
 import { type Page, type Asset } from "@/lib/types";
-import { usePrefersReducedMotion } from "@/lib/dotmatrix-hooks";
 
 export function PagePreview({
   page,
@@ -17,7 +16,6 @@ export function PagePreview({
   animated?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const reducedMotion = usePrefersReducedMotion();
   const { width, height } = page;
 
   useEffect(() => {
@@ -29,18 +27,18 @@ export function PagePreview({
     canvas.width = width;
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
-    const started = Date.now();
+    let step = 0;
     const draw = () => {
-      const elapsed = Date.now() - started;
-      const visibleAssets = animated && !reducedMotion ? assets.map(asset => asset.frames?.length
-        ? { ...asset, pixels: asset.frames[Math.floor(elapsed / (asset.frameDuration ?? 400)) % asset.frames.length] } : asset) : assets;
+      const visibleAssets = animated ? assets.map(asset => asset.frames?.length
+        ? { ...asset, pixels: asset.frames[step % asset.frames.length] } : asset) : assets;
       paintPixelGrid(ctx, compositedPagePixels(page, visibleAssets), width, height);
+      step += 1;
     };
     draw();
-    if (!animated || reducedMotion || !assets.some(asset => (asset.frames?.length ?? 0) > 1)) return;
-    const timer = window.setInterval(draw, 100);
+    if (!animated || !assets.some(asset => (asset.frames?.length ?? 0) > 1)) return;
+    const timer = window.setInterval(draw, 400);
     return () => window.clearInterval(timer);
-  }, [animated, assets, height, page, reducedMotion, width]);
+  }, [animated, assets, height, page, width]);
 
   return (
     <span className={`thumb-art ${className}`.trim()}>
@@ -54,11 +52,9 @@ export function PagePreview({
   );
 }
 
-export function AssetThumb({ asset, animated = false, hoverAnimated = false }: { asset: Asset; animated?: boolean; hoverAnimated?: boolean }) {
+export function AssetThumb({ asset, animated = false }: { asset: Asset; animated?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
-  const [hovered, setHovered] = useState(false);
-  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -69,13 +65,13 @@ export function AssetThumb({ asset, animated = false, hoverAnimated = false }: {
     canvas.width = asset.width;
     canvas.height = asset.height;
     ctx.imageSmoothingEnabled = false;
-    const frames = (animated || (hoverAnimated && hovered)) && !reducedMotion && asset.frames?.length ? asset.frames : [asset.pixels];
+    const frames = animated && asset.frames?.length ? asset.frames : [asset.pixels];
     const draw = () => { paintPixelGrid(ctx, frames[frameRef.current % frames.length], asset.width, asset.height); frameRef.current += 1; };
     draw();
     if (frames.length <= 1) return;
     const timer = window.setInterval(draw, asset.frameDuration ?? 400);
     return () => window.clearInterval(timer);
-  }, [animated, asset, hovered, hoverAnimated, reducedMotion]);
+  }, [animated, asset]);
 
   return (
     <canvas
@@ -84,8 +80,6 @@ export function AssetThumb({ asset, animated = false, hoverAnimated = false }: {
       width={asset.width}
       height={asset.height}
       aria-hidden="true"
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
     />
   );
 }

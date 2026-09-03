@@ -161,24 +161,13 @@
     },
     {
       "name": "paint_asset",
-      "description": "Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤4096/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. For animation, pass frameIndex 0, then 1, 2, etc.; a new frame copies the previous frame so small motion only needs minor edits. Work in passes (outline → fill → shade → highlight); each call returns that frame's PNG.",
+      "description": "Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤4096/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "description": "Asset id to paint into"
-          },
-          "frameIndex": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Animation frame to paint (default 0). Using the next index appends a copy of the previous frame."
-          },
-          "frameDuration": {
-            "type": "integer",
-            "minimum": 100,
-            "maximum": 2000,
-            "description": "Milliseconds per frame (default 400), shared by this asset."
           },
           "rects": {
             "type": "array",

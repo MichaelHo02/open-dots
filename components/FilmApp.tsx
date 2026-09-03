@@ -132,7 +132,7 @@ export function FilmApp() {
                       onClick={() => api.selectAsset(asset.id)}
                       onDoubleClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
-                      <AssetThumb asset={asset} hoverAnimated />
+                      <AssetThumb asset={asset} />
                       <span className="asset-card-name">{asset.name}</span>
                       <span className="asset-card-size">
                         {asset.width}×{asset.height}
