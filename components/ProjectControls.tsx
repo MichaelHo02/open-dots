@@ -26,7 +26,7 @@ export function ProjectControls() {
   return <details className="project-menu">
     <summary title="Project files">File</summary>
     <div className="project-menu-items">
-      <button type="button" onClick={() => saveProject(api.film)}><Save size={14} />Save project</button>
+      <button type="button" onClick={() => saveProject(api.film)}><Save size={14} />Save project<kbd>⌘S</kbd></button>
       <button type="button" onClick={() => input.current?.click()}><FolderOpen size={14} />Open project</button>
       <button type="button" onClick={() => {
         if (!api.active) return;

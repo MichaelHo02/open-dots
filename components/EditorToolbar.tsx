@@ -2,6 +2,7 @@
 
 import { ProjectControls } from "./ProjectControls";
 import { useId } from "react";
+import { ClipboardPaste, Copy, CopyPlus, Scissors, Trash2 } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
 import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
 import { ChromeIcon, toolIconName } from "./ChromeIcons";
@@ -122,11 +123,11 @@ export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
       <div className="top-actions">
         <ProjectControls />
         <details className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
-          <button type="button" onClick={() => api.copySelection()}>Copy</button>
-          <button type="button" onClick={() => api.cutSelection()}>Cut</button>
-          <button type="button" onClick={() => api.pasteSelection()}>Paste</button>
-          <button type="button" onClick={() => api.duplicateSelection()}>Duplicate</button>
-          <button type="button" onClick={() => api.deleteSelection()}>Delete selection</button>
+          <button type="button" onClick={() => api.copySelection()}><Copy size={14} />Copy<kbd>⌘C</kbd></button>
+          <button type="button" onClick={() => api.cutSelection()}><Scissors size={14} />Cut<kbd>⌘X</kbd></button>
+          <button type="button" onClick={() => api.pasteSelection()}><ClipboardPaste size={14} />Paste<kbd>⌘V</kbd></button>
+          <button type="button" onClick={() => api.duplicateSelection()}><CopyPlus size={14} />Duplicate<kbd>⌘D</kbd></button>
+          <button type="button" onClick={() => api.deleteSelection()}><Trash2 size={14} />Delete selection<kbd>⌫</kbd></button>
         </div></details>
         <ToolbarButton
           disabled={!api.canUndo}

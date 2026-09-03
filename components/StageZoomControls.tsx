@@ -18,7 +18,7 @@ export function StageZoomControls() {
     <div className="zoom-controls">
       <button
         type="button"
-        className="pill ghost zoom-btn"
+        className="pill ghost zoom-btn icon-tooltip"
         aria-label="Zoom out"
         disabled={atMin}
         onClick={() => stepStageZoom(-1)}
@@ -28,7 +28,7 @@ export function StageZoomControls() {
       <span className="size zoom-label">{stageZoomLabel(stageZoom)}</span>
       <button
         type="button"
-        className="pill ghost zoom-btn"
+        className="pill ghost zoom-btn icon-tooltip"
         aria-label="Zoom in"
         disabled={atMax}
         onClick={() => stepStageZoom(1)}

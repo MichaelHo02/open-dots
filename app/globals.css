@@ -1931,6 +1931,13 @@ input {
   font-size: 12px; font-weight: 450; white-space: nowrap; pointer-events: none; z-index: 20;
 }
 .toolbar-button:hover .toolbar-tooltip, .toolbar-button:focus-visible .toolbar-tooltip { display: block; }
+.icon-tooltip { position: relative; }
+.icon-tooltip::after {
+  content: attr(aria-label); display: none; position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  padding: 6px 8px; border-radius: 4px; background: var(--ink); color: var(--canvas);
+  font-size: 11px; font-weight: 450; line-height: 1; white-space: nowrap; pointer-events: none; z-index: 40;
+}
+.icon-tooltip:hover::after, .icon-tooltip:focus-visible::after { display: block; }
 .workspace { position: relative; }
 .workspace-zoom {
   position: absolute; right: 16px; bottom: 16px; z-index: 5;
@@ -1998,6 +2005,7 @@ input {
 .project-menu summary { cursor: pointer; padding: 8px; border-radius: 4px; }
 .project-menu-items { position: absolute; right: 0; top: 100%; width: 220px; background: var(--canvas); border: 1px solid var(--hairline); padding: 6px; box-shadow: 0 4px 18px #0002; z-index: 30; }
 .project-menu-items button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.project-menu-items button kbd { margin-left: auto; color: var(--muted); font: inherit; }
 .project-menu-items button:hover { background: var(--surface-soft); }
 .project-menu-items p { padding: 8px; }
 .toolbar-button:disabled { opacity: .35; cursor: default; }

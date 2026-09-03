@@ -24,7 +24,7 @@ export function CanvasInspector({ onClose, symmetry, onSymmetryChange, showGrid,
     <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <div className="inspector-heading">
         <div><p className="sidebar-label">{workshopOpen ? "Asset" : `Page ${number}`}</p><h2>{workshopOpen ? "Workshop settings" : "Canvas settings"}</h2></div>
-        <button type="button" className="inspector-close" aria-label="Close canvas settings" onClick={onClose}><X size={16} aria-hidden="true" /></button>
+        <button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" onClick={onClose}><X size={16} aria-hidden="true" /></button>
       </div>
             {!workshopOpen ? (
               <><LayersPanel /><SelectionControls /></>
@@ -35,9 +35,9 @@ export function CanvasInspector({ onClose, symmetry, onSymmetryChange, showGrid,
                   <option value="scale">Scale art</option><option value="canvas">Canvas bounds</option>
                 </select></label>
                 <div className="compact-stepper" role="group" aria-label="Page density">
-                  <button type="button" aria-label="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.resizeCanvas(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16), resizeMode)}>−</button>
+                  <button type="button" className="icon-tooltip" aria-label="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.resizeCanvas(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16), resizeMode)}>−</button>
                   <span className="size">{density?.width ?? DEFAULT_WIDTH}×{density?.height ?? DEFAULT_HEIGHT}</span>
-                  <button type="button" aria-label="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button>
+                  <button type="button" className="icon-tooltip" aria-label="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button>
                 </div>
               </section>
             ) : null}
@@ -45,9 +45,9 @@ export function CanvasInspector({ onClose, symmetry, onSymmetryChange, showGrid,
               <section className="access-group access-brush" aria-label="Brush size">
                 <p className="sidebar-label">Brush size</p>
                 <div className="compact-stepper" role="group" aria-label="Brush size">
-                  <button type="button" aria-label="Decrease brush size" disabled={brushSize <= MIN_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize - 1)}>−</button>
+                  <button type="button" className="icon-tooltip" aria-label="Decrease brush size" disabled={brushSize <= MIN_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize - 1)}>−</button>
                   <span className="size">{brushSizeLabel(brushSize)}</span>
-                  <button type="button" aria-label="Increase brush size" disabled={brushSize >= MAX_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize + 1)}>+</button>
+                  <button type="button" className="icon-tooltip" aria-label="Increase brush size" disabled={brushSize >= MAX_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize + 1)}>+</button>
                 </div>
               </section>
             ) : null}
@@ -63,7 +63,7 @@ export function CanvasInspector({ onClose, symmetry, onSymmetryChange, showGrid,
               <div className="number-stepper" role="group" aria-label="Text size scale">
                 <button
                   type="button"
-                  className="stepper-btn"
+                  className="stepper-btn icon-tooltip"
                   aria-label="Decrease text size"
                   disabled={textSize <= MIN_TEXT_SIZE}
                   onClick={() => api.setTextSize(textSize - 1)}
@@ -84,7 +84,7 @@ export function CanvasInspector({ onClose, symmetry, onSymmetryChange, showGrid,
                 />
                 <button
                   type="button"
-                  className="stepper-btn"
+                  className="stepper-btn icon-tooltip"
                   aria-label="Increase text size"
                   disabled={textSize >= MAX_TEXT_SIZE}
                   onClick={() => api.setTextSize(textSize + 1)}

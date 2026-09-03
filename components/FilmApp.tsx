@@ -142,7 +142,7 @@ export function FilmApp() {
                     </button>
                     <button
                       type="button"
-                      className="asset-edit"
+                      className="asset-edit icon-tooltip"
                       aria-label={`Edit ${asset.name}`}
                       onClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
@@ -150,7 +150,7 @@ export function FilmApp() {
                     </button>
                     <button
                       type="button"
-                      className="asset-remove"
+                      className="asset-remove icon-tooltip"
                       aria-label={`Remove ${asset.name}`}
                       onClick={() => api.removeAsset(asset.id)}
                     >
