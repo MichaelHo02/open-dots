@@ -1,0 +1,28 @@
+[
+  {
+    "name": "Layer 3: build the campsite story page",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create an original 256x144 campsite story page. Start with the pixel-art guide and inspect the storybook. Use a limited named night palette. Paint a flat navy sky and grassy clearing, then build reusable assets for a striped tent, campfire, Mira, a fox, a pine tree, and a star cluster. Stamp the pine tree four times and the stars several times. Compose the tent on the left, Mira walking near the center, the fire at center, and the fox looking back on the right. Give assets outline, fill, shade, and highlight passes and inspect them as you work. Add the exact rasterized text 'Mira followed the little fox.' in the upper-left sky. Inspect the final page and improve it before finishing. Keep readable silhouettes, cool moonlight, warm firelight, and three clear depth bands."
+      }
+    ],
+    "expectedCall": [
+      {
+        "ordered": [
+          { "functionName": "get_pixel_art_guide", "arguments": {} },
+          { "functionName": "get_storybook", "arguments": {} },
+          { "functionName": "set_palette", "arguments": { "name": { "$any": true }, "colors": { "$type": "array" } } },
+          { "functionName": "add_page", "arguments": { "width": 256 } },
+          { "functionName": "paint_page", "arguments": null },
+          { "functionName": "add_asset", "arguments": { "name": { "$any": true } } },
+          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          { "functionName": "stamp_assets", "arguments": { "stamps": { "$type": "array" } } },
+          { "functionName": "place_text", "arguments": { "body": { "$contains": "Mira followed the little fox." } } },
+          { "functionName": "get_page_image", "arguments": {} }
+        ]
+      }
+    ]
+  }
+]

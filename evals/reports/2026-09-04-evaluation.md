@@ -40,9 +40,28 @@ result:
 | Story text | 10/10 |
 | Palette and lighting | 8/10 |
 
-The next evidence run should attach `../fixtures/campsite-story-page.png` to a
-browser agent, execute the prompt in `../campsite.challenge.json`, export its
-256×144 page, and save the score with:
+## Campsite Layer 3 browser run
+
+The campsite prompt was run through the live browser harness against the
+deployed site with Gemini 3.1 Flash-Lite. The model made 20 successful WebMCP
+calls and correctly started with the guide, storybook, named palette, 256×144
+page, background, and rasterized story text. It began the tent, campfire, and
+Mira assets, including intermediate image inspections.
+
+The run stopped after outlining Mira. It did not create the fox, trees, or
+stars; stamp any assets; or call `get_page_image`. Therefore this run has no
+valid visual score. The CLI's strict ordered matcher shows **7/20 steps**
+because useful intermediate inspection and repeated paint calls are counted as
+unexpected after the first matched paint step.
+
+- Full report: [campsite-layer3-gemini-3.1-flash-lite-2026-09-04.html](./campsite-layer3-gemini-3.1-flash-lite-2026-09-04.html)
+- Report SHA-256: `15656340e2a4222822b052f3e762af3c8bbb45402c50e3ca94d423cd1cb1b6c9`
+- Runner/model: `webmcp-evals` 0.0.4 / `google:gemini-3.1-flash-lite`
+- Configured ceiling: 80 steps; observed trajectory: 20 calls
+
+The official runner currently accepts text-only messages and does not attach
+the reference PNG. A future visual run needs an image-capable browser harness,
+then the exported 256×144 page can be scored with:
 
 ```bash
 npm run eval:story-page -- --output evals/reports/agent-campsite.json path/to/agent-page.png
