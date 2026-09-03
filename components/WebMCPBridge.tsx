@@ -5,6 +5,7 @@ import {
   getWebmcpStatus,
   registerFilmTools,
   syncWebmcpApiRef,
+  unregisterFilmTools,
 } from "@/lib/register-tools";
 import { useFilm } from "@/lib/film-store";
 import { Dotm3x3_15 } from "@/components/ui/dotm-3x3-15";
@@ -23,13 +24,14 @@ export function WebMCPBridge() {
 
   useEffect(() => {
     let cancelled = false;
+    let secondFrame: number | undefined;
 
     // Defer until after hydration so document.modelContext and localStorage
     // Storybook state is stable before agents poll get_storybook.
     const start = () => {
-      // Page-lifetime registration: do not abort on React unmount (Strict Mode /
-      // Fast Refresh). Aborting unregisters tools and invalidates the host's
-      // snapshot. Tools last until this document unloads (refresh/navigation).
+      if (cancelled) {
+        return;
+      }
       registerFilmTools(apiRef)
         .then((result) => {
           if (cancelled) {
@@ -53,13 +55,17 @@ export function WebMCPBridge() {
         });
     };
 
-    const id = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(start);
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(start);
     });
 
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(id);
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== undefined) {
+        window.cancelAnimationFrame(secondFrame);
+      }
+      unregisterFilmTools();
     };
   }, []);
 

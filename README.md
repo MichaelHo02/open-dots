@@ -14,7 +14,7 @@ You land on a blank landscape page. Draw the scene, place words with **Text** an
 - **An agent** uses `document.modelContext` tools. For complex art, build small **assets** (`add_asset`) and **stamp** them (`stamp_assets`); avoid painting entire pages pixel-by-pixel.
 - **Present** reads the book full-screen. Arrow keys or the sides of the page turn slides.
 
-## WebMCP tools (14)
+## WebMCP tools (12)
 
 Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) — its whole surface is `set_pixel`/`fill_rect`/`line`/`clear` + export/undo, plus a mandatory look-at-the-PNG loop. Open Dots matches that minimalism and adds book features (pages, reusable assets, stamp) and a bulk-ops advantage: `paint_asset`/`paint_page` take **rects/lines/fills/pixels** in one call, so a single rect fills any block server-side (no per-pixel cap) and `color ""` erases. UI-only controls (brush, workshop, tool picker, color swatch, undo button) are not exposed — agents draw directly and verify with the returned image.
 
@@ -26,14 +26,16 @@ Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pi
 | `get_page_image` | Page/region PNG + stats + `sceneHint` (few placements, huge stamps, full-page paint, noisy colorCount) |
 | `set_palette` | Create/select a named color profile (`name` + any number of #rrggbb swatches). Default is never overwritten; extra colors can be used inline in draw ops |
 | `add_page` | New page + optional pixel density (`width` 48–256, height follows 16:9) |
-| `select_page` / `remove_page` | Book navigation |
-| `add_asset` | Create sprite — template `empty`, hex `rows`, `fill`, or page-rect copy |
+| `select_page` | Select a page by index |
+| `add_asset` | Create sprite — indexed bitmap, template `empty`, hex `rows`, `fill`, or page-rect copy |
 | `paint_asset` | Bulk sprite ops — `rects`/`lines`/`fills` + ≤4,096 detail `pixels`/call; returns inline PNG |
 | `paint_page` | Page backgrounds/touch-ups — same `rects`/`lines`/`fills`/`pixels` ops; `color ""` erases |
-| `stamp_assets` / `remove_asset` | Overlay placements on the page (order = z-index, not baked into pixels); delete asset |
+| `stamp_assets` | Overlay placements on the page (order = z-index, not baked into pixels) |
 | `place_text` | Rasterize words into page pixels |
 
 Pass colors inline on each draw op. Choose page density with `add_page` `width`. Erase by painting `color ""`, then repaint using the returned PNG. Decorations use `rects`/`lines`/`fills` or stamped assets — not a story form or caption box.
+
+Deleting pages or assets stays in the human editor, where it requires explicit confirmation.
 
 ### Agent creation journey
 

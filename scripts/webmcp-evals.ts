@@ -22,10 +22,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { buildFilmTools } from "../lib/register-tools";
+import {
+  buildFilmTools,
+  registerFilmTools,
+  unregisterFilmTools,
+} from "../lib/register-tools";
 import { inferSceneHint, pageSceneHintContext } from "../lib/agent-session";
 import type { FilmApi } from "../lib/types";
-import type { WebMCPTool } from "../lib/webmcp-polyfill";
+import { getModelContext, type WebMCPTool } from "../lib/webmcp-polyfill";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -265,13 +269,11 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
   const missingRequired: Array<[string, Record<string, unknown>]> = [
     ["set_palette", {}],
     ["select_page", {}],
-    ["remove_page", {}],
     ["place_text", {}],
     ["add_asset", {}],
     ["paint_asset", {}],
     ["get_asset_image", {}],
     ["stamp_assets", {}],
-    ["remove_asset", {}],
   ];
   for (const [name, input] of missingRequired) {
     const tool = byName.get(name);
@@ -403,6 +405,54 @@ function writeSchema(tools: WebMCPTool[]): void {
   pass(`wrote ${tools.length} tool schemas to evals/schema.json`);
 }
 
+async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise<void> {
+  section("5. Route-scoped registration lifecycle");
+  const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, "document");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { location: { origin: "https://example.test" } },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {},
+  });
+
+  try {
+    const first = await registerFilmTools(apiRef);
+    const context = getModelContext();
+    const registered = await context?.getTools();
+    if (first.count === 12 && registered?.length === 12) {
+      pass("editor mount registers 12 tools");
+    } else {
+      fail("editor mount registration", `expected 12 tools, got ${registered?.length ?? 0}`);
+    }
+
+    unregisterFilmTools();
+    const afterUnmount = await context?.getTools();
+    if (afterUnmount?.length === 0) {
+      pass("editor unmount aborts every tool registration");
+    } else {
+      fail("editor unmount cleanup", `expected 0 tools, got ${afterUnmount?.length ?? 0}`);
+    }
+
+    const second = await registerFilmTools(apiRef);
+    if (second.count === 12 && (await context?.getTools())?.length === 12) {
+      pass("returning to the editor registers a fresh tool set");
+    } else {
+      fail("editor remount registration", "tools did not register again after cleanup");
+    }
+  } catch (error) {
+    fail("registration lifecycle", String(error));
+  } finally {
+    unregisterFilmTools();
+    if (windowDescriptor) Object.defineProperty(globalThis, "window", windowDescriptor);
+    else delete (globalThis as { window?: unknown }).window;
+    if (documentDescriptor) Object.defineProperty(globalThis, "document", documentDescriptor);
+    else delete (globalThis as { document?: unknown }).document;
+  }
+}
+
 async function main(): Promise<void> {
   console.log("WebMCP eval runner \u2014 Open Dots (deterministic, no browser/LLM)");
   const apiRef = { current: null as unknown as FilmApi };
@@ -412,6 +462,7 @@ async function main(): Promise<void> {
   await testDeterministic(tools);
   checkEvalCoverage(tools);
   writeSchema(tools);
+  await checkRegistrationLifecycle(apiRef);
 
   console.log(
     `\n${failures === 0 ? "PASS" : "FAIL"} \u2014 ${checks - failures}/${checks} checks passed`,

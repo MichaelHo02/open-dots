@@ -1,5 +1,21 @@
 export type RgbaPixels = { data: Uint8ClampedArray; width: number; height: number };
 
+export function indexedRowsToPixels(rows: unknown, palette: unknown, maxSide = 96) {
+  if (!Array.isArray(rows) || !rows.length || rows.length > maxSide || !Array.isArray(palette) || !palette.length) return null;
+  const colors = palette.map(color => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : null);
+  if (colors.some(color => color === null)) return null;
+  const parsed = rows.map(row => typeof row === "string" ? row.split(",").map(cell => cell.trim()) : null);
+  const width = parsed[0]?.length ?? 0;
+  if (!width || width > maxSide || parsed.some(row => !row || row.length !== width)) return null;
+  const pixels: string[] = [];
+  for (const row of parsed as string[][]) for (const cell of row) {
+    if (cell === ".") { pixels.push(""); continue; }
+    if (!/^\d+$/.test(cell) || Number(cell) >= colors.length) return null;
+    pixels.push(colors[Number(cell)]!);
+  }
+  return { width, height: parsed.length, pixels };
+}
+
 export function opaqueBounds(image: RgbaPixels) {
   let left = image.width, top = image.height, right = -1, bottom = -1;
   for (let y = 0; y < image.height; y += 1) for (let x = 0; x < image.width; x += 1) {

@@ -65,6 +65,7 @@ import {
   type WebMCPTool,
 } from "./webmcp-polyfill";
 import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "./draw";
+import { indexedRowsToPixels } from "./image-asset-import";
 
 type ApiRef = { current: FilmApi };
 
@@ -377,6 +378,13 @@ function resolveAssetPixels(input: Record<string, unknown>): {
   const template = asString(input.template);
   const fill = asString(input.fill);
 
+  if (input.indexedRows !== undefined || input.bitmapPalette !== undefined) {
+    const bitmap = indexedRowsToPixels(input.indexedRows, input.bitmapPalette, MAX_ASSET_SIDE);
+    if (!bitmap) return null;
+    if ((width !== undefined && width !== bitmap.width) || (height !== undefined && height !== bitmap.height)) return null;
+    return bitmap;
+  }
+
   if (template === "empty") {
     if (width === undefined || height === undefined) {
       return null;
@@ -473,7 +481,7 @@ export type WebmcpStatus = {
   native: boolean;
   toolCount: number;
   expectedToolCount: number;
-  /** Stable for this document load; changes only on refresh/navigation. */
+  /** Stable for one editor registration lifetime. */
   generation: number;
 };
 
@@ -481,6 +489,7 @@ const WEBMCP_WINDOW_KEY = "__openDotsWebmcp";
 
 type WindowRegistration = {
   apiRef: ApiRef;
+  controller: AbortController;
   generation: number;
   native: boolean;
   count: number;
@@ -505,6 +514,16 @@ function setWindowRegistration(state: WindowRegistration): void {
     state;
 }
 
+function clearWindowRegistration(controller: AbortController): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const target = window as unknown as Record<string, WindowRegistration | undefined>;
+  if (target[WEBMCP_WINDOW_KEY]?.controller === controller) {
+    delete target[WEBMCP_WINDOW_KEY];
+  }
+}
+
 const WEBMCP_REFRESH_HINT =
   "After a page refresh or navigation, re-fetch live WebMCP tools and wait until webmcp.ready is true before mutating. In-flight calls that used a pre-refresh snapshot are invalid. Storybook data (assets, pages) persists in localStorage — call get_storybook to recover asset ids.";
 
@@ -517,13 +536,16 @@ let webmcpStatus: WebmcpStatus = {
   generation: 0,
 };
 
-let registrationPending: Promise<{ native: boolean; count: number }> | null =
-  null;
-let registrationCompleted: { native: boolean; count: number } | null = null;
+type RegistrationResult = { native: boolean; count: number };
+type PendingRegistration = {
+  controller: AbortController;
+  promise: Promise<RegistrationResult>;
+};
+
+let registrationPending: PendingRegistration | null = null;
 
 const winBoot = getWindowRegistration();
-if (winBoot) {
-  registrationCompleted = { native: winBoot.native, count: winBoot.count };
+if (winBoot?.controller && !winBoot.controller.signal.aborted) {
   webmcpStatus = {
     phase: "ready",
     ready: true,
@@ -753,29 +775,6 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "remove_page",
-      description:
-        "Delete a page by 0-based index. The book must keep at least one page. Returns the updated book summary.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          index: { type: "integer", description: "0-based page index to delete" },
-        },
-        required: ["index"],
-      },
-      execute: async (input) => {
-        const index = asInteger(input.index);
-        if (index === undefined) {
-          return toolError("index is required");
-        }
-        const ok = apiRef.current.removePage(index);
-        if (!ok) {
-          return toolError("Cannot remove the last page or an invalid index");
-        }
-        return toolResult(summarize(apiRef.current));
-      },
-    },
-    {
       name: "place_text",
       description:
         "Rasterize words into the selected layer at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
@@ -963,7 +962,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "add_asset",
       description:
-        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with paint_asset. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). For a direct bitmap, pass bitmapPalette plus indexedRows: comma-separated zero-based palette indexes with \".\" for transparency; size is inferred. Otherwise start with template \"empty\" then paint, or pass hex rows, flat pixels, a solid fill, or a page rect. If Codex generated an image file, use the visible Import image control instead. Painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -985,6 +984,17 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             type: "array",
             items: { type: "string" },
             description: "Comma-separated #rrggbb per row (+ width + height)",
+          },
+          bitmapPalette: {
+            type: "array",
+            items: { type: "string", description: "#rrggbb" },
+            description: "Colors referenced by zero-based indexes in indexedRows",
+          },
+          indexedRows: {
+            type: "array",
+            maxItems: MAX_ASSET_SIDE,
+            items: { type: "string" },
+            description: "Direct bitmap rows such as \".,0,1,0,.\"; indexes reference bitmapPalette and . is transparent. Width and height are inferred.",
           },
           template: {
             type: "string",
@@ -1028,7 +1038,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             });
         if (!asset) {
           return toolError(
-            `Need a valid asset: pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect (x,y,width,height). pixels.length must equal width×height.`,
+            `Need a valid asset: bitmapPalette+indexedRows, pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect. Indexed rows use comma-separated zero-based palette indexes and \".\" for transparency; all rows must have equal width.`,
           );
         }
         const isEmptyTemplate =
@@ -1153,27 +1163,6 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             "Call get_asset_image on unverified assets and compare PNGs to your reference before continuing.";
         }
         return toolResult(response);
-      },
-    },
-    {
-      name: "remove_asset",
-      description:
-        "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_storybook for valid ids.",
-      inputSchema: {
-        type: "object",
-        properties: { id: { type: "string", description: "Asset id from get_storybook" } },
-        required: ["id"],
-      },
-      execute: async (input) => {
-        const id = asString(input.id);
-        if (!id) {
-          return toolError("id is required");
-        }
-        const ok = apiRef.current.removeAsset(id);
-        if (!ok) {
-          return toolError("Asset not found");
-        }
-        return toolResult({ id, removed: true });
       },
     },
     {
@@ -1433,6 +1422,7 @@ function isAlreadyRegisteredError(error: unknown): boolean {
 async function registerOneTool(
   tool: WebMCPTool,
   silent: boolean,
+  signal: AbortSignal,
 ): Promise<void> {
   const context = document.modelContext;
   if (!context) {
@@ -1448,7 +1438,9 @@ async function registerOneTool(
         annotations: annotated.annotations,
         execute: async (input: Record<string, unknown>) => annotated.execute(input),
       },
-      "isPolyfill" in context && context.isPolyfill ? { silent } : {},
+      "isPolyfill" in context && context.isPolyfill
+        ? { signal, silent }
+        : { signal },
     );
   } catch (error) {
     if (isAlreadyRegisteredError(error)) {
@@ -1460,7 +1452,10 @@ async function registerOneTool(
 
 async function registerFilmToolsOnce(
   apiRef: ApiRef,
-): Promise<{ native: boolean; count: number }> {
+  controller: AbortController,
+): Promise<RegistrationResult> {
+  const { signal } = controller;
+  signal.throwIfAborted();
   sharedApiRef.current = apiRef.current;
   const context = ensureWebMCPPolyfill();
   const native = !("isPolyfill" in context && context.isPolyfill);
@@ -1484,7 +1479,7 @@ async function registerFilmToolsOnce(
     const listed = await context.getTools();
     if (listed.length >= expectedCount) {
       // HMR: refresh handler closures in place — no toolchange events.
-      await Promise.all(tools.map((tool) => registerOneTool(tool, true)));
+      await Promise.all(tools.map((tool) => registerOneTool(tool, true, signal)));
       webmcpStatus = {
         phase: "ready",
         ready: true,
@@ -1499,7 +1494,9 @@ async function registerFilmToolsOnce(
 
   const generation =
     existingWin?.generation ??
-    (typeof performance !== "undefined" ? performance.timeOrigin : Date.now());
+    (typeof performance !== "undefined"
+      ? performance.timeOrigin + performance.now()
+      : Date.now());
 
   webmcpStatus = {
     phase: "registering",
@@ -1511,7 +1508,7 @@ async function registerFilmToolsOnce(
   };
 
   const registerCounted = async (tool: WebMCPTool) => {
-    await registerOneTool(tool, true);
+    await registerOneTool(tool, true, signal);
     webmcpStatus = {
       ...webmcpStatus,
       toolCount: webmcpStatus.toolCount + 1,
@@ -1524,6 +1521,7 @@ async function registerFilmToolsOnce(
     await registerCounted(getFilm);
   }
   await Promise.all(rest.map((tool) => registerCounted(tool)));
+  signal.throwIfAborted();
 
   if ("flushToolChanges" in context && typeof context.flushToolChanges === "function") {
     context.flushToolChanges();
@@ -1541,6 +1539,7 @@ async function registerFilmToolsOnce(
 
   setWindowRegistration({
     apiRef: sharedApiRef,
+    controller,
     generation,
     native,
     count,
@@ -1559,50 +1558,62 @@ export function syncWebmcpApiRef(apiRef: ApiRef): void {
 
 export async function registerFilmTools(
   apiRef: ApiRef,
-): Promise<{ native: boolean; count: number }> {
+): Promise<RegistrationResult> {
   syncWebmcpApiRef(apiRef);
 
-  // HMR remount after first registration: refresh handlers in place.
-  if (registrationCompleted && getWindowRegistration()) {
-    return registerFilmToolsOnce(apiRef);
+  const active = getWindowRegistration();
+  if (active && !active.controller.signal.aborted) {
+    return registerFilmToolsOnce(apiRef, active.controller);
   }
 
-  if (registrationPending) {
-    return registrationPending;
+  if (registrationPending && !registrationPending.controller.signal.aborted) {
+    return registrationPending.promise;
   }
-  registrationPending = (async () => {
+
+  const controller = new AbortController();
+  const promise: Promise<RegistrationResult> = (async () => {
     try {
-      const result = await registerFilmToolsOnce(apiRef);
-      registrationCompleted = result;
-      return result;
-    } catch {
-      const result = await registerFilmToolsOnce(apiRef);
-      registrationCompleted = result;
-      return result;
+      return await registerFilmToolsOnce(apiRef, controller);
+    } catch (error) {
+      if (registrationPending?.controller === controller) {
+        webmcpStatus = {
+          ...webmcpStatus,
+          phase: "registering",
+          ready: false,
+          toolCount: 0,
+        };
+      }
+      throw error;
     } finally {
-      registrationPending = null;
+      if (registrationPending?.controller === controller) {
+        registrationPending = null;
+      }
     }
-  })().catch((error: unknown) => {
-    registrationPending = null;
-    const existing = getWindowRegistration();
-    if (existing) {
-      registrationCompleted = { native: existing.native, count: existing.count };
-      webmcpStatus = {
-        phase: "ready",
-        ready: true,
-        native: existing.native,
-        toolCount: existing.count,
-        expectedToolCount: existing.count,
-        generation: existing.generation,
-      };
-      return registrationCompleted;
-    }
-    webmcpStatus = {
-      ...webmcpStatus,
-      phase: "registering",
-      ready: false,
-    };
-    throw error;
-  });
-  return registrationPending;
+  })();
+  registrationPending = { controller, promise };
+  return promise;
+}
+
+export function unregisterFilmTools(): void {
+  const pending = registrationPending;
+  const active = getWindowRegistration();
+  pending?.controller.abort();
+  if (active && active.controller !== pending?.controller) {
+    active.controller.abort();
+  }
+  if (pending) {
+    clearWindowRegistration(pending.controller);
+  }
+  if (active) {
+    clearWindowRegistration(active.controller);
+  }
+  registrationPending = null;
+  webmcpStatus = {
+    phase: "registering",
+    ready: false,
+    native: active?.native ?? webmcpStatus.native,
+    toolCount: 0,
+    expectedToolCount: active?.count ?? webmcpStatus.expectedToolCount,
+    generation: active?.generation ?? webmcpStatus.generation,
+  };
 }

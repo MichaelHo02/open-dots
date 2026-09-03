@@ -122,6 +122,26 @@
     ]
   },
   {
+    "name": "Create a sprite from a direct indexed bitmap",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create this exact tiny pixel flower directly as a bitmap: transparent corners, dark outline, and a pink center."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "add_asset",
+        "arguments": {
+          "name": { "$any": true },
+          "bitmapPalette": { "$type": "array" },
+          "indexedRows": { "$type": "array" }
+        }
+      }
+    ]
+  },
+  {
     "name": "Draw an outline pass into a sprite",
     "messages": [
       {
@@ -214,38 +234,6 @@
       {
         "functionName": "place_text",
         "arguments": { "body": { "$contains": "End" } }
-      }
-    ]
-  },
-  {
-    "name": "Remove the second page",
-    "messages": [
-      {
-        "role": "user",
-        "type": "message",
-        "content": "Delete page 2 (index 1) — we don't need it."
-      }
-    ],
-    "expectedCall": [
-      {
-        "functionName": "remove_page",
-        "arguments": { "index": 1 }
-      }
-    ]
-  },
-  {
-    "name": "Remove an asset from the library",
-    "messages": [
-      {
-        "role": "user",
-        "type": "message",
-        "content": "Take the old floor tile out of the asset library."
-      }
-    ],
-    "expectedCall": [
-      {
-        "functionName": "remove_asset",
-        "arguments": { "id": { "$any": true } }
       }
     ]
   },
