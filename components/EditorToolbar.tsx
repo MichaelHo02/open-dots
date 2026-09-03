@@ -16,7 +16,6 @@ export type EditorToolbarProps = {
 
 function toolLabel(tool: DrawTool): string {
   switch (tool) {
-    case "eyedropper": return "Eyedropper";
     case "select": return "Select";
     case "line": return "Line";
     case "pencil":
@@ -38,7 +37,6 @@ function toolLabel(tool: DrawTool): string {
 
 function toolDescription(tool: DrawTool): string {
   switch (tool) {
-    case "eyedropper": return "Pick a color (I)";
     case "select": return "Select pixels (M)";
     case "line": return "Draw a straight line (L)";
     case "pencil":

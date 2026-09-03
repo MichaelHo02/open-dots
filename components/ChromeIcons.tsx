@@ -1,5 +1,5 @@
 import {
-  Pipette, MousePointer2, Scan, Slash, Redo2,
+  MousePointer2, Scan, Slash, Redo2,
   BookOpen,
   Eraser,
   Grid2x2,
@@ -18,7 +18,7 @@ import {
 import { assertNever, type DrawTool } from "@/lib/types";
 
 export type ChromeName =
-  | "eyedropper" | "select" | "line" | "redo"
+  | "select" | "line" | "redo"
   | "logo"
   | "draw"
   | "erase"
@@ -39,7 +39,7 @@ const STROKE_WIDTH = 1.75;
 const ICON_SIZE = 16;
 
 const icons: Record<ChromeName, LucideIcon> = {
-  eyedropper: Pipette, select: Scan, line: Slash, redo: Redo2,
+  select: Scan, line: Slash, redo: Redo2,
   logo: BookOpen, draw: Pencil, erase: Eraser, fill: PaintBucket,
   text: Type, shape: Shapes, undo: Undo2, clear: SquareX,
   present: MonitorPlay, page: Plus, plus: Plus, delete: Trash2,
@@ -67,7 +67,6 @@ export function ChromeIcon({
 
 export function toolIconName(tool: DrawTool): ChromeName {
   switch (tool) {
-    case "eyedropper": return "eyedropper";
     case "select": return "select";
     case "line": return "line";
     case "pencil":

@@ -87,7 +87,6 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
     paintLine,
     tool,
     color,
-    setColor,
     frame,
     shapeFilled,
     selectedAssetId,
@@ -506,7 +505,7 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
         tabIndex={0}
         aria-label="Pixel canvas"
         onPointerDown={(event) => {
-          if (!editable && tool !== "eyedropper") return;
+          if (!editable) return;
           if (selectedAsset && tool !== "text" && event.button === 0) {
             beginAssetGesture(event);
             event.preventDefault();
@@ -526,15 +525,6 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
               beginLineGesture(event);
               event.preventDefault();
               return;
-            case "eyedropper": {
-              const at = pixelFromEvent(event);
-              if (at && active) {
-                const pixels = compositedPagePixels(active, film.assets);
-                const sampled = pixels[at.y * width + at.x];
-                if (sampled) setColor(sampled);
-              }
-              return;
-            }
             case "select":
             case "move":
               beginMoveGesture(event);

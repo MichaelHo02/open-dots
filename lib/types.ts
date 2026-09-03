@@ -25,7 +25,6 @@ export const DRAW_TOOLS = [
   "shape",
   "move",
   "select",
-  "eyedropper",
   "line",
 ] as const;
 export type DrawTool = (typeof DRAW_TOOLS)[number];

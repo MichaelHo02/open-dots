@@ -51,7 +51,6 @@ export function WorkshopCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
   const {
     paint,
     paintLine,
-    setColor,
     tool,
     color,
     brushSize,
@@ -275,12 +274,6 @@ export function WorkshopCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
               beginLineGesture(event);
               event.preventDefault();
               return;
-            case "eyedropper": {
-              const at = pixelFromEvent(event);
-              const sampled = at && workshopDraft.pixels[at.y * width + at.x];
-              if (sampled) setColor(sampled);
-              return;
-            }
             case "select":
             case "pencil":
             case "eraser":

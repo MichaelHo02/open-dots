@@ -92,7 +92,7 @@ and reset brush/zoom. TypeScript, targeted lint and regression checks passed.
 
 ## Standard pixel-editor priority 1 and 2 — 2026-09-03
 
-Added Undo/Redo history and shortcuts; eyedropper; dedicated Select and Line tools;
+Added Undo/Redo history and shortcuts; dedicated Select and Line tools;
 continuous interpolated strokes; project JSON save/open with strict validation;
 page PNG export; placement delete/duplicate/proportional resize/flip/stacking/layer
 transfer; pixel copy/cut/paste/duplicate/delete; layer previews/duplicate/merge;
@@ -101,7 +101,7 @@ Canvas bounds resizing.
 
 Browser verification used the disposable blank Page 2: drew a fast continuous line,
 Undo/Redo restored it, drew a straight Line, selected and cut/pasted pixels, sampled
-with Eyedropper, placed and transformed a trainer, exercised placement delete/Undo,
+with the color controls, placed and transformed a trainer, exercised placement delete/Undo,
 duplicated and merged a layer with Undo, and opened the File actions. Store checks
 cover history invalidation, placement/layer locks and transforms, clipboard, both
 resize modes, workshop history/line drawing, and strict project round-trip rejection.

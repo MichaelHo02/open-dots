@@ -19,7 +19,7 @@ export function useEditorShortcuts(disabled: boolean, onToolSelect: () => void) 
         return;
       }
       if (name === "delete" || name === "backspace") { event.preventDefault(); api.deleteSelection(); return; }
-      const tool: DrawTool | undefined = ({ b: "pencil", e: "eraser", g: "fill", t: "text", u: "shape", v: "move", m: "select", i: "eyedropper", l: "line" } as Record<string, DrawTool>)[name];
+      const tool: DrawTool | undefined = ({ b: "pencil", e: "eraser", g: "fill", t: "text", u: "shape", v: "move", m: "select", l: "line" } as Record<string, DrawTool>)[name];
       if (tool) { event.preventDefault(); api.setTool(tool); onToolSelect(); }
     }
     window.addEventListener("keydown", key);

@@ -1177,7 +1177,6 @@ function createApi(
         case "pencil":
         case "eraser":
         case "fill":
-        case "eyedropper":
         case "line":
           clearSelection();
           clearPlacementSelection();
@@ -2263,7 +2262,6 @@ function createApi(
         case "shape":
         case "move":
         case "select":
-        case "eyedropper":
         case "line":
           return;
         case "pencil":
