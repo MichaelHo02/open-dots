@@ -15,7 +15,7 @@
       "name": "palette_and_page",
       "weight": 15,
       "score": 15,
-      "evidence": "Named palette and 256x144 page"
+      "evidence": "Named palette and confirmed 256x144 page"
     },
     {
       "name": "background",
@@ -45,13 +45,13 @@
       "name": "composition",
       "weight": 10,
       "score": 10,
-      "evidence": "11 valid stamps"
+      "evidence": "11 valid stamps; core=true; repeated scenery=true"
     },
     {
       "name": "final_verification",
       "weight": 10,
       "score": 10,
-      "evidence": "Final page inspected after composition"
+      "evidence": "Successful 256x144 final page inspected after composition"
     }
   ]
 }

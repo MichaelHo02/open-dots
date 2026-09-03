@@ -16,20 +16,28 @@
           { "functionName": "set_palette", "arguments": { "name": { "$any": true }, "colors": { "$type": "array" } } },
           { "functionName": "add_page", "arguments": { "width": 256 } },
           { "functionName": "paint_page", "arguments": null },
-          { "functionName": "add_asset", "arguments": { "name": "tent" } },
-          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
-          { "functionName": "add_asset", "arguments": { "name": "campfire" } },
-          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
-          { "functionName": "add_asset", "arguments": { "name": "mira" } },
-          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
-          { "functionName": "add_asset", "arguments": { "name": "fox" } },
-          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
-          { "functionName": "add_asset", "arguments": { "name": "pine tree" } },
-          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
-          { "functionName": "add_asset", "arguments": { "name": "star cluster" } },
-          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          {
+            "unordered": [
+              { "functionName": "place_text", "arguments": { "body": { "$contains": "Mira followed the little fox." } } },
+              {
+                "ordered": [
+                  { "functionName": "add_asset", "arguments": { "name": "tent" } },
+                  { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+                  { "functionName": "add_asset", "arguments": { "name": "campfire" } },
+                  { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+                  { "functionName": "add_asset", "arguments": { "name": { "$pattern": "^[Mm]ira$" } } },
+                  { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+                  { "functionName": "add_asset", "arguments": { "name": "fox" } },
+                  { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+                  { "functionName": "add_asset", "arguments": { "name": { "$contains": "tree" } } },
+                  { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+                  { "functionName": "add_asset", "arguments": { "name": { "$pattern": "^[Ss]tar ?[Cc]luster$" } } },
+                  { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } }
+                ]
+              }
+            ]
+          },
           { "functionName": "stamp_assets", "arguments": { "stamps": { "$type": "array" } } },
-          { "functionName": "place_text", "arguments": { "body": { "$contains": "Mira followed the little fox." } } },
           { "functionName": "get_page_image", "arguments": {} }
         ]
       }
