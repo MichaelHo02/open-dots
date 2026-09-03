@@ -70,7 +70,14 @@ function scoreJourney(calls: Call[]) {
   ];
   const totalScore = milestones.reduce((sum, item) => sum + item.score, 0);
   const complete = coreAssets.every((name) => assetNames.has(name)) && stamps.length > 0 && finalImage > lastMutation;
-  return { totalScore, verdict: complete && totalScore >= 75 ? "pass" : "incomplete", callCount: calls.length, milestones };
+  return {
+    scoreType: "semantic-workflow",
+    visualScore: null,
+    totalScore,
+    verdict: complete && totalScore >= 75 ? "pass" : "incomplete",
+    callCount: calls.length,
+    milestones,
+  };
 }
 
 async function main() {

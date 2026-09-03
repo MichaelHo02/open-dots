@@ -1,4 +1,6 @@
 {
+  "scoreType": "semantic-workflow",
+  "visualScore": null,
   "totalScore": 100,
   "verdict": "pass",
   "callCount": 20,

@@ -94,7 +94,7 @@ evidence `YYYY-MM-DD-layer3-<challenge>-<variant>-<artifact>.<ext>`.
 Score a browser report by required milestones instead of exact call order:
 
 ```bash
-npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/YYYY-MM-DD-layer3-campsite-score.json
+npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/YYYY-MM-DD-layer3-campsite-efficient-score.json
 ```
 
 Repeated reads, image inspections, and paint passes are allowed. The scorer
@@ -102,3 +102,7 @@ only enforces real dependencies and requires stamped composition plus a final
 page inspection before it can return `pass`. The four core subjects (tent,
 campfire, Mira, and fox) are required; trees and stars add score but do not
 block an otherwise complete result.
+
+This score measures semantic workflow completion only. Its JSON records
+`scoreType: "semantic-workflow"` and `visualScore: null`; score exported page
+pixels separately with `eval:story-page`.
