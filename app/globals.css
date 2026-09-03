@@ -1886,6 +1886,14 @@ input {
   font-size: 11px; font-weight: 450; line-height: 1; white-space: nowrap; pointer-events: none; z-index: 40;
 }
 .icon-tooltip:hover::after, .icon-tooltip:focus-visible::after { display: block; }
+.webmcp-status-dot {
+  width: 9px; height: 9px; margin: 0 4px 0 8px; flex: 0 0 auto;
+  border-radius: 50%; background: var(--hairline); cursor: help;
+}
+.webmcp-status-dot.live { background: #1ea64a; }
+.webmcp-status-dot.error { background: var(--accent-magenta); }
+.webmcp-status-dot::after { right: 0; left: auto; transform: none; }
+.webmcp-status-dot:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
 .workspace { position: relative; }
 .workspace-zoom {
   position: absolute; right: 16px; bottom: 16px; z-index: 5;

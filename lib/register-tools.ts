@@ -1488,6 +1488,17 @@ async function registerFilmToolsOnce(
   const existingWin = getWindowRegistration();
   if (existingWin) {
     existingWin.apiRef = sharedApiRef;
+    if (!("getTools" in context) || typeof context.getTools !== "function") {
+      webmcpStatus = {
+        phase: "ready",
+        ready: true,
+        native: existingWin.native,
+        toolCount: existingWin.count,
+        expectedToolCount: expectedCount,
+        generation: existingWin.generation,
+      };
+      return { native: existingWin.native, count: existingWin.count };
+    }
     const listed = await context.getTools();
     if (listed.length >= expectedCount) {
       // HMR: refresh handler closures in place — no toolchange events.
@@ -1591,6 +1602,19 @@ export async function registerFilmTools(
     }
   })().catch((error: unknown) => {
     registrationPending = null;
+    const existing = getWindowRegistration();
+    if (existing) {
+      registrationCompleted = { native: existing.native, count: existing.count };
+      webmcpStatus = {
+        phase: "ready",
+        ready: true,
+        native: existing.native,
+        toolCount: existing.count,
+        expectedToolCount: existing.count,
+        generation: existing.generation,
+      };
+      return registrationCompleted;
+    }
     webmcpStatus = {
       ...webmcpStatus,
       phase: "registering",
