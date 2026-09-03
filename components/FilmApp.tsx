@@ -186,7 +186,7 @@ export function FilmApp() {
         </aside>
 
         <div className="workspace">
-          <div className="page-workspace" data-workshop={workshopOpen ? "true" : undefined}>
+          <div className="page-workspace">
           <div className="workspace-zoom screen-only" aria-label="Zoom"><StageZoomControls /></div>
           {workshopOpen ? (
             <main
