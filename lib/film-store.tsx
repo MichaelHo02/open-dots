@@ -1833,6 +1833,22 @@ function createApi(
       });
       return true;
     },
+    reorderPage: (id, index) => {
+      const current = getSnapshot();
+      const from = current.pages.findIndex((page) => page.id === id);
+      if (from < 0 || index < 0 || index >= current.pages.length) return false;
+      if (from === index) return true;
+      const pages = [...current.pages];
+      const [page] = pages.splice(from, 1);
+      pages.splice(index, 0, page);
+      undos.length = 0;
+      redos.length = 0;
+      clearSelection();
+      clearPlacementSelection();
+      dropFloating();
+      commit({ ...current, pages, activeIndex: index });
+      return true;
+    },
     movePage: (id, x, y) => {
       const current = getSnapshot();
       const page = current.pages.find((item) => item.id === id);

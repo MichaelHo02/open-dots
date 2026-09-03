@@ -35,6 +35,8 @@ export function FilmApp() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
+  const [draggedPage, setDraggedPage] = useState<{ id: string; index: number } | null>(null);
+  const [pageDrop, setPageDrop] = useState<{ index: number; after: boolean } | null>(null);
   useEffect(() => {
     selectedPageRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [film.activeIndex, workshopOpen]);
@@ -196,14 +198,41 @@ export function FilmApp() {
             <div className="strip-thumbs">
               {film.pages.map((page, index) => <button
                 key={page.id} type="button" className="thumb"
+                draggable
                 data-active={index === film.activeIndex}
-                aria-label={`Page ${index + 1}`}
+                aria-label={`Page ${index + 1}. Drag to reorder.`}
                 aria-current={index === film.activeIndex ? "page" : undefined}
                 ref={index === film.activeIndex ? selectedPageRef : undefined}
+                style={pageDrop?.index === index ? { boxShadow: `inset ${pageDrop.after ? "-3px" : "3px"} 0 0 var(--brand-accent)` } : undefined}
                 onClick={() => { api.selectPage(index); api.resetStageZoom(); setInspectorOpen(true); }}
+                onKeyDown={(event) => {
+                  if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+                  event.preventDefault();
+                  api.reorderPage(page.id, Math.max(0, Math.min(film.pages.length - 1, index + (event.key === "ArrowLeft" ? -1 : 1))));
+                }}
+                onDragStart={(event) => {
+                  setDraggedPage({ id: page.id, index });
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", page.id);
+                }}
+                onDragOver={(event) => {
+                  if (!draggedPage || draggedPage.id === page.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setPageDrop({ index, after: event.clientX > event.currentTarget.getBoundingClientRect().left + event.currentTarget.offsetWidth / 2 });
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (!draggedPage || !pageDrop) return;
+                  const boundary = pageDrop.index + Number(pageDrop.after);
+                  api.reorderPage(draggedPage.id, boundary > draggedPage.index ? boundary - 1 : boundary);
+                  setDraggedPage(null);
+                  setPageDrop(null);
+                }}
+                onDragEnd={() => { setDraggedPage(null); setPageDrop(null); }}
               >
                 <PagePreview page={page} assets={film.assets} />
-                <span className="page-index">Page {index + 1}</span>
+                <span className="page-index">{index + 1}</span>
               </button>)}
             </div>
             <div className="strip-actions">

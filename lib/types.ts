@@ -296,6 +296,7 @@ export interface FilmApi {
   addPage: (input?: { story?: string; draw?: string }) => Page;
   selectPage: (index: number) => boolean;
   removePage: (index: number) => boolean;
+  reorderPage: (id: string, index: number) => boolean;
   movePage: (id: string, x: number, y: number) => boolean;
   linkPages: (fromId: string, toId: string | null) => boolean;
   addText: (input: {
