@@ -1412,6 +1412,14 @@ function createApi(
       touchWorkshopDraft();
       return true;
     },
+    setWorkshopFrameDuration: (duration) => {
+      if (!workshopDraft || !Number.isFinite(duration)) return;
+      const frameDuration = Math.max(100, Math.min(2000, Math.round(duration)));
+      if (frameDuration === workshopDraft.frameDuration) return;
+      pushWorkshopUndo();
+      workshopDraft = { ...workshopDraft, frameDuration };
+      touchWorkshopDraft();
+    },
     addWorkshopFrame: () => {
       if (!workshopDraft) return;
       const frame = clonePixels(workshopDraft.pixels);

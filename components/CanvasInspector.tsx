@@ -37,6 +37,10 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
                 <div className="choice-row workshop-size-choices" role="group" aria-label="Square size presets">
                   {ASSET_SIZE_PRESETS.map((size) => <button key={size} type="button" className="pill" data-active={draft.width === size && draft.height === size} onClick={() => api.setWorkshopSize(size)}>{size}</button>)}
                 </div>
+                <label className="workshop-speed-setting">
+                  <span><span className="sidebar-label">Frame speed</span><output>{(draft.frameDuration / 1000).toFixed(1)}s</output></span>
+                  <input type="range" min={100} max={2000} step={100} value={draft.frameDuration} aria-label="Animation frame duration" onChange={(event) => api.setWorkshopFrameDuration(Number(event.currentTarget.value))} />
+                </label>
               </section>
             ) : null}
             {!workshopOpen ? (

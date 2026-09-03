@@ -1995,6 +1995,10 @@ input {
 .workshop-size-fields input { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--canvas); }
 .workshop-size-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .workshop-size-choices .pill { justify-content: center; }
+.workshop-speed-setting { display: grid; width: 100%; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.workshop-speed-setting > span { display: flex; align-items: center; justify-content: space-between; }
+.workshop-speed-setting output { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.workshop-speed-setting input { width: 100%; accent-color: var(--brand-accent); }
 .toolbar-button:disabled { opacity: .35; cursor: default; }
 .drawing-options { display: grid; gap: 10px; font-size: 12px; }
 .drawing-options label { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: 8px; }
