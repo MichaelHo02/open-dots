@@ -9,7 +9,7 @@
 - Cases: 16 completed, 0 runtime errors
 - Strict matcher: 7 passed steps, 36 failed steps (7/43, 16.3%)
 - Full report: [layer3-gemini-3.1-flash-lite-2026-09-04.html](./layer3-gemini-3.1-flash-lite-2026-09-04.html)
-- Report SHA-256: `4a96517e88f2bcac52bc1570539af277e858c47d69699973788a7d3921fc22aa`
+- Report SHA-256: `2c5a999458a006b4df6dccd25ac25999f80a6ea7be136b8cdc019359c6172464`
 
 The report preserves the actual model trajectories and tool results. Several
 strict matcher failures are ordering failures rather than missing capability:
