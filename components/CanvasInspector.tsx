@@ -7,6 +7,7 @@ import { useFilm } from "@/lib/film-store";
 import { activePageLayer, DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH } from "@/lib/types";
 import { LayersPanel } from "./LayersPanel";
 import { AppTooltipTrigger } from "./AppTooltip";
+import { ConfirmAction } from "./ConfirmAction";
 
 export function CanvasInspector({ onClose }: { onClose: () => void }) {
   const [resizeMode, setResizeMode] = useState<"scale" | "canvas">("scale");
@@ -38,7 +39,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
             ) : null}
             {!workshopOpen ? (
               <section className="sidebar-section">
-                <button type="button" className="pill danger-subtle" onClick={() => api.clearPage()}><Trash2 size={15} aria-hidden="true" />Clear selected layer</button>
+                <ConfirmAction className="pill danger-subtle" label="Clear selected layer" confirmLabel="Click again to clear" onConfirm={() => api.clearPage()} confirmChildren={<><Trash2 size={15} aria-hidden="true" />Click again to clear</>}><Trash2 size={15} aria-hidden="true" />Clear selected layer</ConfirmAction>
               </section>
             ) : null}
     </aside>

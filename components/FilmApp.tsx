@@ -17,7 +17,8 @@ import { ToolSettings } from "./ToolSettings";
 import { AppTooltip, AppTooltipTrigger } from "./AppTooltip";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { Plus, Trash2 } from "lucide-react";
+import { Check, Plus, Trash2 } from "lucide-react";
+import { ConfirmAction } from "./ConfirmAction";
 import { AssetImageImport } from "./AssetImageImport";
 
 export function FilmApp() {
@@ -141,16 +142,15 @@ export function FilmApp() {
                     >
                       <ChromeIcon name="draw" size={14} />
                     </button></AppTooltipTrigger>
-                    <AppTooltipTrigger label={`Remove ${asset.name}`}><button
-                      type="button"
+                    <ConfirmAction
                       className="asset-remove icon-tooltip"
-                      aria-label={`Remove ${asset.name}`}
-                      onClick={() => {
-                        if (window.confirm(`Remove “${asset.name}” from the library and every page? This cannot be undone.`)) api.removeAsset(asset.id);
-                      }}
+                      label={`Remove ${asset.name}`}
+                      confirmLabel={`Click again to remove ${asset.name}`}
+                      onConfirm={() => api.removeAsset(asset.id)}
+                      confirmChildren={<Check size={14} aria-hidden="true" />}
                     >
                       <Trash2 size={14} aria-hidden="true" />
-                    </button></AppTooltipTrigger>
+                    </ConfirmAction>
                   </li>
                 ))}
               </ul>
@@ -241,9 +241,7 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
-              <AppTooltipTrigger label="Delete page"><button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => {
-                if (window.confirm(`Delete page ${film.activeIndex + 1}? This cannot be undone.`)) api.removePage(film.activeIndex);
-              }}><Trash2 size={16} aria-hidden="true" /></button></AppTooltipTrigger>
+              <ConfirmAction className="pill danger-subtle page-action-icon icon-tooltip" label="Delete page" confirmLabel={`Click again to delete page ${film.activeIndex + 1}`} disabled={film.pages.length <= 1} onConfirm={() => api.removePage(film.activeIndex)} confirmChildren={<Check size={16} aria-hidden="true" />}><Trash2 size={16} aria-hidden="true" /></ConfirmAction>
               <AppTooltipTrigger label="New page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); }}><Plus size={17} aria-hidden="true" /></button></AppTooltipTrigger>
             </div>
           </nav>}

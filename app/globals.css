@@ -889,6 +889,7 @@ input {
 .pill.danger-subtle:hover:not(:disabled) { border-color: #fda29b; background: #fee4e2; }
 .pill.danger-subtle:focus-visible { outline-color: #d92d20; }
 .pill.danger-subtle:disabled { opacity: .4; }
+[data-confirm] { color: #b42318 !important; background: #fee4e2 !important; }
 
 .pill[data-active="true"],
 .pill.primary {
