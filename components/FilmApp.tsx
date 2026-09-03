@@ -16,7 +16,7 @@ import { StageZoomControls } from "./StageZoomControls";
 import { ToolSettings } from "./ToolSettings";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { Plus, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Trash2 } from "lucide-react";
 
 export function FilmApp() {
   const api = useFilm();
@@ -195,15 +195,16 @@ export function FilmApp() {
           )}
           </div>
           {!workshopOpen && <nav className="strip screen-only" aria-label="Pages">
-            <div className="strip-thumbs">
+            <div className="strip-thumbs" data-dragging={draggedPage ? "true" : undefined}>
               {film.pages.map((page, index) => <button
                 key={page.id} type="button" className="thumb"
                 draggable
                 data-active={index === film.activeIndex}
+                data-dragging={draggedPage?.id === page.id ? "true" : undefined}
+                data-drop={pageDrop?.index === index ? (pageDrop.after ? "after" : "before") : undefined}
                 aria-label={`Page ${index + 1}. Drag to reorder.`}
                 aria-current={index === film.activeIndex ? "page" : undefined}
                 ref={index === film.activeIndex ? selectedPageRef : undefined}
-                style={pageDrop?.index === index ? { boxShadow: `inset ${pageDrop.after ? "-3px" : "3px"} 0 0 var(--brand-accent)` } : undefined}
                 onClick={() => { api.selectPage(index); api.resetStageZoom(); setInspectorOpen(true); }}
                 onKeyDown={(event) => {
                   if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
@@ -233,6 +234,7 @@ export function FilmApp() {
               >
                 <PagePreview page={page} assets={film.assets} />
                 <span className="page-index">{index + 1}</span>
+                <span className="page-drag-handle" title="Drag to reorder" aria-hidden="true"><GripVertical size={14} /></span>
               </button>)}
             </div>
             <div className="strip-actions">
