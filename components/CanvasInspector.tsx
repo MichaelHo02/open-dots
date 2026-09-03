@@ -4,7 +4,7 @@ import { useState } from "react";
 import { SelectionControls } from "./SelectionControls";
 import { Trash2, X } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
-import { activePageLayer, DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH } from "@/lib/types";
+import { activePageLayer, ASSET_SIZE_PRESETS, DEFAULT_WIDTH, DEFAULT_HEIGHT, MAX_ASSET_SIDE, MIN_WIDTH, MAX_WIDTH } from "@/lib/types";
 import { LayersPanel } from "./LayersPanel";
 import { AppTooltipTrigger } from "./AppTooltip";
 import { ConfirmAction } from "./ConfirmAction";
@@ -13,6 +13,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
   const [resizeMode, setResizeMode] = useState<"scale" | "canvas">("scale");
   const api = useFilm();
   const { film, active, workshopOpen } = api;
+  const draft = api.workshopDraft;
   const density = active ?? film.pages[0];
   const densityLocked = !!active && (activePageLayer(active).locked || !activePageLayer(active).visible);
   const number = film.activeIndex + 1;
@@ -24,6 +25,19 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
       </div>
             {!workshopOpen ? (
               <><LayersPanel /><SelectionControls /></>
+            ) : null}
+            {workshopOpen && draft ? (
+              <section className="access-group workshop-size-settings" aria-label="Asset size">
+                <p className="sidebar-label">Size</p>
+                <div className="workshop-size-fields">
+                  <label>Width<input key={`width-${draft.width}`} type="number" min={1} max={MAX_ASSET_SIDE} defaultValue={draft.width} aria-label="Asset width" onBlur={(event) => api.setWorkshopSize(Number(event.currentTarget.value), draft.height)} /></label>
+                  <span aria-hidden="true">×</span>
+                  <label>Height<input key={`height-${draft.height}`} type="number" min={1} max={MAX_ASSET_SIDE} defaultValue={draft.height} aria-label="Asset height" onBlur={(event) => api.setWorkshopSize(draft.width, Number(event.currentTarget.value))} /></label>
+                </div>
+                <div className="choice-row workshop-size-choices" role="group" aria-label="Square size presets">
+                  {ASSET_SIZE_PRESETS.map((size) => <button key={size} type="button" className="pill" data-active={draft.width === size && draft.height === size} onClick={() => api.setWorkshopSize(size)}>{size}</button>)}
+                </div>
+              </section>
             ) : null}
             {!workshopOpen ? (
               <section className="access-group access-density" aria-label="Density">

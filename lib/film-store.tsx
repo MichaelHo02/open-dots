@@ -1386,23 +1386,27 @@ function createApi(
       workshopDraft = { ...workshopDraft, name: nextName };
       touchWorkshopDraft();
     },
-    setWorkshopSize: (size) => {
+    setWorkshopSize: (width, height = width) => {
       if (!workshopDraft) {
         return false;
       }
-      const next = Math.max(8, Math.min(MAX_ASSET_SIDE, Math.round(size)));
-      if (next === workshopDraft.width && next === workshopDraft.height) {
+      const safeWidth = Number.isFinite(width) ? width : workshopDraft.width;
+      const safeHeight = Number.isFinite(height) ? height : workshopDraft.height;
+      const next = {
+        width: Math.max(1, Math.min(MAX_ASSET_SIDE, Math.round(safeWidth))),
+        height: Math.max(1, Math.min(MAX_ASSET_SIDE, Math.round(safeHeight))),
+      };
+      if (next.width === workshopDraft.width && next.height === workshopDraft.height) {
         return true;
       }
       pushWorkshopUndo();
       workshopDraft = {
         ...workshopDraft,
-        width: next,
-        height: next,
+        ...next,
         frames: workshopDraft.frames.map(frame => resizePixels(frame,
-          { width: workshopDraft!.width, height: workshopDraft!.height }, { width: next, height: next })),
+          { width: workshopDraft!.width, height: workshopDraft!.height }, next)),
         pixels: resizePixels(workshopDraft.pixels,
-          { width: workshopDraft.width, height: workshopDraft.height }, { width: next, height: next }),
+          { width: workshopDraft.width, height: workshopDraft.height }, next),
       };
       dropFloating();
       touchWorkshopDraft();
