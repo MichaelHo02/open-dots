@@ -37,6 +37,7 @@ function LayerRow({ page, layer, index, layers }: { page: Page; layer: PageLayer
       <IconButton label="Merge with layer below" disabled={!canMerge} onClick={() => api.mergeLayerDown(layer.id)}><Merge size={14} /></IconButton>
       <ConfirmAction className="layers-icon-button icon-tooltip" label="Delete layer" confirmLabel={`Click again to delete ${layer.name}`} disabled={layers.length <= 1 || layer.locked} onConfirm={() => api.removeLayer(layer.id)} confirmChildren={<Check size={14} />}><Trash2 size={14} /></ConfirmAction>
     </div> : null}
+    {active ? <label className="layer-opacity">Opacity <input type="range" min="0" max="100" value={Math.round((layer.opacity ?? 1) * 100)} disabled={layer.locked} aria-label={`${layer.name} opacity`} onChange={event => api.updateLayer(layer.id, { opacity: Number(event.target.value) / 100 })} /><span>{Math.round((layer.opacity ?? 1) * 100)}%</span></label> : null}
     {layer.placements.length ? <ul className="layers-assets" aria-label={`Assets in ${layer.name}`}>
       {layer.placements.map((placement) => {
         const asset = api.film.assets.find((item) => item.id === placement.assetId);

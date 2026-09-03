@@ -357,6 +357,9 @@ function normalizeAsset(
   const pixels = source.map((item) =>
     normalizeStoredPixel(item, paperAsEmpty),
   );
+  const frames = Array.isArray(raw.frames) ? raw.frames
+    .filter(frame => Array.isArray(frame) && frame.length === width * height)
+    .map(frame => frame.map(item => normalizeStoredPixel(item, paperAsEmpty))) : [];
   const name =
     typeof raw.name === "string" && raw.name.trim()
       ? raw.name.trim().slice(0, MAX_ASSET_NAME)
@@ -367,6 +370,8 @@ function normalizeAsset(
     width,
     height,
     pixels,
+    frames: frames.length > 1 ? frames : undefined,
+    frameDuration: Math.max(100, Math.min(2000, Math.round(raw.frameDuration ?? 400))),
   };
 }
 
@@ -493,7 +498,8 @@ function migratePage(
     const pixels = Array.from({ length: size.width * size.height }, (_, i) =>
       normalizeStoredPixel(Array.isArray(layer.pixels) ? layer.pixels[i] : EMPTY, paperAsEmpty));
     return { id, name: typeof layer.name === "string" && layer.name.trim() ? layer.name.trim().slice(0, 80) : `Layer ${index + 1}`,
-      visible: layer.visible !== false, locked: layer.locked === true, pixels,
+      visible: layer.visible !== false, locked: layer.locked === true,
+      opacity: Math.max(0, Math.min(1, Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1)), pixels,
       placements: normalizePlacements(layer.placements),
       texts: Array.isArray(layer.texts) ? layer.texts.filter((mark) => mark && typeof mark.body === "string").map(normalizeTextMark) : [] };
   });
@@ -835,7 +841,9 @@ function getPaintSurface(): PaintSurface | null {
       size,
       commit: (pixels) => {
         workshopRedos.length = 0;
-        workshopDraft = { ...workshopDraft!, pixels };
+        const frames = [...workshopDraft!.frames];
+        frames[workshopDraft!.frameIndex] = pixels;
+        workshopDraft = { ...workshopDraft!, pixels, frames };
         touchWorkshopDraft();
       },
       pushUndoFn: pushWorkshopUndo,
@@ -1300,6 +1308,8 @@ function createApi(
           width: asset.width,
           height: asset.height,
           pixels: clonePixels(asset.pixels),
+          frames: (asset.frames?.length ? asset.frames : [asset.pixels]).map(clonePixels),
+          frameIndex: 0,
         };
       } else {
         if (current.assets.length >= MAX_ASSETS) {
@@ -1311,6 +1321,8 @@ function createApi(
           width: DEFAULT_ASSET_WIDTH,
           height: DEFAULT_ASSET_HEIGHT,
           pixels: emptyPixels(DEFAULT_ASSET_WIDTH, DEFAULT_ASSET_HEIGHT),
+          frames: [emptyPixels(DEFAULT_ASSET_WIDTH, DEFAULT_ASSET_HEIGHT)],
+          frameIndex: 0,
         };
       }
       workshopOpen = true;
@@ -1330,6 +1342,7 @@ function createApi(
             width: workshopDraft.width,
             height: workshopDraft.height,
             pixels: workshopDraft.pixels,
+            frames: workshopDraft.frames,
           },
           false,
         );
@@ -1383,15 +1396,34 @@ function createApi(
         ...workshopDraft,
         width: next,
         height: next,
-        pixels: resizePixels(
-          workshopDraft.pixels,
-          { width: workshopDraft.width, height: workshopDraft.height },
-          { width: next, height: next },
-        ),
+        frames: workshopDraft.frames.map(frame => resizePixels(frame,
+          { width: workshopDraft!.width, height: workshopDraft!.height }, { width: next, height: next })),
+        pixels: resizePixels(workshopDraft.pixels,
+          { width: workshopDraft.width, height: workshopDraft.height }, { width: next, height: next }),
       };
       dropFloating();
       touchWorkshopDraft();
       return true;
+    },
+    addWorkshopFrame: () => {
+      if (!workshopDraft) return;
+      const frame = clonePixels(workshopDraft.pixels);
+      const frames = [...workshopDraft.frames];
+      frames.splice(workshopDraft.frameIndex + 1, 0, frame);
+      workshopDraft = { ...workshopDraft, frames, frameIndex: workshopDraft.frameIndex + 1, pixels: frame };
+      touchWorkshopDraft();
+    },
+    removeWorkshopFrame: () => {
+      if (!workshopDraft || workshopDraft.frames.length <= 1) return;
+      const frames = workshopDraft.frames.filter((_, index) => index !== workshopDraft!.frameIndex);
+      const frameIndex = Math.min(workshopDraft.frameIndex, frames.length - 1);
+      workshopDraft = { ...workshopDraft, frames, frameIndex, pixels: clonePixels(frames[frameIndex]) };
+      touchWorkshopDraft();
+    },
+    selectWorkshopFrame: (index) => {
+      if (!workshopDraft || !workshopDraft.frames[index]) return;
+      workshopDraft = { ...workshopDraft, frameIndex: index, pixels: clonePixels(workshopDraft.frames[index]) };
+      touchWorkshopDraft();
     },
     selectMark: (id, kind) => {
       if (!id) {
@@ -1649,7 +1681,7 @@ function createApi(
       if (!page) return null;
       const layers = pageLayers(page);
       const layer: PageLayer = { id: createId("layer"), name: `Layer ${layers.length + 1}`,
-        visible: true, locked: false, pixels: emptyPixels(page.width, page.height), placements: [], texts: [] };
+        visible: true, locked: false, opacity: 1, pixels: emptyPixels(page.width, page.height), placements: [], texts: [] };
       pushUndo();
       commitLayers(page, [...layers, layer], layer.id);
       return layer;
@@ -1712,9 +1744,10 @@ function createApi(
       if (patch.name !== undefined && (typeof patch.name !== "string" || !patch.name.trim())) return false;
       if (patch.visible !== undefined && typeof patch.visible !== "boolean") return false;
       if (patch.locked !== undefined && typeof patch.locked !== "boolean") return false;
+      if (patch.opacity !== undefined && (!Number.isFinite(patch.opacity) || patch.opacity < 0 || patch.opacity > 1)) return false;
       const next = { ...layer, name: patch.name?.trim().slice(0, 80) ?? layer.name,
-        visible: patch.visible ?? layer.visible, locked: patch.locked ?? layer.locked };
-      if (next.name === layer.name && next.visible === layer.visible && next.locked === layer.locked) return false;
+        visible: patch.visible ?? layer.visible, locked: patch.locked ?? layer.locked, opacity: patch.opacity ?? layer.opacity };
+      if (next.name === layer.name && next.visible === layer.visible && next.locked === layer.locked && next.opacity === layer.opacity) return false;
       pushUndo();
       commitLayers(page, pageLayers(page).map((item) => item.id === id ? next : item));
       return true;
@@ -1791,6 +1824,25 @@ function createApi(
         activeIndex: pages.length - 1,
       });
       return page;
+    },
+    duplicatePage: (index) => {
+      const current = getSnapshot();
+      const source = current.pages[index];
+      if (!source) return null;
+      const sourceLayers = pageLayers(source);
+      const activeIndex = sourceLayers.findIndex(layer => layer.id === source.activeLayerId);
+      const layers = sourceLayers.map((layer): PageLayer => ({ ...layer, id: createId("layer"),
+        pixels: clonePixels(layer.pixels), placements: layer.placements.map(item => ({ ...item, id: createId("place") })),
+        texts: layer.texts.map(item => ({ ...item, id: createId("text") })) }));
+      const copy = withLayers({ ...source, id: createId("page"), boardX: source.boardX + 40, boardY: source.boardY + 40,
+        pixels: [], placements: [], texts: [] }, layers, layers[Math.max(0, activeIndex)]?.id);
+      const pages = [...current.pages];
+      pages.splice(index + 1, 0, copy);
+      undos.length = 0;
+      redos.length = 0;
+      clearLayerSelection();
+      commit({ ...current, pages, activeIndex: index + 1 });
+      return copy;
     },
     selectPage: (index) => {
       const current = getSnapshot();
@@ -2381,6 +2433,8 @@ function createApi(
         workshopDraft = {
           ...workshopDraft,
           pixels: emptyPixels(workshopDraft.width, workshopDraft.height),
+          frames: workshopDraft.frames.map((frame, index) => index === workshopDraft!.frameIndex
+            ? emptyPixels(workshopDraft!.width, workshopDraft!.height) : frame),
         };
         touchWorkshopDraft();
         return;

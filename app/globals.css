@@ -1981,6 +1981,22 @@ input {
 .project-menu-items button kbd { margin-left: auto; color: var(--muted); font: inherit; }
 .project-menu-items button:hover { background: var(--surface-soft); }
 .project-menu-items p { padding: 8px; }
+.project-save-state { margin: 0; color: #737373; font-size: 11px; }
+.project-confirm[data-confirm] { justify-content: flex-start; }
+.reference-panel { display: grid; gap: 8px; }
+.reference-panel img { display: block; width: 100%; max-height: 150px; object-fit: contain; border: 1px solid var(--hairline); background: var(--surface-soft); }
+.reference-panel span { overflow: hidden; color: #737373; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.reference-panel .sidebar-assets-head button { display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
+.shortcut-dialog { width: min(420px, calc(100vw - 32px)); margin: auto; padding: 20px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); }
+.shortcut-dialog::backdrop { background: #0005; }
+.shortcut-heading, .shortcut-dialog dl > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.shortcut-heading h2 { margin: 0; font-size: 18px; }
+.shortcut-dialog dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; margin: 20px 0 0; }
+.shortcut-dialog dl > div { padding: 8px 0; border-top: 1px solid var(--hairline-soft); font-size: 12px; }
+.shortcut-dialog dd { margin: 0; }
+.shortcut-dialog kbd { padding: 2px 6px; border: 1px solid var(--hairline); border-radius: 4px; background: var(--surface-soft); font: inherit; }
+.workshop-frames { display: flex; align-items: center; gap: 6px; }
+.workshop-frames select { padding: 7px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--canvas); font-size: 11px; }
 .toolbar-button:disabled { opacity: .35; cursor: default; }
 .drawing-options { display: grid; gap: 10px; font-size: 12px; }
 .drawing-options label { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: 8px; }

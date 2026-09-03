@@ -13,6 +13,7 @@ const layered = { ...page, layers: [base, top], activeLayerId: top.id };
 assert.deepEqual(compositedPagePixels(layered, [asset]), [blue, green]);
 assert.deepEqual(compositedPagePixels({ ...layered, layers: [top, base] }, [asset]), [blue, red]);
 assert.deepEqual(compositedPagePixels({ ...layered, layers: [base, { ...top, visible: false }] }, [asset]), [blue, red]);
+assert.deepEqual(compositedPagePixels({ ...layered, layers: [base, { ...top, opacity: 0.5 }] }, [asset]), [blue, '#808000']);
 assert.deepEqual(compositedPagePixels({ ...layered, layers: [{ ...base, locked: true }, top] }, [asset]), [blue, green]);
 const flattened = { ...base, pixels: compositePage(base.pixels, page, base.placements, () => asset), placements: [] };
 assert.deepEqual(compositedPagePixels({ ...layered, layers: [flattened, top] }, [asset]), [blue, green]);

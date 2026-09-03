@@ -8,10 +8,12 @@ export function PagePreview({
   page,
   assets = [],
   className = "",
+  animated = false,
 }: {
   page: Page;
   assets?: Asset[];
   className?: string;
+  animated?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { width, height } = page;
@@ -25,13 +27,18 @@ export function PagePreview({
     canvas.width = width;
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
-    paintPixelGrid(
-      ctx,
-      compositedPagePixels(page, assets),
-      width,
-      height,
-    );
-  }, [assets, height, page, width]);
+    let step = 0;
+    const draw = () => {
+      const visibleAssets = animated ? assets.map(asset => asset.frames?.length
+        ? { ...asset, pixels: asset.frames[step % asset.frames.length] } : asset) : assets;
+      paintPixelGrid(ctx, compositedPagePixels(page, visibleAssets), width, height);
+      step += 1;
+    };
+    draw();
+    if (!animated || !assets.some(asset => (asset.frames?.length ?? 0) > 1)) return;
+    const timer = window.setInterval(draw, 400);
+    return () => window.clearInterval(timer);
+  }, [animated, assets, height, page, width]);
 
   return (
     <span className={`thumb-art ${className}`.trim()}>
@@ -45,8 +52,9 @@ export function PagePreview({
   );
 }
 
-export function AssetThumb({ asset }: { asset: Asset }) {
+export function AssetThumb({ asset, animated = false }: { asset: Asset; animated?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -57,8 +65,13 @@ export function AssetThumb({ asset }: { asset: Asset }) {
     canvas.width = asset.width;
     canvas.height = asset.height;
     ctx.imageSmoothingEnabled = false;
-    paintPixelGrid(ctx, asset.pixels, asset.width, asset.height);
-  }, [asset]);
+    const frames = animated && asset.frames?.length ? asset.frames : [asset.pixels];
+    const draw = () => { paintPixelGrid(ctx, frames[frameRef.current % frames.length], asset.width, asset.height); frameRef.current += 1; };
+    draw();
+    if (frames.length <= 1) return;
+    const timer = window.setInterval(draw, asset.frameDuration ?? 400);
+    return () => window.clearInterval(timer);
+  }, [animated, asset]);
 
   return (
     <canvas

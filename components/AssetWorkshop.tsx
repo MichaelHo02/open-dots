@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { WorkshopCanvas } from "./WorkshopCanvas";
 import { useFilm } from "@/lib/film-store";
 import { ASSET_SIZE_PRESETS, MAX_ASSET_NAME, MAX_ASSETS } from "@/lib/types";
+import { CopyPlus, Trash2 } from "lucide-react";
 
 export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" | "y" | "both"; showGrid: boolean }) {
   const {
@@ -12,6 +13,9 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
     closeWorkshop,
     setWorkshopName,
     setWorkshopSize,
+    addWorkshopFrame,
+    removeWorkshopFrame,
+    selectWorkshopFrame,
     film,
   } = useFilm();
 
@@ -82,6 +86,11 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
             </div>
           </div>
           <div className="workshop-chrome-actions">
+            <div className="workshop-frames" aria-label="Animation frames">
+              <button type="button" className="pill" onClick={removeWorkshopFrame} disabled={workshopDraft.frames.length <= 1} aria-label="Delete animation frame"><Trash2 size={14} /></button>
+              <select aria-label="Animation frame" value={workshopDraft.frameIndex} onChange={event => selectWorkshopFrame(Number(event.target.value))}>{workshopDraft.frames.map((_, index) => <option key={index} value={index}>Frame {index + 1}</option>)}</select>
+              <button type="button" className="pill" onClick={addWorkshopFrame}><CopyPlus size={14} />Add frame</button>
+            </div>
             <button
               type="button"
               className="pill workshop-back"

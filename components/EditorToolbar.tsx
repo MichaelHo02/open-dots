@@ -10,6 +10,7 @@ import { ChromeIcon, toolIconName } from "./ChromeIcons";
 import { OpenDotsLogo, OpenDotsWordmark } from "./OpenDotsLogo";
 import { WebMCPBridge } from "./WebMCPBridge";
 import { AppTooltipTrigger } from "./AppTooltip";
+import { ShortcutHelp } from "./ShortcutHelp";
 
 export type EditorToolbarProps = {
   onPresent: () => void;
@@ -154,6 +155,7 @@ export function EditorToolbar({ onPresent, inspectorOpen, onToggleInspector }: E
         >
           <ChromeIcon name="present" />
         </ToolbarButton>
+        <ShortcutHelp />
         <WebMCPBridge />
       </div>
     </header>

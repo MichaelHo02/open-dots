@@ -17,8 +17,9 @@ import { ToolSettings } from "./ToolSettings";
 import { AppTooltip, AppTooltipTrigger } from "./AppTooltip";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
 import { ConfirmAction } from "./ConfirmAction";
+import { ReferencePanel } from "./ReferencePanel";
 import { AssetImageImport } from "./AssetImageImport";
 
 export function FilmApp() {
@@ -103,6 +104,7 @@ export function FilmApp() {
             ) : null}
           </section>
           <ToolSettings symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} />
+          <ReferencePanel />
           <section className="sidebar-section sidebar-assets" aria-label="Assets">
             <div className="sidebar-assets-head">
               <p className="sidebar-label">Assets</p>
@@ -241,6 +243,7 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
+              <AppTooltipTrigger label="Duplicate page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="Duplicate page" onClick={() => { api.duplicatePage(film.activeIndex); api.resetStageZoom(); }}><CopyPlus size={16} aria-hidden="true" /></button></AppTooltipTrigger>
               <ConfirmAction className="pill danger-subtle page-action-icon icon-tooltip" label="Delete page" confirmLabel={`Click again to delete page ${film.activeIndex + 1}`} disabled={film.pages.length <= 1} onConfirm={() => api.removePage(film.activeIndex)} confirmChildren={<Check size={16} aria-hidden="true" />}><Trash2 size={16} aria-hidden="true" /></ConfirmAction>
               <AppTooltipTrigger label="New page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); }}><Plus size={17} aria-hidden="true" /></button></AppTooltipTrigger>
             </div>
