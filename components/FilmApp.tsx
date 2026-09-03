@@ -19,7 +19,6 @@ import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
 import { Check, ChevronDown, CopyPlus, Plus, Trash2 } from "lucide-react";
 import { ConfirmAction } from "./ConfirmAction";
-import { ReferencePanel } from "./ReferencePanel";
 import { AssetImageImport } from "./AssetImageImport";
 
 export function FilmApp() {
@@ -104,7 +103,6 @@ export function FilmApp() {
             </div>
           </details>
           <ToolSettings symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} />
-          <ReferencePanel />
           <details className="sidebar-section sidebar-assets sidebar-collapsible" open>
             <summary>
               <span className="sidebar-label">Assets</span>

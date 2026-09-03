@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, FolderOpen, History, Save, Download, Share2 } from "lucide-react";
+import { BookOpen, FolderOpen, History, Save, Images, Share2 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import JSZip from "jszip";
 import { useFilm } from "@/lib/film-store";
 import { compositedPagePixels, paintPixelGrid } from "@/lib/draw";
 import type { Film } from "@/lib/types";
@@ -20,11 +21,14 @@ function download(blob: Blob, name: string) {
 }
 
 function pagePng(page: Film["pages"][number], assets: Film["assets"]): Promise<Blob> {
+  const scale = 4;
   const canvas = document.createElement("canvas");
-  canvas.width = page.width;
-  canvas.height = page.height;
+  canvas.width = page.width * scale;
+  canvas.height = page.height * scale;
   const ctx = canvas.getContext("2d");
   if (!ctx) return Promise.reject(new Error("PNG export is unavailable in this browser."));
+  ctx.imageSmoothingEnabled = false;
+  ctx.scale(scale, scale);
   paintPixelGrid(ctx, compositedPagePixels(page, assets), page.width, page.height);
   return new Promise((resolve, reject) => canvas.toBlob(
     blob => blob ? resolve(blob) : reject(new Error("Could not prepare this story.")),
@@ -32,20 +36,35 @@ function pagePng(page: Film["pages"][number], assets: Film["assets"]): Promise<B
   ));
 }
 
+async function exportBookImages(film: Film) {
+  const zip = new JSZip();
+  const digits = String(film.pages.length).length;
+  const pages = await Promise.all(film.pages.map(page => pagePng(page, film.assets)));
+  pages.forEach((page, index) => zip.file(`page-${String(index + 1).padStart(digits, "0")}.png`, page));
+  download(await zip.generateAsync({ type: "blob" }), "open-dots-book.zip");
+}
+
 async function printBook(film: Film) {
   const popup = window.open("", "_blank");
   if (!popup) throw new Error("Allow popups to export the complete book.");
   popup.document.title = "Open Dots book";
   const style = popup.document.createElement("style");
-  style.textContent = "body{margin:0;background:#fff}img{display:block;width:100%;height:auto;break-after:page;image-rendering:pixelated}";
+  style.textContent = "@page{size:landscape;margin:0}html,body{margin:0;background:#fff}img{display:block;width:100vw;height:100vh;object-fit:contain;break-after:page;image-rendering:pixelated;print-color-adjust:exact}img:last-child{break-after:auto}";
   popup.document.head.append(style);
+  const urls: string[] = [];
+  const ready: Promise<void>[] = [];
   for (const page of film.pages) {
     const image = popup.document.createElement("img");
-    image.src = URL.createObjectURL(await pagePng(page, film.assets));
+    const url = URL.createObjectURL(await pagePng(page, film.assets));
+    urls.push(url);
+    image.src = url;
+    ready.push(image.decode());
     popup.document.body.append(image);
   }
+  await Promise.all(ready);
+  popup.addEventListener("afterprint", () => urls.forEach(url => URL.revokeObjectURL(url)), { once: true });
   popup.focus();
-  window.setTimeout(() => popup.print(), 250);
+  popup.print();
 }
 
 export function saveProject(film: Film) {
@@ -72,17 +91,7 @@ export function ProjectControls({ children }: { children?: React.ReactNode }) {
       <div className="project-menu-items">
       <button type="button" onClick={() => saveProject(api.film)}><Save size={14} />Save project<kbd>⌘S</kbd></button>
       <button type="button" onClick={() => input.current?.click()}><FolderOpen size={14} />Open project</button>
-      <button type="button" onClick={() => {
-        if (!api.active) return;
-        const page = api.active;
-        const canvas = document.createElement("canvas");
-        canvas.width = page.width;
-        canvas.height = page.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { setError("PNG export is unavailable in this browser."); return; }
-        paintPixelGrid(ctx, compositedPagePixels(page, api.film.assets), page.width, page.height);
-        canvas.toBlob(blob => { if (blob) download(blob, `page-${api.film.activeIndex + 1}.png`); else setError("Could not export this page."); });
-      }}><Download size={14} />Export page PNG</button>
+      <button type="button" onClick={() => { exportBookImages(api.film).catch(cause => setError(cause instanceof Error ? cause.message : "Could not export this book.")); }}><Images size={14} />Export book images</button>
       <button type="button" onClick={() => { printBook(api.film).catch(cause => setError(cause instanceof Error ? cause.message : "Could not export this book.")); }}><BookOpen size={14} />Print / Save book PDF</button>
       <input ref={input} type="file" accept="application/json,.json" aria-label="Open project file" hidden onChange={async event => {
         const file = event.currentTarget.files?.[0];
