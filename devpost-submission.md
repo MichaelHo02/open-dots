@@ -4,21 +4,21 @@ Open Dots
 
 ## One-line Summary
 
-An agent-native pixel-art storybook where people draw, arrange, and present multiple illustrated pages while an in-browser agent helps create and refine the art.
+An agent-native pixel-art storybook where children and families turn their ideas into illustrated pages with an AI co-creator, then read, revise, and share the artwork together.
 
 ## Problem
 
-Picture-book creation tools tend to force a choice between manual drawing and opaque AI generation. A child or storyteller can describe a rich scene, but an agent usually has to guess through a visual interface or generate a single flat image that is difficult to revise, reuse, or carry forward into the next page of a story.
+Families often invent stories together, but turning those ideas into a picture book takes drawing confidence, time, and specialized tools. Picture-book creation tools tend to force a choice between manual drawing and opaque AI generation. A child can describe a rich scene, but an agent usually has to guess through a visual interface or generate a single flat image that is difficult to revise, reuse, or carry forward into the next page.
 
 ## Solution
 
-Open Dots gives the human a tactile pixel-storybook editor and gives an in-browser agent a small, structured WebMCP surface. The person draws a sequence of illustrated pages, writes pixel text, places shapes, organizes the story, and presents it page by page. The agent can read the storybook state, create reusable sprites, paint them in deliberate passes, stamp them into layered scenes, and inspect PNG results before the next pass.
+Open Dots gives a child and family a tactile pixel-storybook editor and gives an in-browser agent a small, structured WebMCP surface. Together they turn a story idea into a sequence of illustrated pages, add pixel text and shapes, review and revise each scene, then read the finished book page by page. The agent can read the storybook state, create reusable sprites, paint them in deliberate passes, stamp them into layered scenes, and inspect PNG results before the next pass. Individual pages can be exported as PNGs to share.
 
 The result is a collaborative storymaking loop rather than a prompt-to-image handoff: a person directs the narrative and art direction; the agent performs precise, inspectable canvas work through `document.modelContext`.
 
 ## Why This Matters
 
-Open Dots makes story creation more accessible without taking authorship away from the person making the book. Structured tools let an agent work with the same durable primitives that make revision meaningful—pages, palettes, assets, layers, placements, and pixels—so a creator can keep shaping the narrative instead of accepting a black-box image.
+Open Dots makes family story creation more accessible without taking authorship away from the people making the book. Structured tools let an agent work with the same durable primitives that make revision meaningful—pages, palettes, assets, layers, placements, and pixels—so the family can keep shaping the narrative instead of accepting a black-box image.
 
 ## How We Used AI
 
@@ -32,7 +32,7 @@ Codex was used to implement and iterate on the editor, WebMCP registration layer
 
 ## Key Features
 
-- A light-mode pixel storybook editor with multiple illustrated landscape pages and Present mode.
+- A light-mode pixel storybook editor where families create multiple illustrated pages, review them together, and read the finished story in Present mode.
 - Human tools for drawing, erasing, fill, pixel text, shapes, selections, layers, and reusable assets.
 - A persistent asset library and movable, layered stamps so agents can compose dense scenes from small reusable sprites.
 - Named palette profiles and bulk pixel operations for deliberate outline, fill, shade, and highlight passes.
@@ -83,9 +83,9 @@ TODO — record and upload a public YouTube video under three minutes. The video
 Suggested 2:30 outline:
 
 1. 0:00–0:20 — The creative problem: text-only prompting makes a storybook hard to author and revise together.
-2. 0:20–0:45 — Show the human editor: illustrated pages, pixel text, assets, layers, page order, and Present mode.
+2. 0:20–0:45 — Show a family story idea becoming illustrated pages: pixel text, assets, layers, page order, review/revision, and Present mode.
 3. 0:45–1:45 — In the WebMCP-enabled browser, ask an agent to create a scene for one story page. Show tool discovery, palette selection, a small asset, returned PNG feedback, and stamping/composition.
-4. 1:45–2:10 — Add or select the next page, then show the human refining the storybook and reading it in Present mode.
+4. 1:45–2:10 — Add or select the next page, then show the family refining the storybook, reading it in Present mode, and exporting a page PNG to share.
 5. 2:10–2:30 — Explain why structured tools make the agent a collaborative storybook editor rather than an unreliable UI clicker.
 
 ## Screenshot Shot List
