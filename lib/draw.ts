@@ -570,13 +570,21 @@ export function compositedPagePixels(
   assets: readonly Asset[],
 ): string[] {
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
-  let pixels = emptyPixels(page.width, page.height);
+  const pixels = emptyPixels(page.width, page.height);
   for (const layer of pageLayers(page)) {
     if (!layer.visible) continue;
+    const layerPixels = compositePage(layer.pixels, page, layer.placements, id => byId.get(id));
+    const opacity = layer.opacity ?? 1;
     for (let i = 0; i < pixels.length; i++) {
-      if (isPaintedPixel(layer.pixels[i])) pixels[i] = layer.pixels[i];
+      const top = layerPixels[i];
+      if (!isPaintedPixel(top)) continue;
+      if (opacity >= 1) { pixels[i] = top; continue; }
+      // ponytail: pixel storage has no alpha channel; blend against white until the format supports RGBA.
+      const bottom = isPaintedPixel(pixels[i]) ? pixels[i] : "#ffffff";
+      const channel = (hex: string, offset: number) => parseInt(hex.slice(offset, offset + 2), 16);
+      const mix = (offset: number) => Math.round(channel(bottom, offset) * (1 - opacity) + channel(top, offset) * opacity).toString(16).padStart(2, "0");
+      pixels[i] = `#${mix(1)}${mix(3)}${mix(5)}`;
     }
-    pixels = compositePage(pixels, page, layer.placements, id => byId.get(id));
   }
   return pixels;
 }

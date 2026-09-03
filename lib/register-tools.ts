@@ -68,7 +68,7 @@ import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "
 
 type ApiRef = { current: FilmApi };
 
-/** Stable ref object — execute closures always read the latest film API. */
+/** Stable ref object — execute closures always read the latest editor API. */
 const sharedApiRef: ApiRef = { current: null! };
 
 function asUnit(value: unknown, span: number): number | undefined {
@@ -325,7 +325,7 @@ const FILL_OPS_SCHEMA = {
 
 function drawPixelsLimitError(count: number) {
   const cells = DEFAULT_WIDTH * DEFAULT_HEIGHT;
-  return `At most ${MAX_DRAW_PIXELS} pixels per draw_pixels call (got ${count}). For sprites or scenes, use add_asset with pixels or rows (each side ≤${MAX_ASSET_SIDE}) then stamp_assets. A default ${DEFAULT_WIDTH}×${DEFAULT_HEIGHT} page has ${cells.toLocaleString()} cells — page-wide painting is intentionally impractical.`;
+  return `At most ${MAX_DRAW_PIXELS} pixels per paint_page call (got ${count}). For sprites or scenes, use add_asset with pixels or rows (each side ≤${MAX_ASSET_SIDE}) then stamp_assets. A default ${DEFAULT_WIDTH}×${DEFAULT_HEIGHT} page has ${cells.toLocaleString()} cells — page-wide painting is intentionally impractical.`;
 }
 
 type StampInput = {
@@ -506,7 +506,7 @@ function setWindowRegistration(state: WindowRegistration): void {
 }
 
 const WEBMCP_REFRESH_HINT =
-  "After a page refresh or navigation, re-fetch live WebMCP tools and wait until webmcp.ready is true before mutating. In-flight calls that used a pre-refresh snapshot are invalid. Film data (assets, pages) persists in localStorage — call get_film to recover asset ids.";
+  "After a page refresh or navigation, re-fetch live WebMCP tools and wait until webmcp.ready is true before mutating. In-flight calls that used a pre-refresh snapshot are invalid. Storybook data (assets, pages) persists in localStorage — call get_storybook to recover asset ids.";
 
 let webmcpStatus: WebmcpStatus = {
   phase: "registering",
@@ -544,7 +544,7 @@ function summarize(api: FilmApi) {
   const guideNudge = guideNextRequired();
   const webmcp = getWebmcpStatus();
   const nextRequired = !webmcp.ready
-    ? "WebMCP tools are still registering after load. Re-fetch live tools and retry get_film until webmcp.ready is true before add_asset or other mutations."
+    ? "WebMCP tools are still registering after load. Re-fetch live tools and retry get_storybook until webmcp.ready is true before add_asset or other mutations."
     : guideNudge;
   return {
     size: activeSize(api),
@@ -631,7 +631,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "get_film",
+      name: "get_storybook",
       description:
         "Read the book: pages with named layers, activeLayerId and overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       annotations: { readOnlyHint: true },
@@ -732,11 +732,11 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "select_page",
       description:
-        "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_film if you need current indexes.",
+        "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_storybook if you need current indexes.",
       inputSchema: {
         type: "object",
         properties: {
-          index: { type: "integer", description: "0-based page index from get_film" },
+          index: { type: "integer", description: "0-based page index from get_storybook" },
         },
         required: ["index"],
       },
@@ -824,7 +824,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       inputSchema: {
         type: "object",
         properties: {
-          id: { type: "string", description: "Asset id from add_asset or get_film.assets" },
+          id: { type: "string", description: "Asset id from add_asset or get_storybook.assets" },
           scale: {
             type: "integer",
             minimum: 1,
@@ -875,14 +875,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               : pixelsToRows(asset.pixels, asset.width, asset.height),
           verified: true,
           nextRequired:
-            "Compare the PNG to your reference. Fix with draw_asset_pixels (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
+            "Compare the PNG to your reference. Fix with paint_asset (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
           hint: "Compare the attached PNG at native scale (use scale 4–8 to peep). Text fallback: rows in the response.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
     {
-      name: "draw_asset_pixels",
+      name: "paint_asset",
       description:
         `Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤${MAX_DRAW_PIXELS}/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.`,
       inputSchema: {
@@ -963,7 +963,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "add_asset",
       description:
-        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with paint_asset. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1066,7 +1066,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             items: {
               type: "object",
               properties: {
-                id: { type: "string", description: "Asset id from add_asset or get_film" },
+                id: { type: "string", description: "Asset id from add_asset or get_storybook" },
                 x: { type: "integer", description: "Page column of the stamp top-left (0 = left)" },
                 y: { type: "integer", description: "Page row of the stamp top-left (0 = top)" },
                 scale: {
@@ -1111,7 +1111,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           const stamp = stamps[index]!;
           if (!api.getAsset(stamp.id)) {
             return toolError(
-              `Stamp ${index}: asset not found "${stamp.id}". Call get_film for valid ids.`,
+              `Stamp ${index}: asset not found "${stamp.id}". Call get_storybook for valid ids.`,
             );
           }
           const result = api.stampAsset({
@@ -1158,10 +1158,10 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "remove_asset",
       description:
-        "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_film for valid ids.",
+        "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_storybook for valid ids.",
       inputSchema: {
         type: "object",
-        properties: { id: { type: "string", description: "Asset id from get_film" } },
+        properties: { id: { type: "string", description: "Asset id from get_storybook" } },
         required: ["id"],
       },
       execute: async (input) => {
@@ -1177,7 +1177,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "draw_pixels",
+      name: "paint_page",
       description:
         `Paint into the selected layer of the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the selected layer. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.`,
       inputSchema: {
@@ -1246,7 +1246,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_page_image",
       description:
-        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page draw_pixels, or noisy colorCount). Call after every few stamps, not only at the end.",
+        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page painting, or noisy colorCount). Call after every few stamps, not only at the end.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -1388,24 +1388,6 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
-    {
-      name: "clear_page",
-      description:
-        "Erase the selected layer of the active page, including its painted text and overlay placements. Other layers remain unchanged. If the asset workshop is open, clears the workshop draft instead.",
-      inputSchema: { type: "object", properties: {} },
-      execute: async () => {
-        apiRef.current.clearPage();
-        return toolResult({
-          cleared: true,
-          workshopOpen: apiRef.current.workshopOpen,
-          empty: apiRef.current.workshopOpen
-            ? undefined
-            : apiRef.current.active
-              ? isEmptyPage(apiRef.current.active)
-              : true,
-        });
-      },
-    },
   ];
   return tools.map((tool) => withToolAnnotations(withSafeExecute(tool)));
 }
@@ -1418,7 +1400,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
  * gracefully" as a first-class failure mode — a tool that throws leaves the
  * model with an opaque rejection it cannot reason about. Every execute here
  * already returns toolError() for validation problems; this backstops the
- * runtime paths (canvas unavailable, null film API after refresh, etc.).
+ * runtime paths (canvas unavailable, null editor API after refresh, etc.).
  */
 function withSafeExecute(tool: WebMCPTool): WebMCPTool {
   const run = tool.execute;
@@ -1427,7 +1409,7 @@ function withSafeExecute(tool: WebMCPTool): WebMCPTool {
     execute: async (input: Record<string, unknown>) => {
       try {
         const api = sharedApiRef.current;
-        if (["draw_pixels", "stamp_assets", "place_text", "clear_page"].includes(tool.name) && api?.active && !api.workshopOpen) {
+        if (["paint_page", "stamp_assets", "place_text"].includes(tool.name) && api?.active && !api.workshopOpen) {
           const layer = activePageLayer(api.active);
           if (layer.locked || !layer.visible) return toolError(`Layer "${layer.name}" is ${layer.locked ? "locked" : "hidden"}. Select an editable layer in the editor first.`);
         }
@@ -1536,8 +1518,8 @@ async function registerFilmToolsOnce(
     };
   };
 
-  const getFilm = tools.find((tool) => tool.name === "get_film");
-  const rest = tools.filter((tool) => tool.name !== "get_film");
+  const getFilm = tools.find((tool) => tool.name === "get_storybook");
+  const rest = tools.filter((tool) => tool.name !== "get_storybook");
   if (getFilm) {
     await registerCounted(getFilm);
   }

@@ -7,10 +7,10 @@ export const MIN_WIDTH = 48;
 export const MAX_WIDTH = 256;
 export const DEFAULT_WIDTH = 128;
 export const DEFAULT_HEIGHT = 72;
-export const MAX_ASSETS = 48;
+export const MAX_ASSETS = 100;
 export const MAX_ASSET_NAME = 32;
 export const MAX_ASSET_SIDE = 96;
-/** Max pixels per draw_pixels call — full pages need add_asset + stamp_assets. */
+/** Max pixels per paint_page call — full pages need add_asset + stamp_assets. */
 export const MAX_DRAW_PIXELS = 4096;
 export const ASSET_SIZE_PRESETS = [16, 24, 32, 48, 64, 96] as const;
 export type AssetSizePreset = (typeof ASSET_SIZE_PRESETS)[number];
@@ -156,6 +156,8 @@ export interface Asset {
   width: number;
   height: number;
   pixels: string[];
+  frames?: string[][];
+  frameDuration?: number;
 }
 
 export interface WorkshopDraft {
@@ -164,6 +166,8 @@ export interface WorkshopDraft {
   width: number;
   height: number;
   pixels: string[];
+  frames: string[][];
+  frameIndex: number;
 }
 
 export interface PageLayer {
@@ -171,6 +175,7 @@ export interface PageLayer {
   name: string;
   visible: boolean;
   locked: boolean;
+  opacity?: number;
   pixels: string[];
   placements: Placement[];
   texts: TextMark[];
@@ -180,7 +185,7 @@ export interface Page {
   id: string;
   width: number;
   height: number;
-  /** Background buffer painted by draw_pixels / pencil / fill. */
+  /** Background buffer painted by paint_page / pencil / fill. */
   pixels: string[];
   texts: TextMark[];
   /** Movable asset overlays composited over `pixels`, back-to-front. */
@@ -197,7 +202,7 @@ export interface Page {
 
 export function pageLayers(page: Pick<Page, "id" | "pixels" | "placements" | "texts" | "layers">): PageLayer[] {
   return page.layers?.length ? page.layers : [{
-    id: page.id + "-base", name: "Background", visible: true, locked: false,
+    id: page.id + "-base", name: "Background", visible: true, locked: false, opacity: 1,
     pixels: page.pixels, placements: page.placements ?? [], texts: page.texts ?? [],
   }];
 }
@@ -256,6 +261,9 @@ export interface FilmApi {
   closeWorkshop: (save?: boolean) => boolean;
   setWorkshopName: (name: string) => void;
   setWorkshopSize: (size: number) => boolean;
+  addWorkshopFrame: () => void;
+  removeWorkshopFrame: () => void;
+  selectWorkshopFrame: (index: number) => void;
   selectMark: (id: string | null, kind?: MarkKind) => boolean;
   selectPlacement: (id: string | null) => boolean;
   movePlacement: (
@@ -287,13 +295,14 @@ export interface FilmApi {
   duplicateLayer: (id: string) => PageLayer | null;
   mergeLayerDown: (id: string) => boolean;
   selectLayer: (id: string) => boolean;
-  updateLayer: (id: string, patch: { name?: string; visible?: boolean; locked?: boolean }) => boolean;
+  updateLayer: (id: string, patch: { name?: string; visible?: boolean; locked?: boolean; opacity?: number }) => boolean;
   moveLayer: (id: string, direction: -1 | 1) => boolean;
   flattenLayer: () => boolean;
   setDensity: (width: number) => void;
   resizeCanvas: (width: number, mode: "scale" | "canvas") => boolean;
   importProject: (input: unknown) => boolean;
   addPage: (input?: { story?: string; draw?: string }) => Page;
+  duplicatePage: (index: number) => Page | null;
   selectPage: (index: number) => boolean;
   removePage: (index: number) => boolean;
   reorderPage: (id: string, index: number) => boolean;

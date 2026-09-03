@@ -1,17 +1,21 @@
 "use client";
 
 import { ProjectControls } from "./ProjectControls";
-import { useEffect, useId, useRef } from "react";
-import { ClipboardPaste, Copy, CopyPlus, Images, Scissors, Trash2 } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ClipboardPaste, Copy, CopyPlus, Images, PanelRight, Scissors, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useFilm } from "@/lib/film-store";
 import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
 import { ChromeIcon, toolIconName } from "./ChromeIcons";
 import { OpenDotsLogo, OpenDotsWordmark } from "./OpenDotsLogo";
 import { WebMCPBridge } from "./WebMCPBridge";
+import { AppTooltipTrigger } from "./AppTooltip";
+import { ShortcutHelp } from "./ShortcutHelp";
 
 export type EditorToolbarProps = {
   onPresent: () => void;
+  inspectorOpen: boolean;
+  onToggleInspector: () => void;
 };
 
 function toolLabel(tool: DrawTool): string {
@@ -71,26 +75,21 @@ function ToolbarButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
-  const tooltipId = useId();
   return (
-    <button
+    <AppTooltipTrigger label={description}><button
       type="button"
       className="toolbar-button"
       aria-label={label}
       aria-pressed={active}
       disabled={disabled}
-      aria-describedby={tooltipId}
       onClick={onClick}
     >
       {children}
-      <span id={tooltipId} className="toolbar-tooltip" role="tooltip">
-        {description}
-      </span>
-    </button>
+    </button></AppTooltipTrigger>
   );
 }
 
-export function EditorToolbar({ onPresent }: EditorToolbarProps) {
+export function EditorToolbar({ onPresent, inspectorOpen, onToggleInspector }: EditorToolbarProps) {
   const api = useFilm();
   const toolbar = useRef<HTMLElement>(null);
 
@@ -128,33 +127,26 @@ export function EditorToolbar({ onPresent }: EditorToolbarProps) {
         })}
       </nav>
       <div className="top-actions">
-        <Link className="toolbar-button" href="/gallery" aria-label="Gallery">
-          <Images size={17} aria-hidden="true" />
-          <span className="toolbar-tooltip" role="tooltip">Browse shared stories</span>
-        </Link>
-        <ProjectControls />
-        <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
+        <ProjectControls>
+          <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
           <button type="button" onClick={() => api.copySelection()}><Copy size={14} />Copy<kbd>⌘C</kbd></button>
           <button type="button" onClick={() => api.cutSelection()}><Scissors size={14} />Cut<kbd>⌘X</kbd></button>
           <button type="button" onClick={() => api.pasteSelection()}><ClipboardPaste size={14} />Paste<kbd>⌘V</kbd></button>
           <button type="button" onClick={() => api.duplicateSelection()}><CopyPlus size={14} />Duplicate<kbd>⌘D</kbd></button>
           <button type="button" onClick={() => api.deleteSelection()}><Trash2 size={14} />Delete selection<kbd>⌫</kbd></button>
-        </div></details>
+          </div></details>
+          <Link className="toolbar-button toolbar-labelled" href="/gallery">
+            <Images size={17} aria-hidden="true" />
+            <span>Gallery</span>
+          </Link>
+        </ProjectControls>
         <ToolbarButton
-          disabled={!api.canUndo}
-          label="Undo"
-          description="Undo the last change"
-          onClick={() => api.undo()}
+          label="Canvas settings"
+          description={`${inspectorOpen ? "Hide" : "Show"} canvas settings`}
+          active={inspectorOpen}
+          onClick={onToggleInspector}
         >
-          <ChromeIcon name="undo" />
-        </ToolbarButton>
-        <ToolbarButton label="Redo" description="Redo (Ctrl/Cmd+Shift+Z)" disabled={!api.canRedo} onClick={() => api.redo()}><ChromeIcon name="redo" /></ToolbarButton>
-        <ToolbarButton
-          label="Clear"
-          description="Clear the selected layer"
-          onClick={() => api.clearPage()}
-        >
-          <ChromeIcon name="clear" />
+          <PanelRight size={18} aria-hidden="true" />
         </ToolbarButton>
         <ToolbarButton
           label="Present"
@@ -163,6 +155,7 @@ export function EditorToolbar({ onPresent }: EditorToolbarProps) {
         >
           <ChromeIcon name="present" />
         </ToolbarButton>
+        <ShortcutHelp />
         <WebMCPBridge />
       </div>
     </header>

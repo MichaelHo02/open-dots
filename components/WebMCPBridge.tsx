@@ -8,6 +8,7 @@ import {
 } from "@/lib/register-tools";
 import { useFilm } from "@/lib/film-store";
 import { Dotm3x3_15 } from "@/components/ui/dotm-3x3-15";
+import { AppTooltipTrigger } from "./AppTooltip";
 
 export function WebMCPBridge() {
   const api = useFilm();
@@ -24,7 +25,7 @@ export function WebMCPBridge() {
     let cancelled = false;
 
     // Defer until after hydration so document.modelContext and localStorage
-    // film state are stable before agents poll get_film.
+    // Storybook state is stable before agents poll get_storybook.
     const start = () => {
       // Page-lifetime registration: do not abort on React unmount (Strict Mode /
       // Fast Refresh). Aborting unregisters tools and invalidates the host's
@@ -64,5 +65,5 @@ export function WebMCPBridge() {
 
   const label = status === "live" ? `WebMCP · ${count} tools` : status === "error" ? "WebMCP unavailable" : "WebMCP starting";
   const color = status === "live" ? "#1ea64a" : status === "error" ? "var(--accent-magenta)" : "var(--hairline)";
-  return <Dotm3x3_15 className="webmcp-status-dot icon-tooltip" size={16} dotSize={3} cellPadding={3.5} speed={0.35} color={color} ariaLabel={label} />;
+  return <AppTooltipTrigger label={label}><span className="webmcp-status-dot"><Dotm3x3_15 size={16} dotSize={3} cellPadding={3.5} speed={0.35} color={color} ariaLabel={label} /></span></AppTooltipTrigger>;
 }

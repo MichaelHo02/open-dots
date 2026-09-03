@@ -21,7 +21,7 @@
       }
     },
     {
-      "name": "get_film",
+      "name": "get_storybook",
       "description": "Read the book: pages with named layers, activeLayerId and overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       "inputSchema": {
         "type": "object",
@@ -69,13 +69,13 @@
     },
     {
       "name": "select_page",
-      "description": "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_film if you need current indexes.",
+      "description": "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_storybook if you need current indexes.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "index": {
             "type": "integer",
-            "description": "0-based page index from get_film"
+            "description": "0-based page index from get_storybook"
           }
         },
         "required": [
@@ -141,7 +141,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Asset id from add_asset or get_film.assets"
+            "description": "Asset id from add_asset or get_storybook.assets"
           },
           "scale": {
             "type": "integer",
@@ -160,7 +160,7 @@
       }
     },
     {
-      "name": "draw_asset_pixels",
+      "name": "paint_asset",
       "description": "Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤4096/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.",
       "inputSchema": {
         "type": "object",
@@ -303,7 +303,7 @@
     },
     {
       "name": "add_asset",
-      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤48). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.",
+      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤100). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with paint_asset. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -364,19 +364,19 @@
     },
     {
       "name": "stamp_assets",
-      "description": "Add movable overlay placements on the selected layer of the active page (max 48 per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.",
+      "description": "Add movable overlay placements on the selected layer of the active page (max 100 per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "stamps": {
             "type": "array",
-            "maxItems": 48,
+            "maxItems": 100,
             "items": {
               "type": "object",
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "Asset id from add_asset or get_film"
+                  "description": "Asset id from add_asset or get_storybook"
                 },
                 "x": {
                   "type": "integer",
@@ -415,13 +415,13 @@
     },
     {
       "name": "remove_asset",
-      "description": "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_film for valid ids.",
+      "description": "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_storybook for valid ids.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "description": "Asset id from get_film"
+            "description": "Asset id from get_storybook"
           }
         },
         "required": [
@@ -430,7 +430,7 @@
       }
     },
     {
-      "name": "draw_pixels",
+      "name": "paint_page",
       "description": "Paint into the selected layer of the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤4096 detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the selected layer. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.",
       "inputSchema": {
         "type": "object",
@@ -566,7 +566,7 @@
     },
     {
       "name": "get_page_image",
-      "description": "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page draw_pixels, or noisy colorCount). Call after every few stamps, not only at the end.",
+      "description": "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page painting, or noisy colorCount). Call after every few stamps, not only at the end.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -597,14 +597,6 @@
             "description": "Nearest-neighbor upscale (default 1)"
           }
         }
-      }
-    },
-    {
-      "name": "clear_page",
-      "description": "Erase the selected layer of the active page, including its painted text and overlay placements. Other layers remain unchanged. If the asset workshop is open, clears the workshop draft instead.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {}
       }
     }
   ]

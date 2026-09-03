@@ -163,7 +163,7 @@ function isResult(value: unknown): value is ToolResult {
 
 /**
  * Layer 2: deterministic behavior + graceful error reporting, with no DOM.
- * These paths validate input before touching the (null) film API, or exercise
+ * These paths validate input before touching the (null) editor API, or exercise
  * the withSafeExecute backstop that turns a runtime throw into an isError result.
  */
 async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
@@ -261,14 +261,14 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     fail("sceneHint noisy colorCount", noisyHint);
   }
 
-  // Tools that must reject missing required args BEFORE touching the film API.
+  // Tools that must reject missing required args BEFORE touching the editor API.
   const missingRequired: Array<[string, Record<string, unknown>]> = [
     ["set_palette", {}],
     ["select_page", {}],
     ["remove_page", {}],
     ["place_text", {}],
     ["add_asset", {}],
-    ["draw_asset_pixels", {}],
+    ["paint_asset", {}],
     ["get_asset_image", {}],
     ["stamp_assets", {}],
     ["remove_asset", {}],
@@ -290,26 +290,26 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     }
   }
 
-  // withSafeExecute backstop: get_film throws internally (null film API) and
+  // withSafeExecute backstop: get_storybook throws internally (null editor API) and
   // must surface as a structured isError, not a rejected promise.
-  const getFilm = byName.get("get_film");
+  const getFilm = byName.get("get_storybook");
   if (!getFilm) {
-    fail("get_film present", "tool missing");
+    fail("get_storybook present", "tool missing");
   } else {
     let result: ToolResult | undefined;
     try {
       result = (await getFilm.execute({})) as ToolResult;
     } catch (error) {
       fail(
-        "get_film graceful error",
+        "get_storybook graceful error",
         `execute threw instead of returning isError: ${String(error)}`,
       );
     }
     if (result && isResult(result) && result.isError === true) {
-      pass("get_film surfaces runtime failure as isError (withSafeExecute backstop)");
+      pass("get_storybook surfaces runtime failure as isError (withSafeExecute backstop)");
     } else if (result) {
       fail(
-        "get_film graceful error",
+        "get_storybook graceful error",
         `expected isError result, got ${JSON.stringify(result)}`,
       );
     }

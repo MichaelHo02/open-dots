@@ -14,9 +14,13 @@ import { PageStage } from "./PageStage";
 import { PresentMode } from "./PresentMode";
 import { StageZoomControls } from "./StageZoomControls";
 import { ToolSettings } from "./ToolSettings";
+import { AppTooltip, AppTooltipTrigger } from "./AppTooltip";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
+import { ConfirmAction } from "./ConfirmAction";
+import { ReferencePanel } from "./ReferencePanel";
+import { AssetImageImport } from "./AssetImageImport";
 
 export function FilmApp() {
   const api = useFilm();
@@ -55,7 +59,7 @@ export function FilmApp() {
       data-present={presenting}
       data-workshop={workshopOpen ? "true" : undefined}
     >
-      <EditorToolbar onPresent={openPresent} />
+      <EditorToolbar onPresent={openPresent} inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen(open => !open)} />
 
       <div className="studio">
         <aside className="sidebar screen-only">
@@ -100,6 +104,7 @@ export function FilmApp() {
             ) : null}
           </section>
           <ToolSettings symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} />
+          <ReferencePanel />
           <section className="sidebar-section sidebar-assets" aria-label="Assets">
             <div className="sidebar-assets-head">
               <p className="sidebar-label">Assets</p>
@@ -112,6 +117,7 @@ export function FilmApp() {
               aria-label={film.assets.length >= MAX_ASSETS ? "Asset library full — remove an asset to create another" : "New asset"}
               onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
             ><ChromeIcon name="plus" />New asset</button>
+            <AssetImageImport api={api} disabled={film.assets.length >= MAX_ASSETS} />
             {film.assets.length > 0 ? (
               <ul className="asset-list">
                 {film.assets.map((asset) => (
@@ -130,24 +136,23 @@ export function FilmApp() {
                         {asset.width}×{asset.height}
                       </span>
                     </button>
-                    <button
+                    <AppTooltipTrigger label={`Edit ${asset.name}`}><button
                       type="button"
                       className="asset-edit icon-tooltip"
                       aria-label={`Edit ${asset.name}`}
                       onClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
                       <ChromeIcon name="draw" size={14} />
-                    </button>
-                    <button
-                      type="button"
+                    </button></AppTooltipTrigger>
+                    <ConfirmAction
                       className="asset-remove icon-tooltip"
-                      aria-label={`Remove ${asset.name}`}
-                      onClick={() => {
-                        if (window.confirm(`Remove “${asset.name}” from the library and every page? This cannot be undone.`)) api.removeAsset(asset.id);
-                      }}
+                      label={`Remove ${asset.name}`}
+                      confirmLabel={`Click again to remove ${asset.name}`}
+                      onConfirm={() => api.removeAsset(asset.id)}
+                      confirmChildren={<Check size={14} aria-hidden="true" />}
                     >
                       <Trash2 size={14} aria-hidden="true" />
-                    </button>
+                    </ConfirmAction>
                   </li>
                 ))}
               </ul>
@@ -191,7 +196,7 @@ export function FilmApp() {
               <AssetWorkshop symmetry={symmetry} showGrid={showGrid} />
             </main>
           ) : (
-            <PageStage symmetry={symmetry} showGrid={showGrid} viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
+            <PageStage symmetry={symmetry} showGrid={showGrid} viewportRef={stageWrapRef} />
           )}
           </div>
           {!workshopOpen && <nav className="strip screen-only" aria-label="Pages">
@@ -205,7 +210,7 @@ export function FilmApp() {
                 aria-label={`Page ${index + 1}. Drag to reorder.`}
                 aria-current={index === film.activeIndex ? "page" : undefined}
                 ref={index === film.activeIndex ? selectedPageRef : undefined}
-                onClick={() => { api.selectPage(index); api.resetStageZoom(); setInspectorOpen(true); }}
+                onClick={() => { api.selectPage(index); api.resetStageZoom(); }}
                 onKeyDown={(event) => {
                   if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
                   event.preventDefault();
@@ -234,15 +239,13 @@ export function FilmApp() {
               >
                 <PagePreview page={page} assets={film.assets} />
                 <span className="page-index">{index + 1}</span>
-                <span className="page-drag-handle" title="Drag to reorder" aria-hidden="true"><GripVertical size={14} /></span>
               </button>)}
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
-              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => {
-                if (window.confirm(`Delete page ${film.activeIndex + 1}? This cannot be undone.`)) api.removePage(film.activeIndex);
-              }}><Trash2 size={16} aria-hidden="true" /></button>
-              <button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button>
+              <AppTooltipTrigger label="Duplicate page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="Duplicate page" onClick={() => { api.duplicatePage(film.activeIndex); api.resetStageZoom(); }}><CopyPlus size={16} aria-hidden="true" /></button></AppTooltipTrigger>
+              <ConfirmAction className="pill danger-subtle page-action-icon icon-tooltip" label="Delete page" confirmLabel={`Click again to delete page ${film.activeIndex + 1}`} disabled={film.pages.length <= 1} onConfirm={() => api.removePage(film.activeIndex)} confirmChildren={<Check size={16} aria-hidden="true" />}><Trash2 size={16} aria-hidden="true" /></ConfirmAction>
+              <AppTooltipTrigger label="New page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); }}><Plus size={17} aria-hidden="true" /></button></AppTooltipTrigger>
             </div>
           </nav>}
         </div>
@@ -258,6 +261,7 @@ export function FilmApp() {
           onSelect={(next) => setPresentIndex(next)}
         />
       ) : null}
+      <AppTooltip />
     </div>
   );
 }

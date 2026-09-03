@@ -141,13 +141,13 @@ export function buildNextRequired(passHint: PassHint): string {
     case "outline":
       return "Compare the PNG to your intent. Fix the silhouette (lines/rects) before the fill pass, then flood or rect the base colors.";
     case "fill":
-      return "Compare the PNG fill colors to your reference. Adjust with draw_asset_pixels (rects/fills) before shading.";
+      return "Compare the PNG fill colors to your reference. Adjust with paint_asset (rects/fills) before shading.";
     case "shade":
       return "Compare shadow placement to your light direction (one source). Add highlights next or get_asset_image to verify bounds.";
     case "highlight":
       return "Compare the final sprite to your reference. Call get_asset_image, then stamp_assets when satisfied.";
     case "verify":
-      return "Compare the PNG to your intent. Fix issues with draw_asset_pixels (color \"\" erases) before the next pass.";
+      return "Compare the PNG to your intent. Fix issues with paint_asset (color \"\" erases) before the next pass.";
     default: {
       const _exhaustive: never = passHint;
       return _exhaustive;
@@ -157,7 +157,7 @@ export function buildNextRequired(passHint: PassHint): string {
 
 /**
  * Scene-level nudge for get_page_image: flags few overlay stamps, huge
- * assets, full-page draw_pixels, or noisy unique-hex counts. Encourages
+ * assets, full-page painting, or noisy unique-hex counts. Encourages
  * tiled overlays and 4–12 tone ramps per sprite — not maximizing page colors.
  */
 export interface SceneHintContext {
@@ -195,7 +195,7 @@ export function inferSceneHint(
     backgroundCoverage >= FULL_PAGE_BG_COVERAGE &&
     placementCount < FULL_PAGE_FEW_PLACEMENTS
   ) {
-    return "Background buffer looks like a full-page draw_pixels. Keep page.pixels for flat floor/sky only; compose furniture, plants, and characters as overlay stamp_assets so they stay movable and transparent pixels do not punch holes.";
+    return "Background buffer looks like full-page painting. Keep page.pixels for flat floor/sky only; compose furniture, plants, and characters as overlay stamp_assets so they stay movable and transparent pixels do not punch holes.";
   }
   if (largestPlacementRatio >= HUGE_PLACEMENT_RATIO) {
     return "A stamp covers most of the page. Split huge assets into tiles and props (8–48px), then stamp many overlays. One near-full-page sprite reads as a decorated wall.";
@@ -243,7 +243,7 @@ export function pageSceneHintContext(
 }
 
 export function emptyAssetNextRequired(): string {
-  return "Start outline pass with draw_asset_pixels; response includes PNG";
+  return "Start outline pass with paint_asset; response includes PNG";
 }
 
 export function assetHasPaintedPixels(asset: Asset): boolean {

@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:gallery": "node --import tsx scripts/gallery-check.ts",
+    "test:image-import": "node --import tsx scripts/image-asset-import-check.ts",
     "test:webmcp": "tsx scripts/webmcp-evals.ts"
   },
   "dependencies": {

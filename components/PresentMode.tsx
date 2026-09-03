@@ -65,7 +65,7 @@ export function PresentMode({
         onClick={() => onSelect(Math.max(index - 1, 0))}
       />
       <article className="present-page">
-        <PagePreview page={page} assets={assets} />
+        <PagePreview page={page} assets={assets} animated />
       </article>
       <button
         type="button"

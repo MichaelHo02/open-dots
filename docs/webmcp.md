@@ -6,16 +6,16 @@ Open Dots is a [WebMCP Challenge](https://webmcp.devpost.com/) app: agents paint
 
 **WebMCP** exposes site-defined tools to an in-browser agent (ChatGPT’s browser, Chrome with `chrome://flags/#enable-webmcp-testing`, Cursor, etc.). The agent discovers tools via `document.modelContext.getTools()`, calls them via `executeTool`, and receives structured results.
 
-Open Dots registers **15 agent-focused tools** (4 read / 11 write) on `document.modelContext`:
+Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.modelContext`:
 
 | Read | Write |
 | --- | --- |
 | `get_pixel_art_guide` | `set_palette`, `add_page`, `select_page`, `remove_page`, `place_text` |
-| `get_film` | `add_asset`, `draw_asset_pixels`, `stamp_assets`, `remove_asset` |
-| `get_asset_image` | `draw_pixels`, `clear_page` |
+| `get_storybook` | `add_asset`, `paint_asset`, `stamp_assets`, `remove_asset` |
+| `get_asset_image` | `paint_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `draw_asset_pixels` and `draw_pixels` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). UI-only controls (brush, workshop, tool picker, stage zoom) are not exposed.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). UI-only controls (brush, workshop, tool picker, stage zoom) are not exposed.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
@@ -25,7 +25,7 @@ Chrome ships [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool) 
 
 ### 1. Mount/unmount abort vs page-lifetime registration
 
-Open Dots tools must live for the **entire document lifetime** — from first paint until refresh or navigation. Film state persists in `localStorage`; agents may hold a tool snapshot across many turns. Unmount-driven unregister would drop tools whenever React remounts the bridge (Strict Mode double-mount, route transitions, conditional rendering), invalidating the host’s cached tool list mid-session.
+Open Dots tools must live for the **entire document lifetime** — from first paint until refresh or navigation. Storybook state persists in `localStorage`; agents may hold a tool snapshot across many turns. Unmount-driven unregister would drop tools whenever React remounts the bridge (Strict Mode double-mount, route transitions, conditional rendering), invalidating the host’s cached tool list mid-session.
 
 `WebMCPBridge` deliberately does **not** pass an abort signal. Its cleanup only cancels the pending `requestAnimationFrame` bootstrap, not registration:
 
@@ -62,33 +62,33 @@ FilmApp
         ├── syncWebmcpApiRef(apiRef)     — every render; stable sharedApiRef
         └── registerFilmTools(apiRef)    — once per document load (deferred 2× rAF)
               ├── ensureWebMCPPolyfill()
-              ├── buildFilmTools()       — 15 tools, withToolAnnotations + withSafeExecute
-              ├── register get_film first — agents can poll readiness immediately
+              ├── buildFilmTools()       — 14 tools, withToolAnnotations + withSafeExecute
+              ├── register get_storybook first — agents can poll readiness immediately
               ├── register rest (silent)
               └── flushToolChanges()     — one toolchange
 ```
 
-**`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` film state is stable before agents call `get_film`. A small badge shows `WebMCP · 15` when live.
+**`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` storybook state is stable before agents call `get_storybook`. A small badge shows `live tool count` when live.
 
-**`window.__openDotsWebmcp`** stores `{ apiRef, generation, native, count }`. `generation` is stable for the document load (`performance.timeOrigin`); it changes only on refresh/navigation. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest React film API without re-registering tool names.
+**`window.__openDotsWebmcp`** stores `{ apiRef, generation, native, count }`. `generation` is stable for the document load (`performance.timeOrigin`); it changes only on refresh/navigation. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest editor API without re-registering tool names.
 
 **`withToolAnnotations`** defaults missing `readOnlyHint` to `false` (write). Cursor and other hosts classify tools from this field; omitting it hides mutating tools.
 
-**`get_film` first:** during the registering phase, only `get_film` may be available. It exposes `webmcp.ready`, `webmcp.phase`, `webmcp.generation`, `webmcp.toolCount`, and a refresh hint so agents can poll instead of failing opaque “tool not found” errors.
+**`get_storybook` first:** during the registering phase, only `get_storybook` may be available. It exposes `webmcp.ready`, `webmcp.phase`, `webmcp.generation`, `webmcp.toolCount`, and a refresh hint so agents can poll instead of failing opaque “tool not found” errors.
 
 ## Agent workflow after refresh
 
 A full page reload **unloads** all `document.modelContext` registrations and **invalidates** the host’s tool snapshot. In-flight calls that referenced pre-refresh tool handles fail.
 
-Film data (pages, assets, named color profiles) **persists** in `localStorage`. After refresh:
+Storybook data (pages, assets, named color profiles) **persists** in `localStorage`. After refresh:
 
 1. **Re-fetch live tools** from `document.modelContext` (do not reuse a pre-refresh snapshot).
-2. **Poll `get_film`** until `webmcp.ready === true` (and `webmcp.phase === "ready"`).
+2. **Poll `get_storybook`** until `webmcp.ready === true` (and `webmcp.phase === "ready"`).
 3. **Note `webmcp.generation`** — if it changes, treat prior tool handles as stale.
-4. **Call `get_film`** again to recover asset ids, page indices, and `agentChecklist`.
-5. Then mutate (`add_asset`, `draw_asset_pixels`, `stamp_assets`, …).
+4. **Call `get_storybook`** again to recover asset ids, page indices, and `agentChecklist`.
+5. Then mutate (`add_asset`, `paint_asset`, `stamp_assets`, …).
 
-`get_film` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
+`get_storybook` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
 
 Typical session start after tools are ready: `get_pixel_art_guide` → `set_palette` → decompose scene into small assets → outline/fill/shade passes with inline PNG compare → `stamp_assets` overlays back-to-front (floor tiles → emblem/shadows → furniture → plants/characters) → `get_page_image` with `sceneHint` check.
 
@@ -138,7 +138,7 @@ The hook is a good fit when a tool’s **scope matches a component’s lifetime*
 - A wizard step that registers `confirm_step_2` until the user advances
 - A ephemeral panel whose tools should disappear when the panel unmounts
 
-For Open Dots, the agent API is **application-global**: the same 15 tools should remain discoverable for the whole editing session, across React remounts and HMR. Page-lifetime registration via `WebMCPBridge` + `registerFilmTools` matches that model; `use-webmcp-tool` does not.
+For Open Dots, the agent API is **application-global**: the same 14 tools should remain discoverable for the whole editing session, across React remounts and HMR. Page-lifetime registration via `WebMCPBridge` + `registerFilmTools` matches that model; `use-webmcp-tool` does not.
 
 ## Related files
 

@@ -19,8 +19,11 @@ export default async function GalleryPage() {
       <Link href="/" className="pill primary">Create a story</Link>
     </header>
     <section className="gallery-intro">
-      <h1>Stories made with dots.</h1>
-      <p>Picture books shared by the Open Dots community. Pick one and turn the page.</p>
+      <div>
+        <h1>Stories made with dots.</h1>
+        <p>Picture books shared by the Open Dots community. Pick one and turn the page.</p>
+      </div>
+      <Image className="gallery-friends" src="/gallery/story-friends.png" alt="" width={720} height={480} priority />
     </section>
     {stories.length ? <section className="gallery-grid" aria-label="Shared stories">
       {stories.map(story => <Link className="story-card" href={`/gallery/${story.id}`} key={story.id}>
@@ -33,6 +36,7 @@ export default async function GalleryPage() {
         </span>
       </Link>)}
     </section> : <section className="gallery-empty">
+      <Image className="gallery-empty-art" src="/gallery/empty-storybook.png" alt="" width={720} height={480} priority />
       <h2>The shelves are waiting.</h2>
       <p>Share the first story from the Open Dots editor.</p>
       <Link href="/" className="pill primary">Create a story</Link>

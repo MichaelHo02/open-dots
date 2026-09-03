@@ -26,7 +26,7 @@
     ],
     "expectedCall": [
       {
-        "functionName": "get_film",
+        "functionName": "get_storybook",
         "arguments": {}
       }
     ]
@@ -132,7 +132,7 @@
     ],
     "expectedCall": [
       {
-        "functionName": "draw_asset_pixels",
+        "functionName": "paint_asset",
         "arguments": { "id": { "$any": true } }
       }
     ]
@@ -180,7 +180,7 @@
     ],
     "expectedCall": [
       {
-        "functionName": "draw_pixels",
+        "functionName": "paint_page",
         "arguments": null
       }
     ]
@@ -218,22 +218,6 @@
     ]
   },
   {
-    "name": "Clear the active page",
-    "messages": [
-      {
-        "role": "user",
-        "type": "message",
-        "content": "Wipe this page blank so I can start over."
-      }
-    ],
-    "expectedCall": [
-      {
-        "functionName": "clear_page",
-        "arguments": {}
-      }
-    ]
-  },
-  {
     "name": "Remove the second page",
     "messages": [
       {
@@ -266,7 +250,7 @@
     ]
   },
   {
-    "name": "End-to-end: theme, build, and place a moon",
+    "name": "End-to-end: inspect, theme, build, place, and verify a moon",
     "messages": [
       {
         "role": "user",
@@ -278,6 +262,14 @@
       {
         "ordered": [
           {
+            "functionName": "get_storybook",
+            "arguments": {}
+          },
+          {
+            "functionName": "get_pixel_art_guide",
+            "arguments": {}
+          },
+          {
             "functionName": "set_palette",
             "arguments": { "colors": { "$type": "array" } }
           },
@@ -286,13 +278,17 @@
             "arguments": { "name": { "$any": true } }
           },
           {
-            "functionName": "draw_asset_pixels",
+            "functionName": "paint_asset",
             "arguments": { "id": { "$any": true } },
             "optional": true
           },
           {
             "functionName": "stamp_assets",
             "arguments": { "stamps": { "$type": "array" } }
+          },
+          {
+            "functionName": "get_page_image",
+            "arguments": {}
           }
         ]
       }

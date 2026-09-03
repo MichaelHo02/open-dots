@@ -36,7 +36,7 @@ npm run test:webmcp
    keys that exist in `properties`, and a boolean `annotations.readOnlyHint`.
 2. Executes deterministic paths with no DOM: `get_pixel_art_guide` returns
    content; every tool with required args returns `isError` (never throws) when
-   called with missing args; and `get_film` surfaces an internal runtime throw
+   called with missing args; and `get_storybook` surfaces an internal runtime throw
    as a structured `isError` (proving the `withSafeExecute` backstop).
 3. Verifies the eval suite only references real `functionName`s and declared
    argument properties, and that every tool is covered by at least one case.
