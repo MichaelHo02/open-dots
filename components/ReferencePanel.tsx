@@ -11,6 +11,7 @@ export function ReferencePanel() {
   return <section className="sidebar-section reference-panel" aria-label="Reference image">
     <div className="sidebar-assets-head"><p className="sidebar-label">Reference</p>{reference ? <button type="button" aria-label="Remove reference image" onClick={() => setReference(null)}><X size={14} /></button> : null}</div>
     {reference ? <><Image unoptimized width={240} height={150} src={reference.url} alt="Drawing reference" /><span title={reference.name}>{reference.name}</span></> : <button type="button" className="color-add" onClick={() => input.current?.click()}><ImagePlus size={15} />Add reference</button>}
+    <p className="sidebar-help">A private drawing guide shown here only. It is not added to the page.</p>
     <input ref={input} hidden type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={event => {
       const file = event.currentTarget.files?.[0];
       event.currentTarget.value = "";

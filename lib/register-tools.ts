@@ -111,6 +111,8 @@ function assetSummary(api: FilmApi) {
     name: asset.name,
     width: asset.width,
     height: asset.height,
+    frameCount: asset.frames?.length ?? 1,
+    frameDuration: asset.frameDuration ?? 400,
   }));
 }
 
@@ -884,11 +886,22 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "paint_asset",
       description:
-        `Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤${MAX_DRAW_PIXELS}/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.`,
+        `Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤${MAX_DRAW_PIXELS}/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. For animation, pass frameIndex 0, then 1, 2, etc.; a new frame copies the previous frame so small motion only needs minor edits. Work in passes (outline → fill → shade → highlight); each call returns that frame's PNG.`,
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", description: "Asset id to paint into" },
+          frameIndex: {
+            type: "integer",
+            minimum: 0,
+            description: "Animation frame to paint (default 0). Using the next index appends a copy of the previous frame.",
+          },
+          frameDuration: {
+            type: "integer",
+            minimum: 100,
+            maximum: 2000,
+            description: "Milliseconds per frame (default 400), shared by this asset.",
+          },
           rects: RECT_OPS_SCHEMA,
           lines: LINE_OPS_SCHEMA,
           fills: FILL_OPS_SCHEMA,
@@ -935,6 +948,15 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         }
         const offsetX = asInteger(input.offsetX) ?? 0;
         const offsetY = asInteger(input.offsetY) ?? 0;
+        const frameIndex = asInteger(input.frameIndex) ?? 0;
+        const frameCount = asset.frames?.length ?? 1;
+        if (frameIndex < 0 || frameIndex > frameCount) {
+          return toolError(`frameIndex must be between 0 and ${frameCount}; use ${frameCount} to append a frame.`);
+        }
+        const frameDuration = asInteger(input.frameDuration);
+        if (frameDuration !== undefined && (frameDuration < 100 || frameDuration > 2000)) {
+          return toolError("frameDuration must be between 100 and 2000 milliseconds.");
+        }
         const ops = collectBufferOps(input, offsetX, offsetY);
         if (bufferOpCount(ops) === 0) {
           return toolError(
@@ -942,19 +964,23 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           );
         }
         const size: Size = { width: asset.width, height: asset.height };
-        const next = applyBufferOps(asset.pixels, size, ops);
-        const changed = diffToDots(asset.pixels, next, asset.width);
-        const painted = apiRef.current.drawAssetPixels(id, changed);
+        const source = asset.frames?.[frameIndex] ?? asset.frames?.at(-1) ?? asset.pixels;
+        const next = applyBufferOps(source, size, ops);
+        const changed = diffToDots(source, next, asset.width);
+        const painted = apiRef.current.drawAssetPixels(id, changed, frameIndex, frameDuration);
         const updated = apiRef.current.getAsset(id);
         if (!updated) {
           return toolError(`Asset not found: ${id}`);
         }
         return assetMutationFeedback(
-          updated,
+          { ...updated, pixels: updated.frames?.[frameIndex] ?? updated.pixels },
           {
             painted,
             width: updated.width,
             height: updated.height,
+            frameIndex,
+            frameCount: updated.frames?.length ?? 1,
+            frameDuration: updated.frameDuration ?? 400,
           },
           { dots: changed },
         );
