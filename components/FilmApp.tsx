@@ -5,93 +5,28 @@ import { AssetWorkshop } from "./AssetWorkshop";
 import { ColorAddPopover } from "./ColorAddPopover";
 import { PaletteProfileControls } from "./PaletteProfileControls";
 import { useFilm } from "@/lib/film-store";
-import {
-  DEFAULT_HEIGHT,
-  DEFAULT_WIDTH,
-  DRAW_TOOLS,
-  MAX_ASSETS,
-  MAX_WIDTH,
-  MIN_WIDTH,
-  TEXT_FRAMES,
-  MIN_BRUSH_SIZE,
-  MAX_BRUSH_SIZE,
-  MIN_TEXT_SIZE,
-  MAX_TEXT_SIZE,
-  assertNever,
-  brushSizeLabel,
-  frameHint,
-  frameLabel,
-  isBuiltInPalette,
-  isDefaultPaletteId,
-  readingOrder,
-  type DrawTool,
-} from "@/lib/types";
-import { FrameSample } from "./BubbleFrame";
-import { ChromeIcon, toolIconName } from "./ChromeIcons";
-import { OpenDotsLogo, OpenDotsWordmark } from "./OpenDotsLogo";
+import { MAX_ASSETS, isBuiltInPalette, isDefaultPaletteId, readingOrder } from "@/lib/types";
+import { ChromeIcon } from "./ChromeIcons";
+import { CanvasInspector } from "./CanvasInspector";
+import { EditorToolbar } from "./EditorToolbar";
 import { AssetThumb } from "./PagePreview";
 import { BoardStage } from "./BoardStage";
-import { TextSizePreview } from "./TextSizePreview";
 import { PresentMode } from "./PresentMode";
 import { StageZoomControls } from "./StageZoomControls";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { WebMCPBridge } from "./WebMCPBridge";
-
-function toolLabel(tool: DrawTool): string {
-  switch (tool) {
-    case "pencil":
-      return "Draw";
-    case "eraser":
-      return "Erase";
-    case "fill":
-      return "Fill";
-    case "text":
-      return "Text";
-    case "shape":
-      return "Shape";
-    case "move":
-      return "Move";
-    default:
-      return assertNever(tool, "Unknown tool");
-  }
-}
-
-function sidebarHint(tool: DrawTool): string {
-  switch (tool) {
-    case "pencil":
-      return "Draw on the page";
-    case "eraser":
-      return "Erase on the page";
-    case "fill":
-      return "Tap to fill an area";
-    case "move":
-      return "Drag to select and move pixels";
-    case "text":
-    case "shape":
-      return "";
-    default:
-      return assertNever(tool, "Unknown tool");
-  }
-}
 
 export function FilmApp() {
   const api = useFilm();
   const stageWrapRef = useRef<HTMLElement>(null);
   const {
     film,
-    tool,
     color,
-    frame,
-    textSize,
-    textFont,
-    shapeFilled,
-    brushSize,
     stageZoom,
     selectedAssetId,
     workshopOpen,
     active,
   } = api;
-  const density = active ?? film.pages[0];
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
   const presentPages = readingOrder(film.pages);
@@ -101,12 +36,6 @@ export function FilmApp() {
     setPresenting(true);
   };
   useStageZoomShortcuts(stageWrapRef);
-  const simpleTool =
-    tool === "pencil" ||
-    tool === "eraser" ||
-    tool === "fill" ||
-    tool === "move";
-  const hint = sidebarHint(tool);
 
   return (
     <div
@@ -114,49 +43,7 @@ export function FilmApp() {
       data-present={presenting}
       data-workshop={workshopOpen ? "true" : undefined}
     >
-      <header className="top-nav">
-        <div className="brand" aria-label="Open Dots">
-          <OpenDotsLogo size={22} />
-          <OpenDotsWordmark />
-        </div>
-        <nav className="tool-list" aria-label="Tools">
-          {DRAW_TOOLS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className="pill"
-              data-active={tool === item}
-              onClick={() => api.setTool(item)}
-            >
-              <ChromeIcon name={toolIconName(item)} />
-              {toolLabel(item)}
-            </button>
-          ))}
-        </nav>
-        <div className="top-actions">
-          <button type="button" className="pill ghost" onClick={() => api.undo()}>
-            <ChromeIcon name="undo" />
-            Undo
-          </button>
-          <button
-            type="button"
-            className="pill ghost"
-            onClick={() => api.clearPage()}
-          >
-            <ChromeIcon name="clear" />
-            Clear
-          </button>
-          <button
-            type="button"
-            className="pill primary"
-            onClick={openPresent}
-          >
-            <ChromeIcon name="present" />
-            Present
-          </button>
-          <WebMCPBridge />
-        </div>
-      </header>
+      <EditorToolbar onPresent={openPresent} onToolSelect={() => setInspectorOpen(true)} />
 
       <div className="studio">
         <aside className="sidebar screen-only">
@@ -208,7 +95,7 @@ export function FilmApp() {
               <button
                 type="button"
                 className="asset-new-card"
-                onClick={() => api.openWorkshop()}
+                onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
                 aria-label="New asset"
               >
                 <ChromeIcon name="page" size={28} />
@@ -221,7 +108,7 @@ export function FilmApp() {
                     <button
                       type="button"
                       className="asset-new-compact"
-                      onClick={() => api.openWorkshop()}
+                      onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
                       aria-label="New asset"
                     >
                       <ChromeIcon name="page" size={18} />
@@ -237,7 +124,7 @@ export function FilmApp() {
                       data-active={selectedAssetId === asset.id}
                       aria-label={`${asset.name}, ${asset.width} by ${asset.height}`}
                       onClick={() => api.selectAsset(asset.id)}
-                      onDoubleClick={() => api.openWorkshop(asset.id)}
+                      onDoubleClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
                       <AssetThumb asset={asset} />
                       <span className="asset-card-name">{asset.name}</span>
@@ -249,7 +136,7 @@ export function FilmApp() {
                       type="button"
                       className="asset-edit"
                       aria-label={`Edit ${asset.name}`}
-                      onClick={() => api.openWorkshop(asset.id)}
+                      onClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
                       <ChromeIcon name="draw" size={14} />
                     </button>
@@ -266,101 +153,6 @@ export function FilmApp() {
               </ul>
             ) : null}
           </section>
-
-          {simpleTool && !workshopOpen ? (
-            <section className="sidebar-section" aria-label="Tool hint">
-              <p className="sidebar-label">{toolLabel(tool)}</p>
-              <p className="sidebar-help">{hint}</p>
-            </section>
-          ) : null}
-
-          {tool === "text" ? (
-            <section className="sidebar-section" aria-label="Text size">
-              <p className="sidebar-label">Text size</p>
-              <div className="number-stepper" role="group" aria-label="Text size scale">
-                <button
-                  type="button"
-                  className="stepper-btn"
-                  aria-label="Decrease text size"
-                  disabled={textSize <= MIN_TEXT_SIZE}
-                  onClick={() => api.setTextSize(textSize - 1)}
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  className="stepper-input"
-                  min={MIN_TEXT_SIZE}
-                  max={MAX_TEXT_SIZE}
-                  step={1}
-                  value={textSize}
-                  aria-label="Text size scale"
-                  onChange={(event) =>
-                    api.setTextSize(Number(event.target.value))
-                  }
-                />
-                <button
-                  type="button"
-                  className="stepper-btn"
-                  aria-label="Increase text size"
-                  disabled={textSize >= MAX_TEXT_SIZE}
-                  onClick={() => api.setTextSize(textSize + 1)}
-                >
-                  +
-                </button>
-              </div>
-              <TextSizePreview
-                textSize={textSize}
-                textFont={textFont}
-                color={color}
-              />
-            </section>
-          ) : null}
-
-          {tool === "shape" ? (
-            <>
-              <section className="sidebar-section" aria-label="Shape">
-                <p className="sidebar-label">Shape</p>
-                <p className="sidebar-help">{frameHint(frame)}</p>
-                <div className="frame-grid">
-                  {TEXT_FRAMES.map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      className="frame-card"
-                      data-active={frame === item}
-                      aria-label={frameLabel(item)}
-                      onClick={() => api.setFrame(item)}
-                    >
-                      <FrameSample frame={item} />
-                      {frameLabel(item)}
-                    </button>
-                  ))}
-                </div>
-              </section>
-              <section className="sidebar-section" aria-label="Fill">
-                <p className="sidebar-label">Fill</p>
-                <div className="choice-row">
-                  <button
-                    type="button"
-                    className="pill"
-                    data-active={shapeFilled}
-                    onClick={() => api.setShapeFilled(true)}
-                  >
-                    Fill
-                  </button>
-                  <button
-                    type="button"
-                    className="pill"
-                    data-active={!shapeFilled}
-                    onClick={() => api.setShapeFilled(false)}
-                  >
-                    Stroke
-                  </button>
-                </div>
-              </section>
-            </>
-          ) : null}
 
           {workshopOpen ? (
             <section className="sidebar-section" aria-label="Workshop hint">
@@ -387,53 +179,7 @@ export function FilmApp() {
         </aside>
 
         <div className="workspace">
-          <div className="access-bar screen-only" aria-label="Page options">
-            {!workshopOpen ? (
-              <section className="access-group access-density" aria-label="Density">
-                <p className="sidebar-label">Density</p>
-                <label className="scale-field panel-scale">
-                  <input
-                    type="range"
-                    min={MIN_WIDTH}
-                    max={MAX_WIDTH}
-                    step={16}
-                    value={density?.width ?? DEFAULT_WIDTH}
-                    aria-label="Pixels across this page"
-                    onChange={(event) =>
-                      api.setDensity(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <span className="size">
-                  {density?.width ?? DEFAULT_WIDTH}×
-                  {density?.height ?? DEFAULT_HEIGHT}
-                </span>
-              </section>
-            ) : null}
-            {tool === "pencil" || tool === "eraser" ? (
-              <section className="access-group access-brush" aria-label="Brush size">
-                <p className="sidebar-label">Size</p>
-                <label className="scale-field panel-scale">
-                  <input
-                    type="range"
-                    min={MIN_BRUSH_SIZE}
-                    max={MAX_BRUSH_SIZE}
-                    step={1}
-                    value={brushSize}
-                    aria-label="Brush size"
-                    onChange={(event) =>
-                      api.setBrushSize(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <span className="size">{brushSizeLabel(brushSize)}</span>
-              </section>
-            ) : null}
-            <section className="access-group access-zoom" aria-label="Zoom">
-              <p className="sidebar-label">Zoom</p>
-              <StageZoomControls />
-            </section>
-          </div>
+          <div className="workspace-zoom screen-only" aria-label="Zoom"><StageZoomControls /></div>
           {workshopOpen ? (
             <main
               ref={stageWrapRef}
@@ -445,9 +191,10 @@ export function FilmApp() {
               <AssetWorkshop />
             </main>
           ) : (
-            <BoardStage viewportRef={stageWrapRef} />
+            <BoardStage viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
           )}
         </div>
+        {inspectorOpen && <CanvasInspector onClose={() => setInspectorOpen(false)} />}
       </div>
 
       {presenting ? (

@@ -70,8 +70,12 @@ function edgePath(
 
 export function BoardStage({
   viewportRef,
+  inspectorOpen,
+  onInspect,
 }: {
   viewportRef: RefObject<HTMLElement | null>;
+  inspectorOpen: boolean;
+  onInspect: () => void;
 }) {
   const api = useFilm();
   const { film, stageZoom } = api;
@@ -85,6 +89,20 @@ export function BoardStage({
   const panGesture = useRef<PanGesture | null>(null);
   const nodeDrag = useRef<NodeDrag | null>(null);
   const centered = useRef(false);
+  const inspectionPointer = useRef<number | null>(null);
+
+  function inspectPage(page: Page) {
+    onInspect();
+    requestAnimationFrame(() => {
+      const rect = localViewportRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const left = pan.x + page.boardX * stageZoom;
+      const right = left + BOARD_NODE_WIDTH * stageZoom;
+      if (left < 16 || right > rect.width - 16) {
+        setPan(current => ({ ...current, x: (rect.width - BOARD_NODE_WIDTH * stageZoom) / 2 - page.boardX * stageZoom }));
+      }
+    });
+  }
 
   const setViewport = useCallback(
     (node: HTMLDivElement | null) => {
@@ -364,6 +382,7 @@ export function BoardStage({
               key={page.id}
               className="board-node"
               data-active={active ? "true" : undefined}
+              data-grid={BOARD_NODE_WIDTH * stageZoom / page.width >= 4 ? "true" : undefined}
               style={{
                 left: page.boardX,
                 top: page.boardY,
@@ -382,7 +401,7 @@ export function BoardStage({
                   type="button"
                   className="board-node-title board-node-del"
                   aria-label={`Select or move page ${readIndex + 1}`}
-                  onClick={() => api.selectPage(index)}
+                  onClick={() => { api.selectPage(index); inspectPage(page); }}
                   onKeyDown={(event) => {
                     const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key];
                     if (!delta) return;
@@ -417,11 +436,31 @@ export function BoardStage({
 
               <div
                 className="board-node-canvas"
-                onPointerDown={(event) => {
-                  if (active || spaceHeld || event.button !== 0) {
-                    return;
+                onPointerDownCapture={(event) => {
+                  if (!event.isPrimary || spaceHeld || event.button !== 0 || (active && inspectorOpen)) return;
+                  // First click selects/inspects; do not paint or stamp while opening settings.
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  inspectionPointer.current = event.pointerId;
+                  if (!active) api.selectPage(index);
+                }}
+                onPointerUpCapture={(event) => {
+                  if (inspectionPointer.current !== event.pointerId) return;
+                  event.stopPropagation();
+                  inspectionPointer.current = null;
+                  inspectPage(page);
+                }}
+                onPointerCancel={() => { inspectionPointer.current = null; }}
+                onClick={() => {
+                  if (!active) api.selectPage(index);
+                  if (!active || !inspectorOpen) inspectPage(page);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !inspectorOpen) {
+                    event.preventDefault();
+                    inspectPage(page);
                   }
-                  api.selectPage(index);
                 }}
               >
                 {active ? (

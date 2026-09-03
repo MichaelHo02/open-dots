@@ -1,0 +1,152 @@
+"use client";
+
+import { X } from "lucide-react";
+import { useFilm } from "@/lib/film-store";
+import { DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE, MIN_TEXT_SIZE, MAX_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel, readingOrder } from "@/lib/types";
+import { FrameSample } from "./BubbleFrame";
+import { TextSizePreview } from "./TextSizePreview";
+
+export function CanvasInspector({ onClose }: { onClose: () => void }) {
+  const api = useFilm();
+  const { film, active, tool, brushSize, textSize, textFont, color, frame, shapeFilled, workshopOpen } = api;
+  const density = active ?? film.pages[0];
+  const number = readingOrder(film.pages).findIndex(page => page.id === active?.id) + 1;
+  return (
+    <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
+      <div className="inspector-heading">
+        <div><p className="sidebar-label">{workshopOpen ? "Asset" : `Page ${number}`}</p><h2>{workshopOpen ? "Workshop settings" : "Canvas settings"}</h2></div>
+        <button type="button" className="inspector-close" aria-label="Close canvas settings" onClick={onClose}><X size={16} aria-hidden="true" /></button>
+      </div>
+            {!workshopOpen ? (
+              <section className="access-group access-density" aria-label="Density">
+                <p className="sidebar-label">Density</p>
+                <label className="scale-field panel-scale">
+                  <input
+                    type="range"
+                    min={MIN_WIDTH}
+                    max={MAX_WIDTH}
+                    step={16}
+                    value={density?.width ?? DEFAULT_WIDTH}
+                    aria-label="Pixels across this page"
+                    onChange={(event) =>
+                      api.setDensity(Number(event.target.value))
+                    }
+                  />
+                </label>
+                <span className="size">
+                  {density?.width ?? DEFAULT_WIDTH}×
+                  {density?.height ?? DEFAULT_HEIGHT}
+                </span>
+              </section>
+            ) : null}
+            {tool === "pencil" || tool === "eraser" ? (
+              <section className="access-group access-brush" aria-label="Brush size">
+                <p className="sidebar-label">Brush size</p>
+                <label className="scale-field panel-scale">
+                  <input
+                    type="range"
+                    min={MIN_BRUSH_SIZE}
+                    max={MAX_BRUSH_SIZE}
+                    step={1}
+                    value={brushSize}
+                    aria-label="Brush size"
+                    onChange={(event) =>
+                      api.setBrushSize(Number(event.target.value))
+                    }
+                  />
+                </label>
+                <span className="size">{brushSizeLabel(brushSize)}</span>
+              </section>
+            ) : null}
+          {tool === "text" ? (
+            <section className="sidebar-section" aria-label="Text size">
+              <p className="sidebar-label">Text size</p>
+              <div className="number-stepper" role="group" aria-label="Text size scale">
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  aria-label="Decrease text size"
+                  disabled={textSize <= MIN_TEXT_SIZE}
+                  onClick={() => api.setTextSize(textSize - 1)}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  className="stepper-input"
+                  min={MIN_TEXT_SIZE}
+                  max={MAX_TEXT_SIZE}
+                  step={1}
+                  value={textSize}
+                  aria-label="Text size scale"
+                  onChange={(event) =>
+                    api.setTextSize(Number(event.target.value))
+                  }
+                />
+                <button
+                  type="button"
+                  className="stepper-btn"
+                  aria-label="Increase text size"
+                  disabled={textSize >= MAX_TEXT_SIZE}
+                  onClick={() => api.setTextSize(textSize + 1)}
+                >
+                  +
+                </button>
+              </div>
+              <TextSizePreview
+                textSize={textSize}
+                textFont={textFont}
+                color={color}
+              />
+            </section>
+          ) : null}
+
+          {tool === "shape" ? (
+            <>
+              <section className="sidebar-section" aria-label="Shape">
+                <p className="sidebar-label">Shape</p>
+                <p className="sidebar-help">{frameHint(frame)}</p>
+                <div className="frame-grid">
+                  {TEXT_FRAMES.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      className="frame-card"
+                      data-active={frame === item}
+                      aria-label={frameLabel(item)}
+                      onClick={() => api.setFrame(item)}
+                    >
+                      <FrameSample frame={item} />
+                      {frameLabel(item)}
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <section className="sidebar-section" aria-label="Fill">
+                <p className="sidebar-label">Fill</p>
+                <div className="choice-row">
+                  <button
+                    type="button"
+                    className="pill"
+                    data-active={shapeFilled}
+                    onClick={() => api.setShapeFilled(true)}
+                  >
+                    Fill
+                  </button>
+                  <button
+                    type="button"
+                    className="pill"
+                    data-active={!shapeFilled}
+                    onClick={() => api.setShapeFilled(false)}
+                  >
+                    Stroke
+                  </button>
+                </div>
+              </section>
+            </>
+          ) : null}
+
+      {tool === "move" ? <section className="sidebar-section"><p className="sidebar-label">Move</p><p className="sidebar-help">Drag an asset to move it, or drag across pixels to select them.</p></section> : null}
+    </aside>
+  );
+}
