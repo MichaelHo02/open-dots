@@ -1,0 +1,57 @@
+{
+  "scoreType": "semantic-workflow",
+  "visualScore": null,
+  "totalScore": 100,
+  "verdict": "pass",
+  "callCount": 20,
+  "milestones": [
+    {
+      "name": "safe_start",
+      "weight": 10,
+      "score": 10,
+      "evidence": "Guide and storybook before mutation"
+    },
+    {
+      "name": "palette_and_page",
+      "weight": 15,
+      "score": 15,
+      "evidence": "Named palette and confirmed 256x144 page"
+    },
+    {
+      "name": "background",
+      "weight": 10,
+      "score": 10,
+      "evidence": "Page background painted after page creation"
+    },
+    {
+      "name": "story_text",
+      "weight": 10,
+      "score": 10,
+      "evidence": "Exact rasterized sentence"
+    },
+    {
+      "name": "required_assets",
+      "weight": 25,
+      "score": 25,
+      "evidence": "6/6 named assets created"
+    },
+    {
+      "name": "asset_iteration",
+      "weight": 10,
+      "score": 10,
+      "evidence": "Every created asset painted after creation; extra inspections are neutral"
+    },
+    {
+      "name": "composition",
+      "weight": 10,
+      "score": 10,
+      "evidence": "11 valid stamps; core=true; repeated scenery=true"
+    },
+    {
+      "name": "final_verification",
+      "weight": 10,
+      "score": 10,
+      "evidence": "Successful 256x144 final page inspected after composition"
+    }
+  ]
+}

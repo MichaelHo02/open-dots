@@ -60,3 +60,49 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/open-dots.evals.json -v
 > Note: `smoke` resolves matcher constraints to sample values, so cases whose
 > arguments are model-dependent (`colors`, asset `id`s) are best exercised via
 > `browser` mode with a live model.
+
+## Story-page visual benchmark
+
+`campsite.challenge.json` pairs an original reference PNG with the creation
+prompt and a 100-point visual rubric. Attach
+`fixtures/campsite-story-page.png` to the browser agent, give it the prompt
+from the challenge file, and export the resulting page PNG. Then score it:
+
+```bash
+npm run eval:story-page -- path/to/candidate.png
+```
+
+Save a reviewable JSON report for submission evidence:
+
+```bash
+npm run eval:story-page -- --output evals/reports/YYYY-MM-DD-layer3-campsite-visual-score.json path/to/candidate.png
+```
+
+Run the local input/rubric check without calling Gemini:
+
+```bash
+npm run eval:story-page -- --check path/to/candidate.png
+```
+
+This is separate from `webmcp-evals browser`: its current message schema is
+text-only and its JSON report does not preserve WebMCP PNG result blocks.
+
+Selected, reviewable evidence is committed under `reports/`; bulky disposable
+runner output remains under the ignored root `/.evals/` directory. Name saved
+evidence `YYYY-MM-DD-layer3-<challenge>-<variant>-<artifact>.<ext>`.
+
+Score a browser report by required milestones instead of exact call order:
+
+```bash
+npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/YYYY-MM-DD-layer3-campsite-efficient-score.json
+```
+
+Repeated reads, image inspections, and paint passes are allowed. The scorer
+only enforces real dependencies and requires stamped composition plus a final
+page inspection before it can return `pass`. The four core subjects (tent,
+campfire, Mira, and fox) are required; trees and stars add score but do not
+block an otherwise complete result.
+
+This score measures semantic workflow completion only. Its JSON records
+`scoreType: "semantic-workflow"` and `visualScore: null`; score exported page
+pixels separately with `eval:story-page`.

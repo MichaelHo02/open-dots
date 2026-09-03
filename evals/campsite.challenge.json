@@ -1,0 +1,39 @@
+{
+  "name": "Campsite story-page reconstruction",
+  "reference": "fixtures/campsite-story-page.png",
+  "target": { "width": 256, "height": 144 },
+  "prompt": "Recreate the attached campsite reference as an original 256×144 Open Dots page. Start with get_pixel_art_guide and get_storybook, create a limited named palette, then build six reusable visual groups: striped tent, campfire, Mira, fox, pine tree, and star cluster. Use a flat painted sky and grassy clearing, stamp the pine tree four times and the star cluster several times, place the tent on the left, Mira walking near the center, the fire at center, and the fox looking back on the right. Build assets in outline, fill, shade, and highlight passes; inspect their PNGs; stamp them back-to-front; add the exact text ‘Mira followed the little fox.’ as rasterized page text; inspect the final page and iterate. Preserve the simple three-layer composition, readable silhouettes, cool moonlight, and warm firelight without copying pixels literally.",
+  "minimumScore": 75,
+  "rubric": [
+    {
+      "name": "composition",
+      "weight": 20,
+      "criteria": "At 256×144, the scene has three readable depth bands with tent left, fire near center, Mira moving through the middle, and fox looking back on the right."
+    },
+    {
+      "name": "characters",
+      "weight": 20,
+      "criteria": "Mira and the fox have distinct readable silhouettes, clear facing directions, simple poses, and contact shadows."
+    },
+    {
+      "name": "asset_reuse_and_layout",
+      "weight": 20,
+      "criteria": "Tent, fire, characters, tree, and stars read as coherent reusable assets; trees and stars are repeated intentionally without clutter."
+    },
+    {
+      "name": "pixel_craft",
+      "weight": 20,
+      "criteria": "Crisp clustered pixels, 1–2 pixel outlines, simple outline/base/shadow/highlight ramps, and no soft downsampled or noisy texture."
+    },
+    {
+      "name": "story_text",
+      "weight": 10,
+      "criteria": "The exact sentence ‘Mira followed the little fox.’ is legible in the upper-left sky, rasterized into the page, and has no caption box."
+    },
+    {
+      "name": "palette_and_lighting",
+      "weight": 10,
+      "criteria": "Limited cohesive night palette with cool navy moonlight and a clear warm orange campfire focal glow."
+    }
+  ]
+}
