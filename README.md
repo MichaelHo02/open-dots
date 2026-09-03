@@ -4,7 +4,7 @@ A picture-book canvas. Draw each page, place words and shapes on the art, then p
 
 Built for the [WebMCP Challenge](https://webmcp.devpost.com/). Theme tokens come from [DESIGN.md](./DESIGN.md) (`npx getdesign@latest add figma`).
 
-**Live URL:** [https://pixel-film-studio.vercel.app](https://pixel-film-studio.vercel.app)
+**Live URL:** [https://opendots.thach.app](https://opendots.thach.app)
 
 ## What it is
 
@@ -74,7 +74,7 @@ npm run test:webmcp
 It lints every tool (name, description, schema, `readOnlyHint`), exercises validation + graceful-error paths with no browser, checks the eval suite only references real tools/arguments, and emits `evals/schema.json`. For the probabilistic layer, point the official CLI at the deployed site:
 
 ```bash
-npx webmcp-evals browser -u https://pixel-film-studio.vercel.app -e evals/open-dots.evals.json
+npx webmcp-evals browser -u https://opendots.thach.app -e evals/open-dots.evals.json
 ```
 
 See [`evals/README.md`](./evals/README.md) for details.

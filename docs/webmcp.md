@@ -121,7 +121,7 @@ npm run test:webmcp
 **Probabilistic (live model + browser):**
 
 ```bash
-npx webmcp-evals browser -u https://pixel-film-studio.vercel.app -e evals/open-dots.evals.json
+npx webmcp-evals browser -u https://opendots.thach.app -e evals/open-dots.evals.json
 ```
 
 For a deterministic smoke run against a local dev server:

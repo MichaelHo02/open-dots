@@ -55,7 +55,7 @@ Open Dots is a Next.js and React web application. Storybook state, pages, layers
 
 ## Testing Instructions
 
-Public demo: https://pixel-film-studio.vercel.app
+Public demo: https://opendots.thach.app
 
 1. Open the URL in ChatGPT’s in-app browser, or Chrome 149+ with `chrome://flags/#enable-webmcp-testing` enabled.
 2. Start with a blank page and ask the agent to create a picture-book scene in Open Dots.
@@ -76,7 +76,7 @@ The WebMCP evaluation runner validates tool schemas, annotations, declared argum
 
 ## Public Demo Link
 
-https://pixel-film-studio.vercel.app
+https://opendots.thach.app
 
 ## Public Repository Link
 
@@ -120,7 +120,7 @@ Devpost currently contains an in-progress pre-draft project named “Untitled”
 - Country of residence of yourself and team members if applicable: TODO.
 - App Status: New. The repository history shown for this project begins during the submission period; confirm this is accurate before finalizing.
 - If Existing, explain what you updated during the submission period: N/A if App Status is New; otherwise document the WebMCP extension with dated commits.
-- Live URL: https://pixel-film-studio.vercel.app
+- Live URL: https://opendots.thach.app
 - Testing Instructions: use the section above; add credentials only if the live site later requires them.
 - Public Code Repo: https://github.com/MichaelHo02/open-dots
 - Which agent(s) or client(s) did you test your WebMCP tools with?: Codex in-app browser (browser verification documented 2026-09-03). Add ChatGPT in-app browser and/or Chrome only after testing them.

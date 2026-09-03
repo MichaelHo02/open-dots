@@ -51,7 +51,7 @@ WebMCP flag) and a model backend/API key.
 
 ```bash
 # LLM tool-selection eval against the deployed site
-npx webmcp-evals browser -u https://pixel-film-studio.vercel.app -e evals/open-dots.evals.json --open
+npx webmcp-evals browser -u https://opendots.thach.app -e evals/open-dots.evals.json --open
 
 # Deterministic smoke run (executes expectedCall directly, no LLM/API key)
 npx webmcp-evals smoke -u http://localhost:3000 -e evals/open-dots.evals.json -v
