@@ -8,7 +8,11 @@ An agent-native pixel-art storybook where children and families turn their ideas
 
 ## Problem
 
-Families often invent stories together, but turning those ideas into a picture book takes drawing confidence, time, and specialized tools. Picture-book creation tools tend to force a choice between manual drawing and opaque AI generation. A child can describe a rich scene, but an agent usually has to guess through a visual interface or generate a single flat image that is difficult to revise, reuse, or carry forward into the next page.
+Families want creative screen time that they can do together: a child imagines a character or scene, an adult helps shape the story, and both can see and change the result. But making a picture book takes drawing confidence, time, and specialized tools.
+
+Many pixel-art products are either one-off image generators or professional editors. A generated image can be impressive, but it is often a paid, opaque endpoint: it does not teach a child how a scene is built, preserve reusable pieces, or make it easy for a family to revise a character across the next page. Traditional editors expose the craft, but can be intimidating for beginners.
+
+People who already have access to an AI client such as ChatGPT need a more approachable middle ground: a shared canvas where they can learn by making, keep creative control, and ask an agent for help without handing the whole story to a black box.
 
 ## Solution
 
@@ -22,9 +26,11 @@ Open Dots makes family story creation more accessible without taking authorship 
 
 ## How We Used AI
 
-WebMCP is the product capability, not an add-on. An in-browser agent discovers 15 Open Dots tools through `document.modelContext`, then follows a visual creation workflow: load the pixel-art guide, set a named palette, create and refine small assets, compare inline PNG feedback, stamp assets back-to-front, and inspect the composed page.
+WebMCP is the product capability, not an add-on. Open Dots treats its 15 tools as an agent-quality harness, not a thin UI automation layer. An in-browser agent discovers them through `document.modelContext`, then follows a deliberate pixel-art workflow: load the pixel-art guide, set a named palette, create small assets, refine them in outline/fill/shade/highlight passes, compare inline PNG feedback, stamp assets back-to-front, and inspect the composed page.
 
-The tools make the agent’s actions structured and recoverable. Read tools expose the storybook, asset images, and page images; write tools create pages, assets, palettes, pixels, text, and placements. Mutating asset operations return inline PNG feedback and guidance for the required next comparison pass, helping agents correct work rather than drawing blindly.
+This harness exists because an unconstrained agent is poor at pixel art: it may paint whole pages flatly, make oversized props, skip shading, or continue without looking at what it just made. Open Dots gives it the constraints and feedback that a careful pixel artist uses: reusable small sprites, palette tiers, bulk drawing primitives, inline visual inspection, and scene-quality hints. Mutating asset operations return inline PNG feedback and the required next comparison pass, preventing blind multi-step drawing.
+
+Read tools expose the storybook, asset images, and page images; write tools create pages, assets, palettes, pixels, text, and placements. The tools use typed schemas, intent-rich descriptions, structured errors, and read/write annotations. Deterministic evals test the tool surface, input validation, error handling, and journey coverage; the live browser flow tests whether an agent can use that harness to make a coherent scene. Considerable iteration went into scoring agent output and turning the recurring failure modes into guide, feedback, and composition checks.
 
 ## How We Used Codex
 
@@ -36,10 +42,10 @@ Codex was used to implement and iterate on the editor, WebMCP registration layer
 - Human tools for drawing, erasing, fill, pixel text, shapes, selections, layers, and reusable assets.
 - A persistent asset library and movable, layered stamps so agents can compose dense scenes from small reusable sprites.
 - Named palette profiles and bulk pixel operations for deliberate outline, fill, shade, and highlight passes.
-- 15 WebMCP tools with typed JSON schemas, intent-focused descriptions, and `readOnlyHint` annotations.
+- 15 WebMCP tools that form an agent-quality harness: typed JSON schemas, intent-focused descriptions, `readOnlyHint` annotations, pixel-art workflow guidance, and visual quality feedback.
 - Page-lifetime WebMCP registration that stays stable across React remounts and HMR, avoiding stale agent tool snapshots.
-- Inline PNG feedback plus page/asset inspection tools and scene-quality hints for a draw–look–fix loop.
-- Deterministic WebMCP tool/eval checks, including schema, validation, error-handling, and tool-coverage checks.
+- Inline PNG feedback plus page/asset inspection tools and scene-quality hints for a draw–look–fix loop instead of blind image generation.
+- Deterministic WebMCP tool/eval checks, including schema, validation, error handling, tool coverage, and quality-oriented agent workflow checks.
 
 ## Architecture
 
