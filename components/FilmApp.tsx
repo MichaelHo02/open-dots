@@ -17,7 +17,7 @@ import { ToolSettings } from "./ToolSettings";
 import { AppTooltip, AppTooltipTrigger } from "./AppTooltip";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { Check, CopyPlus, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, CopyPlus, Plus, Trash2 } from "lucide-react";
 import { ConfirmAction } from "./ConfirmAction";
 import { ReferencePanel } from "./ReferencePanel";
 import { AssetImageImport } from "./AssetImageImport";
@@ -63,10 +63,9 @@ export function FilmApp() {
 
       <div className="studio">
         <aside className="sidebar screen-only">
-          <section className="sidebar-section sidebar-colors" aria-label="Color">
-            <div className="sidebar-colors-head">
-              <p className="sidebar-label">Color</p>
-            </div>
+          <details className="sidebar-section sidebar-colors sidebar-collapsible" open>
+            <summary><span className="sidebar-label">Color</span><ChevronDown size={14} aria-hidden="true" /></summary>
+            <div className="sidebar-section-body">
             <PaletteProfileControls
               palettes={film.palettes ?? []}
               activePaletteId={film.activePaletteId ?? "default"}
@@ -102,14 +101,17 @@ export function FilmApp() {
                 Reset
               </button>
             ) : null}
-          </section>
+            </div>
+          </details>
           <ToolSettings symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} />
           <ReferencePanel />
-          <section className="sidebar-section sidebar-assets" aria-label="Assets">
-            <div className="sidebar-assets-head">
-              <p className="sidebar-label">Assets</p>
+          <details className="sidebar-section sidebar-assets sidebar-collapsible" open>
+            <summary>
+              <span className="sidebar-label">Assets</span>
               <span className="asset-count">{film.assets.length}/{MAX_ASSETS}</span>
-            </div>
+              <ChevronDown size={14} aria-hidden="true" />
+            </summary>
+            <div className="sidebar-section-body">
             <button
               type="button"
               className="color-add"
@@ -157,7 +159,8 @@ export function FilmApp() {
                 ))}
               </ul>
             ) : null}
-          </section>
+            </div>
+          </details>
 
           {workshopOpen ? (
             <section className="sidebar-section" aria-label="Workshop hint">

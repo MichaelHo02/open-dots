@@ -100,6 +100,21 @@ input {
   gap: 10px;
 }
 
+.sidebar-collapsible > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.sidebar-collapsible > summary::-webkit-details-marker { display: none; }
+.sidebar-collapsible > summary::marker { content: ""; }
+.sidebar-collapsible > summary svg { margin-left: auto; transition: transform 0.15s ease; }
+.sidebar-collapsible:not([open]) > summary svg { transform: rotate(-90deg); }
+.sidebar-collapsible > summary:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
+.sidebar-section-body { display: flex; flex-direction: column; gap: 10px; }
+
 .sidebar-label {
   margin: 0;
   font-family: var(--font-figma-mono), ui-monospace, monospace;
