@@ -18,6 +18,7 @@ import { AppTooltip, AppTooltipTrigger } from "./AppTooltip";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
 import { Plus, Trash2 } from "lucide-react";
+import { AssetImageImport } from "./AssetImageImport";
 
 export function FilmApp() {
   const api = useFilm();
@@ -113,6 +114,7 @@ export function FilmApp() {
               aria-label={film.assets.length >= MAX_ASSETS ? "Asset library full — remove an asset to create another" : "New asset"}
               onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
             ><ChromeIcon name="plus" />New asset</button>
+            <AssetImageImport api={api} disabled={film.assets.length >= MAX_ASSETS} />
             {film.assets.length > 0 ? (
               <ul className="asset-list">
                 {film.assets.map((asset) => (
