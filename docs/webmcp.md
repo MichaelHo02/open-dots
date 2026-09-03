@@ -15,7 +15,7 @@ Open Dots registers **12 agent-focused tools** (4 read / 8 write) on `document.m
 | `get_asset_image` | `paint_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). `add_asset` also accepts a compact direct bitmap (`bitmapPalette` + comma-separated `indexedRows`, with `.` for transparency). A Codex agent that generated an image file can use the existing visible **Import image** control; both routes create the same editable asset. UI-only drawing controls (brush, workshop, tool picker, stage zoom) are not exposed.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). `add_asset` also accepts a compact direct bitmap (`bitmapPalette` + comma-separated `indexedRows`, with `.` for transparency). A Codex agent that generated an image file can use the existing visible **Import image** control; both routes create the same editable asset. `paint_asset` creates animation frames with `frameIndex` and sets shared timing with `frameDuration`; `get_asset_image` inspects any frame. UI-only drawing controls (brush, workshop, tool picker, stage zoom) are not exposed.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
@@ -76,7 +76,7 @@ Storybook data (pages, assets, named color profiles) **persists** in `localStora
 
 `get_storybook` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
 
-Typical session start after tools are ready: `get_pixel_art_guide` → `set_palette` → decompose scene into small assets → outline/fill/shade passes with inline PNG compare → `stamp_assets` overlays back-to-front (floor tiles → emblem/shadows → furniture → plants/characters) → `get_page_image` with `sceneHint` check.
+Typical session start after tools are ready: `get_pixel_art_guide` → create several reusable named palettes for material/asset families → generate/import complex clean PNG assets when available or draw them in outline/fill/shade/light passes → add animation frames with `paint_asset.frameIndex` → `stamp_assets` back-to-front → compare full and cropped `get_page_image` PNGs. Rich scenes may naturally exceed 100 purposeful colors; profiles are working sets, not hard-bound to assets.
 
 ## Chrome best practices we follow
 
@@ -89,7 +89,7 @@ Aligned with [Chrome’s WebMCP docs](https://developer.chrome.com/docs/ai/webmc
 | **Intent-rich descriptions** | Each tool says what it does, when to use it, and key constraints (coords, erase via `color ""`, PNG feedback) — no repo file paths |
 | **Graceful errors** | `toolError()` for validation; `withSafeExecute` backstop for runtime throws |
 | **Route-scoped registration** | One shared `AbortSignal`; editor unmount removes all tools; initial registration batches `toolchange` |
-| **Vision loop** | Mutating asset tools return inline PNG + `passHint` / `nextRequired`; `get_page_image` composites overlay stamps and returns `sceneHint` (few placements, huge stamps, full-page paint, noisy colorCount) |
+| **Vision loop** | Mutating asset tools return inline PNG + `passHint` / `nextRequired`; `get_asset_image` inspects individual animation frames; `get_page_image` composites overlay stamps and returns composition hints |
 | **Evals** | Chrome-format suite + deterministic CI runner (see below) |
 
 ## Running evals

@@ -22,7 +22,7 @@
     },
     {
       "name": "get_storybook",
-      "description": "Read the book: pages with named layers, activeLayerId and overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
+      "description": "Read the book: pages with named layers, activeLayerId and overlay placements, reusable named color profiles (palettes + activePaletteId), assets including animation frame count/timing, the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -30,7 +30,7 @@
     },
     {
       "name": "set_palette",
-      "description": "Create or update a named color profile and select it. Pass any number of #rrggbb swatches in colors — there is no count cap, and the built-in Default profile is never overwritten. Pass name (e.g. Bedtime) plus colors to create or update a theme; omit name to update the current non-Default profile, or to create Theme N when Default is active; pass name without colors to select an existing profile including Default. Extra #rrggbb colors can be used inline in draw ops without adding them to the profile first. Optional mood examples: lime #dceeb1, lilac #c5b0f4, cream #f4ecd6, pink #efd4d4, mint #c8e6cd, coral #f3c9b6, navy #1f1d3d, magenta #ff3d8b, plus ink #000000 and paper #ffffff.",
+      "description": "Create, update, or select a reusable named color profile. Make multiple profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Rich composed scenes may naturally exceed 100 unique colors through separate base, reflected-light, shadow, and highlight ramps. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -119,13 +119,18 @@
     },
     {
       "name": "get_asset_image",
-      "description": "Rasterize an asset to PNG so you can compare it to a reference (optional scale 1–8). Returns JSON stats plus the image, and comma-separated rows as a text fallback. Call after each draw pass (outline → fill → shade → highlight) before stamping.",
+      "description": "Rasterize one asset animation frame to PNG so you can compare it to a reference. Pass frameIndex to inspect a specific frame and scale 1–8 to enlarge it. Returns frame metadata, stats, the image, and optional comma-separated rows. Call after each draw pass and each animation frame before stamping.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "description": "Asset id from add_asset or get_storybook.assets"
+          },
+          "frameIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Animation frame to inspect (default 0)"
           },
           "scale": {
             "type": "integer",
@@ -145,13 +150,24 @@
     },
     {
       "name": "paint_asset",
-      "description": "Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤4096/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.",
+      "description": "Paint an asset or animation frame. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤4096 detail pixels/call); color \"\" erases. frameIndex defaults to 0; using the next frame index appends a copy of the previous frame for small motion edits. frameDuration sets shared timing in milliseconds and may be passed alone. Each call returns that frame's PNG — compare before the next pass or frame.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "description": "Asset id to paint into"
+          },
+          "frameIndex": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Frame to paint (default 0). Use the current frameCount to append one copied frame."
+          },
+          "frameDuration": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 2000,
+            "description": "Milliseconds per frame, shared by the asset (default 400)"
           },
           "rects": {
             "type": "array",
@@ -550,7 +566,7 @@
     },
     {
       "name": "get_page_image",
-      "description": "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page painting, or noisy colorCount). Call after every few stamps, not only at the end.",
+      "description": "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint for composition problems. Call after every few stamps, then inspect important character/object crops rather than trusting counts alone.",
       "inputSchema": {
         "type": "object",
         "properties": {

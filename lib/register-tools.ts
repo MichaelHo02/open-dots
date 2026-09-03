@@ -112,6 +112,8 @@ function assetSummary(api: FilmApi) {
     name: asset.name,
     width: asset.width,
     height: asset.height,
+    frameCount: asset.frames?.length ?? 1,
+    frameDuration: asset.frameDuration ?? 400,
   }));
 }
 
@@ -655,7 +657,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_storybook",
       description:
-        "Read the book: pages with named layers, activeLayerId and overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
+        "Read the book: pages with named layers, activeLayerId and overlay placements, reusable named color profiles (palettes + activePaletteId), assets including animation frame count/timing, the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       annotations: { readOnlyHint: true },
       inputSchema: { type: "object", properties: {} },
       execute: async () => toolResult(summarize(apiRef.current)),
@@ -663,7 +665,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "set_palette",
       description:
-        "Create or update a named color profile and select it. Pass any number of #rrggbb swatches in colors — there is no count cap, and the built-in Default profile is never overwritten. Pass name (e.g. Bedtime) plus colors to create or update a theme; omit name to update the current non-Default profile, or to create Theme N when Default is active; pass name without colors to select an existing profile including Default. Extra #rrggbb colors can be used inline in draw ops without adding them to the profile first. Optional mood examples: lime #dceeb1, lilac #c5b0f4, cream #f4ecd6, pink #efd4d4, mint #c8e6cd, coral #f3c9b6, navy #1f1d3d, magenta #ff3d8b, plus ink #000000 and paper #ffffff.",
+        "Create, update, or select a reusable named color profile. Make multiple profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Rich composed scenes may naturally exceed 100 unique colors through separate base, reflected-light, shadow, and highlight ramps. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
       inputSchema: {
         type: "object",
         properties: {
@@ -818,12 +820,17 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_asset_image",
       description:
-        "Rasterize an asset to PNG so you can compare it to a reference (optional scale 1–8). Returns JSON stats plus the image, and comma-separated rows as a text fallback. Call after each draw pass (outline → fill → shade → highlight) before stamping.",
+        "Rasterize one asset animation frame to PNG so you can compare it to a reference. Pass frameIndex to inspect a specific frame and scale 1–8 to enlarge it. Returns frame metadata, stats, the image, and optional comma-separated rows. Call after each draw pass and each animation frame before stamping.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", description: "Asset id from add_asset or get_storybook.assets" },
+          frameIndex: {
+            type: "integer",
+            minimum: 0,
+            description: "Animation frame to inspect (default 0)",
+          },
           scale: {
             type: "integer",
             minimum: 1,
@@ -846,19 +853,29 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (!asset) {
           return toolError(`Asset not found: ${id}`);
         }
+        const parsedFrameIndex = asInteger(input.frameIndex);
+        const frameIndex = parsedFrameIndex ?? 0;
+        const frameCount = asset.frames?.length ?? 1;
+        if ((input.frameIndex !== undefined && parsedFrameIndex === undefined) || frameIndex < 0 || frameIndex >= frameCount) {
+          return toolError(`frameIndex must be between 0 and ${frameCount - 1}`);
+        }
+        const framePixels = asset.frames?.[frameIndex] ?? asset.pixels;
         const scale = parseImageScale(input.scale);
-        const png = pixelsToPngBase64(asset.pixels, asset.width, asset.height, scale);
+        const png = pixelsToPngBase64(framePixels, asset.width, asset.height, scale);
         if (!png) {
           return toolError("Could not rasterize asset image (canvas unavailable)");
         }
         const includeRows = input.includeRows === undefined ? true : asBoolean(input.includeRows);
         markAssetVerified(asset.id);
-        const stats = computePixelStats(asset.pixels, asset.width, asset.height);
+        const stats = computePixelStats(framePixels, asset.width, asset.height);
         const summary = {
           id: asset.id,
           name: asset.name,
           width: asset.width,
           height: asset.height,
+          frameIndex,
+          frameCount,
+          frameDuration: asset.frameDuration ?? 400,
           imageScale: scale,
           renderedWidth: asset.width * scale,
           renderedHeight: asset.height * scale,
@@ -871,7 +888,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           rows:
             includeRows === false
               ? undefined
-              : pixelsToRows(asset.pixels, asset.width, asset.height),
+              : pixelsToRows(framePixels, asset.width, asset.height),
           verified: true,
           nextRequired:
             "Compare the PNG to your reference. Fix with paint_asset (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
@@ -883,11 +900,22 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "paint_asset",
       description:
-        `Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤${MAX_DRAW_PIXELS}/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.`,
+        `Paint an asset or animation frame. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); color \"\" erases. frameIndex defaults to 0; using the next frame index appends a copy of the previous frame for small motion edits. frameDuration sets shared timing in milliseconds and may be passed alone. Each call returns that frame's PNG — compare before the next pass or frame.`,
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", description: "Asset id to paint into" },
+          frameIndex: {
+            type: "integer",
+            minimum: 0,
+            description: "Frame to paint (default 0). Use the current frameCount to append one copied frame.",
+          },
+          frameDuration: {
+            type: "integer",
+            minimum: 100,
+            maximum: 2000,
+            description: "Milliseconds per frame, shared by the asset (default 400)",
+          },
           rects: RECT_OPS_SCHEMA,
           lines: LINE_OPS_SCHEMA,
           fills: FILL_OPS_SCHEMA,
@@ -934,26 +962,40 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         }
         const offsetX = asInteger(input.offsetX) ?? 0;
         const offsetY = asInteger(input.offsetY) ?? 0;
+        const parsedFrameIndex = asInteger(input.frameIndex);
+        const frameIndex = parsedFrameIndex ?? 0;
+        const frameCount = asset.frames?.length ?? 1;
+        if ((input.frameIndex !== undefined && parsedFrameIndex === undefined) || frameIndex < 0 || frameIndex > frameCount) {
+          return toolError(`frameIndex must be between 0 and ${frameCount}; use ${frameCount} to append one frame.`);
+        }
+        const frameDuration = asInteger(input.frameDuration);
+        if (input.frameDuration !== undefined && (frameDuration === undefined || frameDuration < 100 || frameDuration > 2000)) {
+          return toolError("frameDuration must be an integer between 100 and 2000 milliseconds");
+        }
         const ops = collectBufferOps(input, offsetX, offsetY);
-        if (bufferOpCount(ops) === 0) {
+        if (bufferOpCount(ops) === 0 && frameDuration === undefined) {
           return toolError(
-            "Provide at least one of pixels, rects, lines, or fills. Each {x,y,color}; color \"\" erases.",
+            "Provide pixels, rects, lines, fills, or frameDuration. color \"\" erases.",
           );
         }
         const size: Size = { width: asset.width, height: asset.height };
-        const next = applyBufferOps(asset.pixels, size, ops);
-        const changed = diffToDots(asset.pixels, next, asset.width);
-        const painted = apiRef.current.drawAssetPixels(id, changed);
+        const source = asset.frames?.[frameIndex] ?? asset.frames?.at(-1) ?? asset.pixels;
+        const next = applyBufferOps(source, size, ops);
+        const changed = diffToDots(source, next, asset.width);
+        const painted = apiRef.current.drawAssetPixels(id, changed, frameIndex, frameDuration);
         const updated = apiRef.current.getAsset(id);
         if (!updated) {
           return toolError(`Asset not found: ${id}`);
         }
         return assetMutationFeedback(
-          updated,
+          { ...updated, pixels: updated.frames?.[frameIndex] ?? updated.pixels },
           {
             painted,
             width: updated.width,
             height: updated.height,
+            frameIndex,
+            frameCount: updated.frames?.length ?? 1,
+            frameDuration: updated.frameDuration ?? 400,
           },
           { dots: changed },
         );
@@ -1235,7 +1277,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_page_image",
       description:
-        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page painting, or noisy colorCount). Call after every few stamps, not only at the end.",
+        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint for composition problems. Call after every few stamps, then inspect important character/object crops rather than trusting counts alone.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -1372,7 +1414,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
                 pageSceneHintContext(page, assets.length, backgroundStats.coverage),
               ),
           nextRequired:
-            "Compare this PNG to your reference. If the sceneHint flags few placements, huge stamps, full-page paint, or noisy colorCount, add overlay stamps or 4–12 tone ramps — do not maximize unique hexes.",
+            "Compare this PNG and important region crops to your reference. Fix silhouettes, empty space, overlap, lighting, and material-specific shadow/highlight ramps; placement count alone does not prove visual quality.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
