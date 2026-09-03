@@ -16,7 +16,7 @@ import { StageZoomControls } from "./StageZoomControls";
 import { ToolSettings } from "./ToolSettings";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 export function FilmApp() {
   const api = useFilm();
@@ -206,10 +206,8 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
-              <button type="button" className="pill danger-subtle" disabled={film.pages.length <= 1} onClick={() => api.removePage(film.activeIndex)}><Trash2 size={14} aria-hidden="true" />Delete page</button>
-              <button type="button" className="pill ghost" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}>
-                <ChromeIcon name="page" size={16} />New page
-              </button>
+              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => api.removePage(film.activeIndex)}><Trash2 size={16} aria-hidden="true" /></button>
+              <button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button>
             </div>
           </nav>}
         </div>

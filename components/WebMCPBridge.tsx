@@ -64,5 +64,5 @@ export function WebMCPBridge() {
 
   const label = status === "live" ? `WebMCP · ${count} tools` : status === "error" ? "WebMCP unavailable" : "WebMCP starting";
   const color = status === "live" ? "#1ea64a" : status === "error" ? "var(--accent-magenta)" : "var(--hairline)";
-  return <Dotm3x3_15 className="webmcp-status-dot icon-tooltip" size={15} dotSize={2} speed={0.35} color={color} ariaLabel={label} />;
+  return <Dotm3x3_15 className="webmcp-status-dot icon-tooltip" size={16} dotSize={3} cellPadding={3.5} speed={0.35} color={color} ariaLabel={label} />;
 }

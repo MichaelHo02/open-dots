@@ -1443,6 +1443,8 @@ input {
   justify-content: center;
   gap: 8px;
 }
+.page-action-icon { position: relative; width: 36px; height: 36px; padding: 0; justify-content: center; }
+.strip-actions .icon-tooltip::after { top: auto; right: 0; bottom: calc(100% + 7px); left: auto; transform: none; }
 
 .thumb {
   display: block;
