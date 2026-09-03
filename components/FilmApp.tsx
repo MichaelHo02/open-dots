@@ -13,8 +13,10 @@ import { AssetThumb, PagePreview } from "./PagePreview";
 import { PageStage } from "./PageStage";
 import { PresentMode } from "./PresentMode";
 import { StageZoomControls } from "./StageZoomControls";
+import { ToolSettings } from "./ToolSettings";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
+import { Trash2 } from "lucide-react";
 
 export function FilmApp() {
   const api = useFilm();
@@ -95,9 +97,18 @@ export function FilmApp() {
               </button>
             ) : null}
           </section>
+          <ToolSettings symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} />
           <section className="sidebar-section sidebar-assets" aria-label="Assets">
             <div className="sidebar-assets-head">
               <p className="sidebar-label">Assets</p>
+              <span className="asset-count">{film.assets.length}/{MAX_ASSETS}</span>
+              <button
+                type="button"
+                className="layers-new icon-tooltip"
+                disabled={film.assets.length >= MAX_ASSETS}
+                aria-label={film.assets.length >= MAX_ASSETS ? "Asset library full — remove an asset to create another" : "New asset"}
+                onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
+              ><ChromeIcon name="plus" size={14} />New</button>
             </div>
             {!film.assets.length && !workshopOpen ? (
               <button
@@ -111,19 +122,6 @@ export function FilmApp() {
               </button>
             ) : film.assets.length > 0 ? (
               <ul className="asset-list">
-                {film.assets.length < MAX_ASSETS ? (
-                  <li className="asset-new-slot">
-                    <button
-                      type="button"
-                      className="asset-new-compact"
-                      onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
-                      aria-label="New asset"
-                    >
-                      <ChromeIcon name="page" size={18} />
-                      <span>New asset</span>
-                    </button>
-                  </li>
-                ) : null}
                 {film.assets.map((asset) => (
                   <li key={asset.id}>
                     <button
@@ -218,13 +216,14 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
+              <button type="button" className="pill ghost" disabled={film.pages.length <= 1} onClick={() => api.removePage(film.activeIndex)}><Trash2 size={14} aria-hidden="true" />Delete page</button>
               <button type="button" className="pill ghost" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}>
                 <ChromeIcon name="page" size={16} />New page
               </button>
             </div>
           </nav>}
         </div>
-        {inspectorOpen && <CanvasInspector symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} onClose={() => setInspectorOpen(false)} />}
+        {inspectorOpen && <CanvasInspector onClose={() => setInspectorOpen(false)} />}
       </div>
 
       {presenting ? (

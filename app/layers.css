@@ -4,6 +4,7 @@
 .layers-heading .sidebar-label { display: inline-flex; align-items: center; gap: 5px; }
 .layers-new, .layers-icon-button, .layers-select, .layers-asset, .selection-action { border: 0; background: transparent; color: inherit; cursor: pointer; }
 .layers-new { display: inline-flex; align-items: center; gap: 3px; padding: 4px 6px; border: 1px solid var(--hairline); border-radius: 4px; font-size: 11px; }
+.layers-new:disabled { cursor: default; opacity: .4; }
 .layers-list, .layers-assets { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .layers-item { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 4px 6px; padding: 4px; border: 1px solid transparent; border-radius: 5px; }
 .layers-item[data-active] { border-color: var(--hairline); background: color-mix(in srgb, var(--primary) 6%, transparent); }

@@ -26,11 +26,13 @@ export function PaletteProfileControls({
     palettes.find((profile) => profile.id === activePaletteId) ?? palettes[0];
   const custom = active ? !isDefaultPaletteId(active.id) : false;
   const [creating, setCreating] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [createDraft, setCreateDraft] = useState("");
   const [renameDraft, setRenameDraft] = useState(active?.name ?? "");
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const createInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const createId = useId();
   const renameId = useId();
   const createName = usablePaletteName(createDraft, palettes);
@@ -44,6 +46,11 @@ export function PaletteProfileControls({
     if (restoreFocus) {
       triggerRef.current?.focus();
     }
+  }
+
+  function dismissRename() {
+    setRenaming(false);
+    setRenameDraft(active?.name ?? "");
   }
 
   function saveCreate() {
@@ -82,17 +89,20 @@ export function PaletteProfileControls({
   }
 
   useEffect(() => {
-    if (!creating) {
+    if (!creating && !renaming) {
       return;
     }
-    createInputRef.current?.focus();
-    createInputRef.current?.select();
+    const input = creating ? createInputRef.current : renameInputRef.current;
+    input?.focus();
+    input?.select();
 
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         setCreating(false);
+        setRenaming(false);
         setCreateDraft("");
+        setRenameDraft(active?.name ?? "");
         triggerRef.current?.focus();
       }
     }
@@ -101,7 +111,9 @@ export function PaletteProfileControls({
       const node = wrapRef.current;
       if (node && !node.contains(event.target as Node)) {
         setCreating(false);
+        setRenaming(false);
         setCreateDraft("");
+        setRenameDraft(active?.name ?? "");
       }
     }
 
@@ -111,7 +123,7 @@ export function PaletteProfileControls({
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [creating]);
+  }, [active?.name, creating, renaming]);
 
   return (
     <div className="palette-profile-controls" ref={wrapRef}>
@@ -128,6 +140,7 @@ export function PaletteProfileControls({
             </option>
           ))}
         </select>
+        {custom ? <button type="button" className="palette-profile-edit icon-tooltip" aria-label="Rename color profile" aria-expanded={renaming} onClick={() => { setCreating(false); setRenaming(value => !value); }}><ChromeIcon name="draw" /></button> : null}
         <button
           ref={triggerRef}
           type="button"
@@ -142,6 +155,7 @@ export function PaletteProfileControls({
               return;
             }
             setCreateDraft("");
+            setRenaming(false);
             setCreating(true);
           }}
         >
@@ -195,12 +209,10 @@ export function PaletteProfileControls({
             </button>
           </div>
         </div>
-      ) : custom && active ? (
-        <div className="palette-name-row">
-          <label className="palette-name-label" htmlFor={renameId}>
-            Name
-          </label>
+      ) : renaming && custom && active ? (
+        <div className="palette-profile-popover" role="dialog" aria-label="Rename color profile">
           <input
+            ref={renameInputRef}
             id={renameId}
             className="palette-name-input"
             type="text"
@@ -210,18 +222,19 @@ export function PaletteProfileControls({
             value={renameDraft}
             aria-invalid={renameDraft.trim().length > 0 && !renameName}
             onChange={(event) => setRenameDraft(event.target.value)}
-            onBlur={commitRename}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                event.currentTarget.blur();
+                commitRename();
+                setRenaming(false);
               }
               if (event.key === "Escape") {
                 event.preventDefault();
-                setRenameDraft(active.name);
+                dismissRename();
               }
             }}
           />
+          <div className="color-add-actions"><button type="button" className="pill ghost" onClick={dismissRename}>Cancel</button><button type="button" className="pill primary" disabled={!renameName} onClick={() => { commitRename(); setRenaming(false); }}>Save</button></div>
         </div>
       ) : null}
     </div>

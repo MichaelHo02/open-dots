@@ -505,6 +505,20 @@ input {
   outline-offset: 1px;
 }
 
+.palette-profile-edit {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas);
+  color: var(--ink);
+  cursor: pointer;
+}
+
 .palette-profile-popover {
   display: flex;
   flex-direction: column;
@@ -515,12 +529,6 @@ input {
   border-radius: var(--radius-md);
   background: var(--canvas);
   box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 8%, transparent);
-}
-
-.palette-name-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .palette-name-label {
@@ -699,6 +707,8 @@ input {
   margin: 0;
 }
 
+.asset-count { margin-left: auto; color: var(--muted); font-size: 11px; }
+
 .sidebar-assets .asset-list {
   max-height: min(40vh, 320px);
   overflow: auto;
@@ -743,39 +753,6 @@ input {
 .asset-new-card-label {
   font-size: 14px;
   font-weight: 480;
-}
-
-.asset-list li.asset-new-slot {
-  display: block;
-}
-
-.asset-new-compact {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-soft);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 480;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.asset-new-compact:hover {
-  border-color: var(--ink);
-  background: var(--canvas);
-}
-
-.asset-new-compact:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
 }
 
 .workspace {
@@ -920,35 +897,6 @@ input {
 
 .brand-wordmark {
   letter-spacing: inherit;
-}
-
-.webmcp-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 40px;
-  padding: 0 18px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-soft);
-  font-size: 12px;
-  font-family: var(--font-figma-mono), ui-monospace, monospace;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-}
-
-.webmcp-badge .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 9999px;
-  background: #1ea64a;
-}
-
-.webmcp-badge.error .dot {
-  background: var(--accent-magenta);
-}
-
-.webmcp-badge.booting .dot {
-  background: var(--hairline);
 }
 
 .pill {
@@ -1517,9 +1465,9 @@ input {
 
 .strip-actions {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex-shrink: 0;
-  align-items: stretch;
+  align-items: center;
   justify-content: center;
   gap: 8px;
 }
@@ -1967,7 +1915,6 @@ input {
   .sidebar { width: 180px; flex-direction: column; flex-wrap: nowrap; padding: 16px 12px; border-right: 1px solid var(--hairline); border-bottom: 0; }
   .editor-toolbar { gap: 8px; }
   .editor-toolbar .tool-list { order: initial; flex-basis: auto; }
-  .editor-toolbar .webmcp-badge { display: none; }
   .workspace-zoom .zoom-slider { display: none; }
 }
 
@@ -1994,7 +1941,11 @@ input {
 
 .stage-board[data-locked="true"] .stage { cursor: not-allowed; }
 
-.canvas-inspector .access-density, .canvas-inspector .access-brush { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.canvas-inspector .access-density { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tool-settings { display: grid; gap: 10px; }
+.tool-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.tool-settings .drawing-options { gap: 8px; }
+.tool-option-block { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .compact-stepper { display: inline-flex; align-items: center; gap: 4px; }
 .compact-stepper button { width: 26px; height: 28px; border: 0; border-radius: 4px; background: var(--surface-soft); cursor: pointer; }
 .compact-stepper button:disabled { opacity: .35; cursor: default; }
