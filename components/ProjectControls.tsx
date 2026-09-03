@@ -42,6 +42,10 @@ export function ProjectControls() {
   const [title, setTitle] = useState("");
   const [sharing, setSharing] = useState(false);
   return <>
+    <button className="toolbar-button toolbar-labelled share-story-button" type="button" onClick={() => { setError(""); shareDialog.current?.showModal(); }}>
+      <Share2 size={16} aria-hidden="true" />
+      <span>Share your story</span>
+    </button>
     <details name="editor-menu" className="project-menu">
       <summary title="Project files">File</summary>
       <div className="project-menu-items">
@@ -58,7 +62,6 @@ export function ProjectControls() {
         paintPixelGrid(ctx, compositedPagePixels(page, api.film.assets), page.width, page.height);
         canvas.toBlob(blob => { if (blob) download(blob, `page-${api.film.activeIndex + 1}.png`); else setError("Could not export this page."); });
       }}><Download size={14} />Export page PNG</button>
-      <button type="button" onClick={() => { setError(""); shareDialog.current?.showModal(); }}><Share2 size={14} />Share to gallery</button>
       <input ref={input} type="file" accept="application/json,.json" aria-label="Open project file" hidden onChange={async event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = "";

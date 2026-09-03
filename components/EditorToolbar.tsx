@@ -128,9 +128,9 @@ export function EditorToolbar({ onPresent }: EditorToolbarProps) {
         })}
       </nav>
       <div className="top-actions">
-        <Link className="toolbar-button" href="/gallery" aria-label="Gallery">
+        <Link className="toolbar-button toolbar-labelled" href="/gallery">
           <Images size={17} aria-hidden="true" />
-          <span className="toolbar-tooltip" role="tooltip">Browse shared stories</span>
+          <span>Gallery</span>
         </Link>
         <ProjectControls />
         <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
