@@ -25,7 +25,7 @@ export function WebMCPBridge() {
     let cancelled = false;
 
     // Defer until after hydration so document.modelContext and localStorage
-    // film state are stable before agents poll get_film.
+    // Storybook state is stable before agents poll get_storybook.
     const start = () => {
       // Page-lifetime registration: do not abort on React unmount (Strict Mode /
       // Fast Refresh). Aborting unregisters tools and invalidates the host's

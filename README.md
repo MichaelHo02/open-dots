@@ -21,7 +21,7 @@ Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pi
 | Tool | What it does |
 | --- | --- |
 | `get_pixel_art_guide` | **Start here** — pixel-art playbook (composition, shading, palettes, draw-look-fix loop). Topics: workflow, shading, composition, tools, full |
-| `get_film` | Pages + overlay placements, palettes + `activePaletteId`, asset ids/names/sizes, editor state, `webmcp.ready` |
+| `get_storybook` | Pages + overlay placements, palettes + `activePaletteId`, asset ids/names/sizes, editor state, `webmcp.ready` |
 | `get_asset_image` | Asset PNG + stats + rows for vision/text compare (scale 1–8) |
 | `get_page_image` | Page/region PNG + stats + `sceneHint` (few placements, huge stamps, full-page paint, noisy colorCount) |
 | `set_palette` | Create/select a named color profile (`name` + any number of #rrggbb swatches). Default is never overwritten; extra colors can be used inline in draw ops |
@@ -49,7 +49,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 1. Draw on the canvas, or add a page.
 2. In ChatGPT’s in-app browser or Chrome with `chrome://flags/#enable-webmcp-testing`, tell the agent your story and ask it to `get_pixel_art_guide` → `set_palette` → `add_asset` → `stamp_assets`.
-3. The same tools register via `document.modelContext.registerTool`. A page refresh unloads that registry — re-fetch tools after the page settles (`get_film.webmcp.ready`) before mutating.
+3. The same tools register via `document.modelContext.registerTool`. A page refresh unloads that registry — re-fetch tools after the page settles (`get_storybook.webmcp.ready`) before mutating.
 
 ## WebMCP best practices (how the harness follows the spec)
 

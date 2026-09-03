@@ -59,9 +59,9 @@ Public demo: https://opendots.thach.app
 
 1. Open the URL in ChatGPT’s in-app browser, or Chrome 149+ with `chrome://flags/#enable-webmcp-testing` enabled.
 2. Start with a blank page and ask the agent to create a picture-book scene in Open Dots.
-3. Confirm the agent calls `get_pixel_art_guide`, waits for `get_film.webmcp.ready`, defines a palette, creates small assets, refines them using returned PNG feedback, and stamps them into a page.
+3. Confirm the agent calls `get_pixel_art_guide`, waits for `get_storybook.webmcp.ready`, defines a palette, creates small assets, refines them using returned PNG feedback, and stamps them into a page.
 4. In the human UI, add/select a page, paint or add text, inspect layers, and open Present mode.
-5. Reload once, then ask the agent to re-fetch tools and call `get_film`; storybook data should remain available while the agent refreshes its tool snapshot.
+5. Reload once, then ask the agent to re-fetch tools and call `get_storybook`; storybook data should remain available while the agent refreshes its tool snapshot.
 
 Local checks:
 

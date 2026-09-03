@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { WorkshopCanvas } from "./WorkshopCanvas";
 import { useFilm } from "@/lib/film-store";
-import { ASSET_SIZE_PRESETS, MAX_ASSET_NAME } from "@/lib/types";
+import { ASSET_SIZE_PRESETS, MAX_ASSET_NAME, MAX_ASSETS } from "@/lib/types";
 
 export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" | "y" | "both"; showGrid: boolean }) {
   const {
@@ -38,7 +38,7 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
     return null;
   }
 
-  const atAssetLimit = !workshopDraft.id && film.assets.length >= 48;
+  const atAssetLimit = !workshopDraft.id && film.assets.length >= MAX_ASSETS;
 
   return (
     <div data-show-grid={showGrid} className="workshop-stage" role="region" aria-label="Asset workshop">
@@ -94,14 +94,14 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
               className="pill primary workshop-done"
               onClick={() => closeWorkshop(true)}
               disabled={atAssetLimit}
-              title={atAssetLimit ? "Asset library is full (48 max)" : undefined}
+              title={atAssetLimit ? `Asset library is full (${MAX_ASSETS} max)` : undefined}
             >
               Done
             </button>
           </div>
         </div>
         {atAssetLimit ? (
-          <p className="workshop-limit">Asset library is full (48 max).</p>
+          <p className="workshop-limit">Asset library is full ({MAX_ASSETS} max).</p>
         ) : null}
       </header>
 

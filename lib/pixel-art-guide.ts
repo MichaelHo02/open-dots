@@ -65,7 +65,7 @@ const PALETTE_GUIDE = {
   sidebarVsDraw:
     "set_palette creates or updates a named color profile and selects it (pass name + colors). The built-in Default profile is never overwritten. No swatch-count cap. draw_asset_pixels, draw_pixels, and asset rows may use additional #rrggbb colors freely — use as many as the design needs.",
   themeFirst:
-    "Call set_palette with a name (e.g. Bedtime) and as many #rrggbb swatches as the design needs BEFORE drawing. Extra colors can also be used inline in draw ops. Omit name to update the current non-Default theme or to create Theme N. Pass name without colors to select an existing profile. After refresh, get_film lists palettes + activePaletteId.",
+    "Call set_palette with a name (e.g. Bedtime) and as many #rrggbb swatches as the design needs BEFORE drawing. Extra colors can also be used inline in draw ops. Omit name to update the current non-Default theme or to create Theme N. Pass name without colors to select an existing profile. After refresh, get_storybook lists palettes + activePaletteId.",
   materialRamps:
     "Taste, not a limit: build color ramps by material, not one universal ramp. Use as many colors as the design needs.",
   colorFamilies: {
@@ -329,10 +329,10 @@ const TOOL_WORKFLOW = {
   title: "Tool cheat sheet (15 agent tools)",
   startHere: "Call get_pixel_art_guide at session start (topic: full or workflow).",
   afterRefresh:
-    "A page refresh unloads document.modelContext. Re-fetch live tools; call get_film and wait until webmcp.ready before mutating. Film data persists in localStorage — get_film recovers asset ids.",
+    "A page refresh unloads document.modelContext. Re-fetch live tools; call get_storybook and wait until webmcp.ready before mutating. Storybook data persists in localStorage — get_storybook recovers asset ids.",
   read: [
     { name: "get_pixel_art_guide", when: "Session start — art taste + workflow" },
-    { name: "get_film", when: "Pages + overlay placements, palettes + activePaletteId, asset ids, editor state, webmcp.ready" },
+    { name: "get_storybook", when: "Pages + overlay placements, palettes + activePaletteId, asset ids, editor state, webmcp.ready" },
     { name: "get_asset_image", when: "Asset PNG + stats + rows for vision/text compare" },
     { name: "get_page_image", when: "Full page or region PNG + sceneHint after stamping (composites overlays)" },
   ],
@@ -363,7 +363,7 @@ const ANTI_PATTERNS = {
     "One huge asset covering the page instead of many small overlay stamps.",
     "Maximizing unique hexes or chasing thousands of page colors. Each sprite uses a 4–12 tone ramp; scene colorCount can be high after composing many assets — that is expected, not a goal to inflate.",
     "Skipping the inline PNG compare between passes (drawing blind).",
-    "Losing asset ids after a refresh — call get_film to recover them; wait for webmcp.ready before mutating.",
+    "Losing asset ids after a refresh — call get_storybook to recover them; wait for webmcp.ready before mutating.",
     "More than one light-source direction within a sprite.",
     "Too few assets: 4 objects can't equal a 20-object reference.",
     "Recoloring one base character sprite for every figure in a crowd.",

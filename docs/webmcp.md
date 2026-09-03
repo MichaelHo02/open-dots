@@ -11,7 +11,7 @@ Open Dots registers **15 agent-focused tools** (4 read / 11 write) on `document.
 | Read | Write |
 | --- | --- |
 | `get_pixel_art_guide` | `set_palette`, `add_page`, `select_page`, `remove_page`, `place_text` |
-| `get_film` | `add_asset`, `draw_asset_pixels`, `stamp_assets`, `remove_asset` |
+| `get_storybook` | `add_asset`, `draw_asset_pixels`, `stamp_assets`, `remove_asset` |
 | `get_asset_image` | `draw_pixels`, `clear_page` |
 | `get_page_image` | |
 
@@ -25,7 +25,7 @@ Chrome ships [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool) 
 
 ### 1. Mount/unmount abort vs page-lifetime registration
 
-Open Dots tools must live for the **entire document lifetime** — from first paint until refresh or navigation. Film state persists in `localStorage`; agents may hold a tool snapshot across many turns. Unmount-driven unregister would drop tools whenever React remounts the bridge (Strict Mode double-mount, route transitions, conditional rendering), invalidating the host’s cached tool list mid-session.
+Open Dots tools must live for the **entire document lifetime** — from first paint until refresh or navigation. Storybook state persists in `localStorage`; agents may hold a tool snapshot across many turns. Unmount-driven unregister would drop tools whenever React remounts the bridge (Strict Mode double-mount, route transitions, conditional rendering), invalidating the host’s cached tool list mid-session.
 
 `WebMCPBridge` deliberately does **not** pass an abort signal. Its cleanup only cancels the pending `requestAnimationFrame` bootstrap, not registration:
 
@@ -63,32 +63,32 @@ FilmApp
         └── registerFilmTools(apiRef)    — once per document load (deferred 2× rAF)
               ├── ensureWebMCPPolyfill()
               ├── buildFilmTools()       — 15 tools, withToolAnnotations + withSafeExecute
-              ├── register get_film first — agents can poll readiness immediately
+              ├── register get_storybook first — agents can poll readiness immediately
               ├── register rest (silent)
               └── flushToolChanges()     — one toolchange
 ```
 
-**`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` film state is stable before agents call `get_film`. A small badge shows `WebMCP · 15` when live.
+**`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` storybook state is stable before agents call `get_storybook`. A small badge shows `WebMCP · 15` when live.
 
-**`window.__openDotsWebmcp`** stores `{ apiRef, generation, native, count }`. `generation` is stable for the document load (`performance.timeOrigin`); it changes only on refresh/navigation. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest React film API without re-registering tool names.
+**`window.__openDotsWebmcp`** stores `{ apiRef, generation, native, count }`. `generation` is stable for the document load (`performance.timeOrigin`); it changes only on refresh/navigation. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest editor API without re-registering tool names.
 
 **`withToolAnnotations`** defaults missing `readOnlyHint` to `false` (write). Cursor and other hosts classify tools from this field; omitting it hides mutating tools.
 
-**`get_film` first:** during the registering phase, only `get_film` may be available. It exposes `webmcp.ready`, `webmcp.phase`, `webmcp.generation`, `webmcp.toolCount`, and a refresh hint so agents can poll instead of failing opaque “tool not found” errors.
+**`get_storybook` first:** during the registering phase, only `get_storybook` may be available. It exposes `webmcp.ready`, `webmcp.phase`, `webmcp.generation`, `webmcp.toolCount`, and a refresh hint so agents can poll instead of failing opaque “tool not found” errors.
 
 ## Agent workflow after refresh
 
 A full page reload **unloads** all `document.modelContext` registrations and **invalidates** the host’s tool snapshot. In-flight calls that referenced pre-refresh tool handles fail.
 
-Film data (pages, assets, named color profiles) **persists** in `localStorage`. After refresh:
+Storybook data (pages, assets, named color profiles) **persists** in `localStorage`. After refresh:
 
 1. **Re-fetch live tools** from `document.modelContext` (do not reuse a pre-refresh snapshot).
-2. **Poll `get_film`** until `webmcp.ready === true` (and `webmcp.phase === "ready"`).
+2. **Poll `get_storybook`** until `webmcp.ready === true` (and `webmcp.phase === "ready"`).
 3. **Note `webmcp.generation`** — if it changes, treat prior tool handles as stale.
-4. **Call `get_film`** again to recover asset ids, page indices, and `agentChecklist`.
+4. **Call `get_storybook`** again to recover asset ids, page indices, and `agentChecklist`.
 5. Then mutate (`add_asset`, `draw_asset_pixels`, `stamp_assets`, …).
 
-`get_film` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
+`get_storybook` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
 
 Typical session start after tools are ready: `get_pixel_art_guide` → `set_palette` → decompose scene into small assets → outline/fill/shade passes with inline PNG compare → `stamp_assets` overlays back-to-front (floor tiles → emblem/shadows → furniture → plants/characters) → `get_page_image` with `sceneHint` check.
 

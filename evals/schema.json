@@ -21,7 +21,7 @@
       }
     },
     {
-      "name": "get_film",
+      "name": "get_storybook",
       "description": "Read the book: pages with named layers, activeLayerId and overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       "inputSchema": {
         "type": "object",
@@ -69,13 +69,13 @@
     },
     {
       "name": "select_page",
-      "description": "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_film if you need current indexes.",
+      "description": "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_storybook if you need current indexes.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "index": {
             "type": "integer",
-            "description": "0-based page index from get_film"
+            "description": "0-based page index from get_storybook"
           }
         },
         "required": [
@@ -141,7 +141,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "Asset id from add_asset or get_film.assets"
+            "description": "Asset id from add_asset or get_storybook.assets"
           },
           "scale": {
             "type": "integer",
@@ -303,7 +303,7 @@
     },
     {
       "name": "add_asset",
-      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤48). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.",
+      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤100). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -364,19 +364,19 @@
     },
     {
       "name": "stamp_assets",
-      "description": "Add movable overlay placements on the selected layer of the active page (max 48 per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.",
+      "description": "Add movable overlay placements on the selected layer of the active page (max 100 per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "stamps": {
             "type": "array",
-            "maxItems": 48,
+            "maxItems": 100,
             "items": {
               "type": "object",
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "Asset id from add_asset or get_film"
+                  "description": "Asset id from add_asset or get_storybook"
                 },
                 "x": {
                   "type": "integer",
@@ -415,13 +415,13 @@
     },
     {
       "name": "remove_asset",
-      "description": "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_film for valid ids.",
+      "description": "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_storybook for valid ids.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
-            "description": "Asset id from get_film"
+            "description": "Asset id from get_storybook"
           }
         },
         "required": [

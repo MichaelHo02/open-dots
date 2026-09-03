@@ -7,7 +7,7 @@ export const MIN_WIDTH = 48;
 export const MAX_WIDTH = 256;
 export const DEFAULT_WIDTH = 128;
 export const DEFAULT_HEIGHT = 72;
-export const MAX_ASSETS = 48;
+export const MAX_ASSETS = 100;
 export const MAX_ASSET_NAME = 32;
 export const MAX_ASSET_SIDE = 96;
 /** Max pixels per draw_pixels call — full pages need add_asset + stamp_assets. */
