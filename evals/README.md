@@ -75,7 +75,7 @@ npm run eval:story-page -- path/to/candidate.png
 Save a reviewable JSON report for submission evidence:
 
 ```bash
-npm run eval:story-page -- --output evals/reports/agent-campsite.json path/to/candidate.png
+npm run eval:story-page -- --output evals/reports/YYYY-MM-DD-layer3-campsite-visual-score.json path/to/candidate.png
 ```
 
 Run the local input/rubric check without calling Gemini:
@@ -88,12 +88,13 @@ This is separate from `webmcp-evals browser`: its current message schema is
 text-only and its JSON report does not preserve WebMCP PNG result blocks.
 
 Selected, reviewable evidence is committed under `reports/`; bulky disposable
-runner output remains under the ignored root `/.evals/` directory.
+runner output remains under the ignored root `/.evals/` directory. Name saved
+evidence `YYYY-MM-DD-layer3-<challenge>-<variant>-<artifact>.<ext>`.
 
 Score a browser report by required milestones instead of exact call order:
 
 ```bash
-npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/layer3-score.json
+npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/YYYY-MM-DD-layer3-campsite-score.json
 ```
 
 Repeated reads, image inspections, and paint passes are allowed. The scorer

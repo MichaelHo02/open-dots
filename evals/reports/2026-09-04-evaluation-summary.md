@@ -8,7 +8,7 @@
 - Browser: stable Chrome
 - Cases: 16 completed, 0 runtime errors
 - Strict matcher: 7 passed steps, 36 failed steps (7/43, 16.3%)
-- Full report: [layer3-gemini-3.1-flash-lite-2026-09-04.html](./layer3-gemini-3.1-flash-lite-2026-09-04.html)
+- Full report: [2026-09-04-layer3-tool-suite-report.html](./2026-09-04-layer3-tool-suite-report.html)
 - Report SHA-256: `2c5a999458a006b4df6dccd25ac25999f80a6ea7be136b8cdc019359c6172464`
 
 The report preserves the actual model trajectories and tool results. Several
@@ -27,8 +27,8 @@ Its mechanical 256×144 downscale scored **95/100**. This is calibration
 evidence that the composition survives the target resolution, not an agent
 result:
 
-- Candidate: [campsite-256x144-calibration.png](./campsite-256x144-calibration.png)
-- Full score: [campsite-downscale-calibration.json](./campsite-downscale-calibration.json)
+- Candidate: [2026-09-04-campsite-calibration-candidate.png](./2026-09-04-campsite-calibration-candidate.png)
+- Full score: [2026-09-04-campsite-calibration-score.json](./2026-09-04-campsite-calibration-score.json)
 - Candidate SHA-256: `90480d1ad8724fd3db39f7c5f4de9370e53ca66d24171554da5a0fa2d846c4ad`
 
 | Category | Score |
@@ -61,8 +61,8 @@ palette/page setup, background, exact story text, and asset iteration. It lost
 points for creating only 3/6 required assets, making no stamps, and skipping
 the final page inspection.
 
-- Full report: [campsite-layer3-gemini-3.1-flash-lite-2026-09-04.html](./campsite-layer3-gemini-3.1-flash-lite-2026-09-04.html)
-- Semantic score: [campsite-layer3-semantic-score.json](./campsite-layer3-semantic-score.json)
+- Full report: [2026-09-04-layer3-campsite-baseline-report.html](./2026-09-04-layer3-campsite-baseline-report.html)
+- Semantic score: [2026-09-04-layer3-campsite-baseline-score.json](./2026-09-04-layer3-campsite-baseline-score.json)
 - Report SHA-256: `15656340e2a4222822b052f3e762af3c8bbb45402c50e3ca94d423cd1cb1b6c9`
 - Runner/model: `webmcp-evals` 0.0.4 / `google:gemini-3.1-flash-lite`
 - Configured ceiling: 80 steps; observed trajectory: 20 calls
@@ -77,8 +77,8 @@ called `get_page_image` last.
 
 - Semantic milestone score: **100/100, pass**
 - Strict positional matcher: **6/20** (still misleading when the model changes reasonable call order)
-- Full report: [campsite-layer3-efficient-gemini-3.1-flash-lite-2026-09-04.html](./campsite-layer3-efficient-gemini-3.1-flash-lite-2026-09-04.html)
-- Semantic score: [campsite-layer3-efficient-semantic-score.json](./campsite-layer3-efficient-semantic-score.json)
+- Full report: [2026-09-04-layer3-campsite-efficient-report.html](./2026-09-04-layer3-campsite-efficient-report.html)
+- Semantic score: [2026-09-04-layer3-campsite-efficient-score.json](./2026-09-04-layer3-campsite-efficient-score.json)
 - Report SHA-256: `f628bce0b50890d16b0215b1ac4d95491e4a109a3cd73bae544f5002e226f20d`
 
 This proves successful Layer 3 tool use and journey completion, not visual
@@ -91,5 +91,5 @@ the reference PNG. A future visual run needs an image-capable browser harness,
 then the exported 256×144 page can be scored with:
 
 ```bash
-npm run eval:story-page -- --output evals/reports/agent-campsite.json path/to/agent-page.png
+npm run eval:story-page -- --output evals/reports/2026-09-04-layer3-campsite-visual-score.json path/to/agent-page.png
 ```
