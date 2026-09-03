@@ -1,7 +1,7 @@
 "use client";
 
 import { ProjectControls } from "./ProjectControls";
-import { useId } from "react";
+import { useEffect, useId, useRef } from "react";
 import { ClipboardPaste, Copy, CopyPlus, Scissors, Trash2 } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
 import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
@@ -94,9 +94,21 @@ function ToolbarButton({
 
 export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
   const api = useFilm();
+  const toolbar = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const closeMenus = () => toolbar.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach(menu => { menu.open = false; });
+    const dismiss = (event: PointerEvent) => { if (!toolbar.current?.contains(event.target as Node)) closeMenus(); };
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") closeMenus(); };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", dismiss); document.removeEventListener("keydown", escape); };
+  }, []);
 
   return (
-    <header className="top-nav editor-toolbar">
+    <header ref={toolbar} className="top-nav editor-toolbar" onClick={(event) => {
+      if ((event.target as Element).closest(".project-menu-items button")) toolbar.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach(menu => { menu.open = false; });
+    }}>
       <div className="brand" aria-label="Open Dots">
         <OpenDotsLogo size={22} />
         <OpenDotsWordmark />
@@ -122,7 +134,7 @@ export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
       </nav>
       <div className="top-actions">
         <ProjectControls />
-        <details className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
+        <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
           <button type="button" onClick={() => api.copySelection()}><Copy size={14} />Copy<kbd>⌘C</kbd></button>
           <button type="button" onClick={() => api.cutSelection()}><Scissors size={14} />Cut<kbd>⌘X</kbd></button>
           <button type="button" onClick={() => api.pasteSelection()}><ClipboardPaste size={14} />Paste<kbd>⌘V</kbd></button>

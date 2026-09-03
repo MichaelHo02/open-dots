@@ -23,7 +23,7 @@ export function ProjectControls() {
   const api = useFilm();
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
-  return <details className="project-menu">
+  return <details name="editor-menu" className="project-menu">
     <summary title="Project files">File</summary>
     <div className="project-menu-items">
       <button type="button" onClick={() => saveProject(api.film)}><Save size={14} />Save project<kbd>⌘S</kbd></button>
