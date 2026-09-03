@@ -13,6 +13,7 @@ import { AssetThumb, PagePreview } from "./PagePreview";
 import { PageStage } from "./PageStage";
 import { PresentMode } from "./PresentMode";
 import { StageZoomControls } from "./StageZoomControls";
+import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
 
 export function FilmApp() {
@@ -27,6 +28,8 @@ export function FilmApp() {
     workshopOpen,
     active,
   } = api;
+  const [symmetry, setSymmetry] = useState<"none" | "x" | "y" | "both">("none");
+  const [showGrid, setShowGrid] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
@@ -40,6 +43,7 @@ export function FilmApp() {
     setPresenting(true);
   };
   useStageZoomShortcuts(stageWrapRef);
+  useEditorShortcuts(presenting, () => setInspectorOpen(true));
 
   return (
     <div
@@ -192,10 +196,10 @@ export function FilmApp() {
               data-zoomed={stageZoom > 1 ? "true" : undefined}
               style={{ "--stage-zoom": stageZoom } as CSSProperties}
             >
-              <AssetWorkshop />
+              <AssetWorkshop symmetry={symmetry} showGrid={showGrid} />
             </main>
           ) : (
-            <PageStage viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
+            <PageStage symmetry={symmetry} showGrid={showGrid} viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
           )}
           </div>
           {!workshopOpen && <nav className="strip screen-only" aria-label="Pages">
@@ -220,7 +224,7 @@ export function FilmApp() {
             </div>
           </nav>}
         </div>
-        {inspectorOpen && <CanvasInspector onClose={() => setInspectorOpen(false)} />}
+        {inspectorOpen && <CanvasInspector symmetry={symmetry} onSymmetryChange={setSymmetry} showGrid={showGrid} onGridChange={setShowGrid} onClose={() => setInspectorOpen(false)} />}
       </div>
 
       {presenting ? (

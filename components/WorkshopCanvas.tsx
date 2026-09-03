@@ -10,11 +10,13 @@ import {
 import { boundsFromCorners, paintPixelGrid } from "@/lib/draw";
 import { useFilm, useWorkshopDraft, useWorkshopRevision } from "@/lib/film-store";
 import { assertNever } from "@/lib/types";
+import { constrainDiagonal, strokePoints, symmetricPoints, type Symmetry } from "@/lib/stroke";
 import { BrushPreview } from "./BrushPreview";
 
 type Gesture =
-  | { type: "paint" }
+  | { type: "paint"; x: number; y: number }
   | { type: "marquee"; x0: number; y0: number; x1: number; y1: number }
+  | { type: "line"; x0: number; y0: number; x1: number; y1: number }
   | {
       type: "move";
       originX: number;
@@ -43,12 +45,15 @@ function paintMarquee(
   }
 }
 
-export function WorkshopCanvas() {
+export function WorkshopCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
   const workshopDraft = useWorkshopDraft();
   const workshopRevision = useWorkshopRevision();
   const {
     paint,
+    paintLine,
+    setColor,
     tool,
+    color,
     brushSize,
     floating,
     liftMarquee,
@@ -91,11 +96,16 @@ export function WorkshopCanvas() {
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, width, height);
-    if (!preview || preview.type !== "marquee") {
+    if (!preview) {
       return;
     }
-    paintMarquee(ctx, preview.x0, preview.y0, preview.x1, preview.y1);
-  }, [height, preview, width]);
+    if (preview.type === "marquee") {
+      paintMarquee(ctx, preview.x0, preview.y0, preview.x1, preview.y1);
+    } else if (preview.type === "line") {
+      ctx.fillStyle = color;
+      for (const point of strokePoints(preview.x0, preview.y0, preview.x1, preview.y1)) ctx.fillRect(point.x, point.y, brushSize, brushSize);
+    }
+  }, [brushSize, color, height, preview, width]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -185,7 +195,15 @@ export function WorkshopCanvas() {
     if (floating) {
       anchorFloating();
     }
-    beginMarquee(at);
+    if (tool === "select") beginMarquee(at);
+  }
+
+  function beginLineGesture(event: React.PointerEvent<HTMLCanvasElement>) {
+    const at = pixelFromEvent(event);
+    if (!at || event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.current = { type: "line", x0: at.x, y0: at.y, x1: at.x, y1: at.y };
+    setPreview(gesture.current);
   }
 
   function finishGesture() {
@@ -199,6 +217,9 @@ export function WorkshopCanvas() {
     switch (current.type) {
       case "paint":
       case "move":
+        return;
+      case "line":
+        paintLine(current.x0, current.y0, current.x1, current.y1);
         return;
       case "marquee": {
         const box = boundsFromCorners(
@@ -250,15 +271,26 @@ export function WorkshopCanvas() {
               beginMoveGesture(event);
               event.preventDefault();
               return;
+            case "line":
+              beginLineGesture(event);
+              event.preventDefault();
+              return;
+            case "eyedropper": {
+              const at = pixelFromEvent(event);
+              const sampled = at && workshopDraft.pixels[at.y * width + at.x];
+              if (sampled) setColor(sampled);
+              return;
+            }
+            case "select":
             case "pencil":
             case "eraser":
             case "fill": {
               event.currentTarget.setPointerCapture(event.pointerId);
-              gesture.current = { type: "paint" };
-              setBrushPixel(null);
               const at = pixelFromEvent(event);
+              gesture.current = { type: "paint", x: at?.x ?? 0, y: at?.y ?? 0 };
+              setBrushPixel(null);
               if (at) {
-                paint(at.x, at.y, true);
+                for (const mirrored of symmetricPoints(at, width, height, symmetry)) paint(mirrored.x, mirrored.y, true);
               }
               return;
             }
@@ -289,10 +321,23 @@ export function WorkshopCanvas() {
           }
           switch (current.type) {
             case "paint":
-              paint(at.x, at.y, false);
+              for (const point of strokePoints(current.x, current.y, at.x, at.y)) {
+                for (const mirrored of symmetricPoints(point, width, height, symmetry)) paint(mirrored.x, mirrored.y, false);
+              }
+              current.x = at.x;
+              current.y = at.y;
               return;
             case "marquee": {
               const next = { ...current, x1: at.x, y1: at.y };
+              gesture.current = next;
+              setPreview(next);
+              return;
+            }
+            case "line": {
+              const end = event.shiftKey
+                ? constrainDiagonal({ x: current.x0, y: current.y0 }, at)
+                : at;
+              const next = { ...current, x1: end.x, y1: end.y };
               gesture.current = next;
               setPreview(next);
               return;

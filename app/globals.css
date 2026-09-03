@@ -1993,3 +1993,16 @@ input {
 .compact-stepper button:disabled { opacity: .35; cursor: default; }
 .compact-stepper button:focus-visible { outline: 2px solid var(--brand-accent); }
 .compact-stepper .size { min-width: 42px; text-align: center; font-size: 11px; letter-spacing: 0; }
+
+.project-menu { position: relative; font-size: 12px; }
+.project-menu summary { cursor: pointer; padding: 8px; border-radius: 4px; }
+.project-menu-items { position: absolute; right: 0; top: 100%; width: 220px; background: var(--canvas); border: 1px solid var(--hairline); padding: 6px; box-shadow: 0 4px 18px #0002; z-index: 30; }
+.project-menu-items button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.project-menu-items button:hover { background: var(--surface-soft); }
+.project-menu-items p { padding: 8px; }
+.toolbar-button:disabled { opacity: .35; cursor: default; }
+.drawing-options { display: grid; gap: 10px; font-size: 12px; }
+.drawing-options label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.drawing-options select, .access-density select { max-width: 120px; padding: 5px; border: 1px solid var(--hairline); background: var(--canvas); border-radius: 4px; font-size: 11px; }
+.workshop-stage[data-show-grid="false"] .stage-board::after { display: none; }
+@media (max-width: 1100px) { .editor-toolbar { gap: 8px; flex-wrap: wrap; } .editor-toolbar .tool-list { gap: 1px; } }

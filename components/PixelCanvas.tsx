@@ -27,11 +27,13 @@ import {
   isPaintedPixel,
   type PixelStamp,
 } from "@/lib/types";
+import { constrainDiagonal, strokePoints, symmetricPoints, type Symmetry } from "@/lib/stroke";
 
 type Gesture =
-  | { type: "paint" }
+  | { type: "paint"; x: number; y: number }
   | { type: "shape"; x0: number; y0: number; x1: number; y1: number }
   | { type: "marquee"; x0: number; y0: number; x1: number; y1: number }
+  | { type: "line"; x0: number; y0: number; x1: number; y1: number }
   | { type: "asset"; x0: number; y0: number; x1: number; y1: number }
   | {
       type: "move";
@@ -78,12 +80,14 @@ function paintMarquee(
   }
 }
 
-export function PixelCanvas() {
+export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
   const {
     active,
     paint,
+    paintLine,
     tool,
     color,
+    setColor,
     frame,
     shapeFilled,
     selectedAssetId,
@@ -178,6 +182,10 @@ export function PixelCanvas() {
         paintStamp(ctx, stamp);
         return;
       }
+      case "line":
+        ctx.fillStyle = color;
+        for (const point of strokePoints(preview.x0, preview.y0, preview.x1, preview.y1)) for (const mirrored of symmetricPoints(point, width, height, symmetry)) ctx.fillRect(mirrored.x, mirrored.y, brushSize, brushSize);
+        return;
       case "marquee":
         paintMarquee(ctx, preview.x0, preview.y0, preview.x1, preview.y1);
         return;
@@ -218,7 +226,7 @@ export function PixelCanvas() {
       default:
         return assertNever(preview, "Unknown preview");
     }
-  }, [color, frame, height, preview, selectedAsset, shapeFilled, width]);
+  }, [brushSize, color, frame, height, preview, selectedAsset, shapeFilled, symmetry, width]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -341,6 +349,12 @@ export function PixelCanvas() {
     setPreview(next);
   }
 
+  function constrainEnd(start: { x: number; y: number }, end: { x: number; y: number }, shift: boolean) {
+    if (!shift) return end;
+    const d = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+    return { x: start.x + (end.x < start.x ? -d : d), y: start.y + (end.y < start.y ? -d : d) };
+  }
+
   function beginAssetGesture(event: React.PointerEvent<HTMLCanvasElement>) {
     const at = pixelFromEvent(event);
     if (!at || event.button !== 0 || !selectedAsset) {
@@ -395,7 +409,15 @@ export function PixelCanvas() {
     if (floating) {
       anchorFloating();
     }
-    beginMarquee(at);
+    if (tool === "select") beginMarquee(at);
+  }
+
+  function beginLineGesture(event: React.PointerEvent<HTMLCanvasElement>) {
+    const at = pixelFromEvent(event);
+    if (!at || event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.current = { type: "line", x0: at.x, y0: at.y, x1: at.x, y1: at.y };
+    setPreview(gesture.current);
   }
 
   function finishGesture() {
@@ -418,6 +440,9 @@ export function PixelCanvas() {
           y1: current.y1,
           keepFloating: true,
         });
+        return;
+      case "line":
+        paintLine(current.x0, current.y0, current.x1, current.y1);
         return;
       case "marquee": {
         const box = boundsFromCorners(current.x0, current.y0, current.x1, current.y1);
@@ -481,7 +506,7 @@ export function PixelCanvas() {
         tabIndex={0}
         aria-label="Pixel canvas"
         onPointerDown={(event) => {
-          if (!editable) return;
+          if (!editable && tool !== "eyedropper") return;
           if (selectedAsset && tool !== "text" && event.button === 0) {
             beginAssetGesture(event);
             event.preventDefault();
@@ -497,6 +522,20 @@ export function PixelCanvas() {
               beginShapeGesture(event);
               event.preventDefault();
               return;
+            case "line":
+              beginLineGesture(event);
+              event.preventDefault();
+              return;
+            case "eyedropper": {
+              const at = pixelFromEvent(event);
+              if (at && active) {
+                const pixels = compositedPagePixels(active, film.assets);
+                const sampled = pixels[at.y * width + at.x];
+                if (sampled) setColor(sampled);
+              }
+              return;
+            }
+            case "select":
             case "move":
               beginMoveGesture(event);
               event.preventDefault();
@@ -505,11 +544,11 @@ export function PixelCanvas() {
             case "eraser":
             case "fill": {
               event.currentTarget.setPointerCapture(event.pointerId);
-              gesture.current = { type: "paint" };
-              setBrushPixel(null);
               const at = pixelFromEvent(event);
+              gesture.current = { type: "paint", x: at?.x ?? 0, y: at?.y ?? 0 };
+              setBrushPixel(null);
               if (at) {
-                paint(at.x, at.y, true);
+                for (const mirrored of symmetricPoints(at, width, height, symmetry)) paint(mirrored.x, mirrored.y, true);
               }
               return;
             }
@@ -552,10 +591,21 @@ export function PixelCanvas() {
           }
           switch (current.type) {
             case "paint":
-              paint(at.x, at.y, false);
+              for (const point of strokePoints(current.x, current.y, at.x, at.y)) {
+                for (const mirrored of symmetricPoints(point, width, height, symmetry)) paint(mirrored.x, mirrored.y, false);
+              }
+              current.x = at.x;
+              current.y = at.y;
               return;
             case "shape":
             case "marquee":
+            case "line": {
+              const end = event.shiftKey && current.type === "line" ? constrainDiagonal({ x: current.x0, y: current.y0 }, at) : constrainEnd({ x: current.x0, y: current.y0 }, at, event.shiftKey);
+              const next = { ...current, x1: end.x, y1: end.y };
+              gesture.current = next;
+              setPreview(next);
+              return;
+            }
             case "asset": {
               const next = { ...current, x1: at.x, y1: at.y };
               gesture.current = next;

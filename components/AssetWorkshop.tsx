@@ -5,7 +5,7 @@ import { WorkshopCanvas } from "./WorkshopCanvas";
 import { useFilm } from "@/lib/film-store";
 import { ASSET_SIZE_PRESETS, MAX_ASSET_NAME } from "@/lib/types";
 
-export function AssetWorkshop() {
+export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" | "y" | "both"; showGrid: boolean }) {
   const {
     workshopOpen,
     workshopDraft,
@@ -41,7 +41,7 @@ export function AssetWorkshop() {
   const atAssetLimit = !workshopDraft.id && film.assets.length >= 48;
 
   return (
-    <div className="workshop-stage" role="region" aria-label="Asset workshop">
+    <div data-show-grid={showGrid} className="workshop-stage" role="region" aria-label="Asset workshop">
       <header className="workshop-chrome">
         <div className="workshop-chrome-row">
           <div className="workshop-chrome-main">
@@ -106,7 +106,7 @@ export function AssetWorkshop() {
       </header>
 
       <div className="workshop-canvas-wrap">
-        <WorkshopCanvas />
+        <WorkshopCanvas symmetry={symmetry} />
       </div>
     </div>
   );

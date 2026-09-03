@@ -20,6 +20,7 @@ import {
   inBounds,
   paintBrush,
   paintScene,
+  placementStamp,
   rasterizeShape,
   restoreUnder,
   sampleUnder,
@@ -42,6 +43,7 @@ import {
   MAX_ASSET_SIDE,
   MAX_ASSETS,
   MAX_WIDTH,
+  MIN_WIDTH,
   assertNever,
   clampUnit,
   defaultBoardPosition,
@@ -121,7 +123,7 @@ const LEGACY_KEYS = [
 const UNDO_LIMIT = 40;
 const FilmContext = createContext<FilmApi | null>(null);
 
-type PageUndo = Pick<Page, "pixels" | "placements" | "texts" | "layers" | "activeLayerId">;
+type PageUndo = Pick<Page, "width" | "height" | "pixels" | "placements" | "texts" | "layers" | "activeLayerId">;
 
 function clonePlacements(placements: Placement[] | undefined): Placement[] {
   return (placements ?? []).map((placement) => ({ ...placement }));
@@ -216,7 +218,10 @@ let selectedId: string | null = null;
 let selectedKind: MarkKind | null = null;
 let floating: FloatingPixels | null = null;
 const undos: PageUndo[] = [];
-const workshopUndos: string[][] = [];
+const redos: PageUndo[] = [];
+const workshopUndos: WorkshopDraft[] = [];
+const workshopRedos: WorkshopDraft[] = [];
+let clipboard: PixelStamp | null = null;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -400,6 +405,8 @@ function normalizePlacements(raw: unknown): Placement[] {
       y,
       width,
       height,
+      ...(row.flipX === true ? { flipX: true } : {}),
+      ...(row.flipY === true ? { flipY: true } : {}),
     });
   }
   return placements;
@@ -655,6 +662,67 @@ function normalizeFilm(
   };
 }
 
+/** Validate project structure before migration can fill defaults or discard malformed content. */
+function isProject(input: unknown): input is Film {
+  const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const id = (value: unknown): value is string => typeof value === "string" && value.trim().length > 0;
+  const color = (value: unknown) => typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value);
+  const integer = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value);
+  const pixels = (value: unknown, count: number) => Array.isArray(value) && value.length === count && value.every((item) => item === EMPTY || color(item));
+  const texts = (value: unknown) => Array.isArray(value) && value.every((mark) => object(mark) && id(mark.id) &&
+    typeof mark.body === "string" && integer(mark.x) && integer(mark.y) && color(mark.color) &&
+    (mark.font === "inter" || mark.font === "geist-mono") && integer(mark.size) && mark.size >= 1 && mark.size <= 8);
+  if (!object(input) || typeof input.brief !== "string" || !Array.isArray(input.pages) || !input.pages.length ||
+    !Array.isArray(input.assets) || input.assets.length > MAX_ASSETS || !integer(input.activeIndex) || input.activeIndex < 0 || input.activeIndex >= input.pages.length ||
+    !Array.isArray(input.palette) || !input.palette.length || !input.palette.every(color)) return false;
+  const assetIds = new Set<string>();
+  for (const asset of input.assets) {
+    if (!object(asset) || !id(asset.id) || assetIds.has(asset.id) || !id(asset.name) || !integer(asset.width) || !integer(asset.height) ||
+      asset.width < 1 || asset.height < 1 || asset.width > MAX_ASSET_SIDE || asset.height > MAX_ASSET_SIDE || !pixels(asset.pixels, asset.width * asset.height)) return false;
+    assetIds.add(asset.id);
+  }
+  const placements = (value: unknown): boolean => Array.isArray(value) && value.every((placement) => object(placement) && id(placement.id) &&
+    id(placement.assetId) && assetIds.has(placement.assetId) && integer(placement.x) && integer(placement.y) && integer(placement.width) && integer(placement.height) &&
+    placement.width >= 1 && placement.height >= 1 && placement.width <= MAX_WIDTH && placement.height <= MAX_WIDTH &&
+    (placement.flipX === undefined || typeof placement.flipX === "boolean") && (placement.flipY === undefined || typeof placement.flipY === "boolean"));
+  const pageIds = new Set<string>();
+  for (const page of input.pages) {
+    if (!object(page) || !id(page.id) || pageIds.has(page.id) || !integer(page.width) || page.width < MIN_WIDTH || page.width > MAX_WIDTH ||
+      page.height !== landscapeSize(page.width).height || !pixels(page.pixels, page.width * (page.height as number)) || !texts(page.texts) || !placements(page.placements) ||
+      (page.boardX !== undefined && (typeof page.boardX !== "number" || !Number.isFinite(page.boardX))) ||
+      (page.boardY !== undefined && (typeof page.boardY !== "number" || !Number.isFinite(page.boardY)))) return false;
+    pageIds.add(page.id);
+    if (page.layers !== undefined) {
+      if (!Array.isArray(page.layers) || !page.layers.length) return false;
+      const layerIds = new Set<string>(), placementIds = new Set<string>();
+      for (const layer of page.layers) {
+        if (!object(layer) || !id(layer.id) || layerIds.has(layer.id) || !id(layer.name) || typeof layer.visible !== "boolean" || typeof layer.locked !== "boolean" ||
+          !pixels(layer.pixels, page.width * (page.height as number)) || !texts(layer.texts) || !placements(layer.placements)) return false;
+        layerIds.add(layer.id);
+        for (const placement of layer.placements as Placement[]) {
+          if (placementIds.has(placement.id)) return false;
+          placementIds.add(placement.id);
+        }
+      }
+      if (!id(page.activeLayerId) || !layerIds.has(page.activeLayerId)) return false;
+    } else if (page.activeLayerId !== undefined) return false;
+  }
+  for (const page of input.pages) {
+    if (page.nextPageId != null && (!id(page.nextPageId) || page.nextPageId === page.id || !pageIds.has(page.nextPageId))) return false;
+  }
+  if (input.palettes !== undefined) {
+    if (!Array.isArray(input.palettes) || !input.palettes.length) return false;
+    const paletteIds = new Set<string>();
+    for (const profile of input.palettes) {
+      if (!object(profile) || !id(profile.id) || paletteIds.has(profile.id) || !id(profile.name) || !Array.isArray(profile.swatches) ||
+        !profile.swatches.length || !profile.swatches.every(color) || (profile.lastColor !== undefined && !color(profile.lastColor))) return false;
+      paletteIds.add(profile.id);
+    }
+    if (!id(input.activePaletteId) || !paletteIds.has(input.activePaletteId)) return false;
+  }
+  return true;
+}
+
 function readStored(): Film | null {
   try {
     const current = window.localStorage.getItem(STORAGE_KEY);
@@ -700,31 +768,53 @@ function activePage(film = memory): Page | null {
   return film.pages[film.activeIndex] ?? null;
 }
 
-function pushUndo() {
-  const page = activePage();
-  if (!page) {
-    return;
-  }
+function pageSnapshot(page: Page): PageUndo {
   const layers = pageLayers(page).map((layer) => ({ ...layer,
     pixels: clonePixels(layer.pixels), placements: clonePlacements(layer.placements),
     texts: layer.texts.map((mark) => ({ ...mark })),
   }));
   const snapshot = withLayers(page, layers);
-  undos.push({ pixels: snapshot.pixels, placements: snapshot.placements, texts: snapshot.texts,
-    layers, activeLayerId: snapshot.activeLayerId });
-  if (undos.length > UNDO_LIMIT) {
-    undos.shift();
-  }
+  return { width: page.width, height: page.height, pixels: snapshot.pixels,
+    placements: snapshot.placements, texts: snapshot.texts, layers, activeLayerId: snapshot.activeLayerId };
+}
+
+function pushUndo() {
+  const page = activePage();
+  if (!page) return;
+  redos.length = 0;
+  undos.push(pageSnapshot(page));
+  if (undos.length > UNDO_LIMIT) undos.shift();
 }
 
 function pushWorkshopUndo() {
-  if (!workshopDraft) {
-    return;
+  if (!workshopDraft) return;
+  workshopRedos.length = 0;
+  workshopUndos.push({ ...workshopDraft, pixels: clonePixels(workshopDraft.pixels) });
+  if (workshopUndos.length > UNDO_LIMIT) workshopUndos.shift();
+}
+
+function restoreHistory(redo = false): boolean {
+  if (workshopOpen) {
+    if (!workshopDraft) return false;
+    const from = redo ? workshopRedos : workshopUndos;
+    const to = redo ? workshopUndos : workshopRedos;
+    const previous = from.pop();
+    if (!previous) return false;
+    to.push({ ...workshopDraft, pixels: clonePixels(workshopDraft.pixels) });
+    dropFloating();
+    workshopDraft = previous;
+    touchWorkshopDraft();
+    return true;
   }
-  workshopUndos.push(clonePixels(workshopDraft.pixels));
-  if (workshopUndos.length > UNDO_LIMIT) {
-    workshopUndos.shift();
-  }
+  const page = activePage();
+  if (!page) return false;
+  const from = redo ? redos : undos;
+  const to = redo ? undos : redos;
+  const previous = from.pop();
+  if (!previous) return false;
+  to.push(pageSnapshot(page));
+  commitLayers({ ...page, ...previous }, previous.layers!, previous.activeLayerId);
+  return true;
 }
 
 type PaintSurface = {
@@ -744,6 +834,7 @@ function getPaintSurface(): PaintSurface | null {
       pixels: workshopDraft.pixels,
       size,
       commit: (pixels) => {
+        workshopRedos.length = 0;
         workshopDraft = { ...workshopDraft!, pixels };
         touchWorkshopDraft();
       },
@@ -762,20 +853,27 @@ function getPaintSurface(): PaintSurface | null {
   };
 }
 
-function applyDensity(film: Film, width: number): Film {
-  const page = activePage(film);
-  if (!page || !editablePage()) return film;
+function resizeActiveCanvas(width: number, mode: "scale" | "canvas"): boolean {
+  const page = editablePage();
+  if (!page || !Number.isFinite(width) || (mode !== "scale" && mode !== "canvas")) return false;
   const size = landscapeSize(width);
   const from = pageSize(page);
-  if (size.width === from.width && size.height === from.height) return film;
-  undos.length = 0;
-  clearLayerSelection();
-  const layers = pageLayers(page).map((layer) => ({ ...layer,
-    pixels: resizePixels(layer.pixels, from, size), texts: [],
-    placements: clonePlacements(layer.placements).map((placement) => clampPlacementOrigin(placement, size)),
+  if (size.width === from.width && size.height === from.height) return false;
+  const ratioX = size.width / from.width, ratioY = size.height / from.height;
+  const layers = pageLayers(page);
+  if (layers.some((layer) => layer.locked)) return false;
+  const resized = layers.map((layer) => ({ ...layer, texts: [],
+    pixels: mode === "scale" ? scaleStamp({ ...from, x: 0, y: 0, pixels: layer.pixels }, size.width, size.height).pixels
+      : resizePixels(layer.pixels, from, size),
+    placements: layer.placements.map((placement) => mode === "scale" ? { ...placement,
+      x: Math.round(placement.x * ratioX), y: Math.round(placement.y * ratioY),
+      width: Math.max(1, Math.round(placement.width * ratioX)), height: Math.max(1, Math.round(placement.height * ratioY)),
+    } : { ...placement }),
   }));
-  return { ...film, pages: film.pages.map((item, index) => index === film.activeIndex
-    ? withLayers({ ...item, width: size.width, height: size.height }, layers) : item) };
+  if (resized.some((layer) => layer.placements.some((placement) => placement.width > MAX_WIDTH || placement.height > MAX_WIDTH))) return false;
+  pushUndo();
+  commitLayers({ ...page, ...size }, resized);
+  return true;
 }
 
 function patchTexts(page: Page, nextTexts: TextMark[], recordUndo = true) {
@@ -792,6 +890,7 @@ function patchActivePage(patch: Partial<Pick<Page, "pixels" | "texts" | "width" 
   const film = memory;
   const page = editablePage();
   if (!page) return;
+  redos.length = 0;
   const active = activePageLayer(page);
   const layers = pageLayers(page).map((layer) => layer.id === active.id ? {
     ...layer, pixels: patch.pixels ?? layer.pixels,
@@ -906,6 +1005,79 @@ function stampFromAsset(
   return scaleStamp(base, width, height);
 }
 
+function editPlacement(id: string, edit: (placements: Placement[], index: number) => Placement[] | null): boolean {
+  const page = editablePage();
+  if (!page) return false;
+  const index = page.placements.findIndex((placement) => placement.id === id);
+  if (index < 0) return false;
+  const placements = edit(page.placements, index);
+  if (!placements) return false;
+  pushUndo();
+  dropFloating();
+  patchActivePage({ placements });
+  return true;
+}
+
+function removePlacement(id: string): boolean {
+  const removed = editPlacement(id, (placements) => placements.filter((placement) => placement.id !== id));
+  if (removed && selectedPlacementId === id) { clearPlacementSelection(); emit(); }
+  return removed;
+}
+
+function duplicatePlacement(id: string): Placement | null {
+  let copy: Placement | null = null;
+  const edited = editPlacement(id, (placements, index) => {
+    const original = placements[index];
+    copy = clampPlacementOrigin({ ...original, id: createId("place"), x: original.x + 1, y: original.y + 1 }, liveSize());
+    const next = [...placements];
+    next.splice(index + 1, 0, copy);
+    return next;
+  });
+  if (!edited || !copy) return null;
+  selectedPlacementId = (copy as Placement).id;
+  selectedAssetId = null;
+  emit();
+  return copy;
+}
+
+function copySelection(): boolean {
+  if (floating) {
+    clipboard = { ...floating, pixels: clonePixels(floating.pixels) };
+    return true;
+  }
+  const placement = activePage()?.placements.find((item) => item.id === selectedPlacementId);
+  const asset = placement && assetById(placement.assetId);
+  if (!placement || !asset) return false;
+  const stamp = placementStamp(placement, asset);
+  clipboard = { ...stamp, pixels: clonePixels(stamp.pixels) };
+  return true;
+}
+
+function deleteSelection(): boolean {
+  if (selectedPlacementId && !workshopOpen) return removePlacement(selectedPlacementId);
+  const surface = getPaintSurface();
+  if (!surface || !floating) return false;
+  surface.pushUndoFn();
+  const pixels = restoreUnder(surface.pixels, surface.size, floating, floating.under);
+  dropFloating();
+  surface.commit(pixels);
+  return true;
+}
+
+function pasteSelection(): boolean {
+  const surface = getPaintSurface();
+  if (!surface || !clipboard) return false;
+  const stamp = clampStampOrigin({ ...clipboard, x: clipboard.x + 1, y: clipboard.y + 1,
+    pixels: clonePixels(clipboard.pixels) }, surface.size);
+  surface.pushUndoFn();
+  clearSelection();
+  clearPlacementSelection();
+  selectedAssetId = null;
+  floating = { ...stamp, under: sampleUnder(surface.pixels, surface.size, stamp) };
+  surface.commit(blitStamp(surface.pixels, surface.size, stamp));
+  return true;
+}
+
 function createApi(
   _film: Film,
   currentTool: DrawTool,
@@ -973,13 +1145,15 @@ function createApi(
     get active() {
       return activePage();
     },
+    get canUndo() { return workshopOpen ? workshopUndos.length > 0 : undos.length > 0; },
+    get canRedo() { return workshopOpen ? workshopRedos.length > 0 : redos.length > 0; },
     setTool: (next) => {
       selectedAssetId = null;
       if (next === tool) {
         emit();
         return;
       }
-      if (next !== "move") {
+      if (next !== "move" && next !== "select") {
         dropFloating();
       }
       tool = next;
@@ -997,11 +1171,14 @@ function createApi(
           selectedAssetId = null;
           break;
         case "move":
+        case "select":
           clearSelection();
           break;
         case "pencil":
         case "eraser":
         case "fill":
+        case "eyedropper":
+        case "line":
           clearSelection();
           clearPlacementSelection();
           break;
@@ -1112,6 +1289,7 @@ function createApi(
       const current = getSnapshot();
       dropFloating();
       workshopUndos.length = 0;
+      workshopRedos.length = 0;
       if (assetId) {
         const asset = assetById(assetId);
         if (!asset) {
@@ -1178,6 +1356,7 @@ function createApi(
       workshopOpen = false;
       workshopDraft = null;
       workshopUndos.length = 0;
+      workshopRedos.length = 0;
       dropFloating();
       touchWorkshopDraft();
       return true;
@@ -1186,10 +1365,10 @@ function createApi(
       if (!workshopDraft) {
         return;
       }
-      workshopDraft = {
-        ...workshopDraft,
-        name: name.trim().slice(0, MAX_ASSET_NAME) || workshopDraft.name,
-      };
+      const nextName = name.trim().slice(0, MAX_ASSET_NAME) || workshopDraft.name;
+      if (nextName === workshopDraft.name) return;
+      pushWorkshopUndo();
+      workshopDraft = { ...workshopDraft, name: nextName };
       touchWorkshopDraft();
     },
     setWorkshopSize: (size) => {
@@ -1262,6 +1441,7 @@ function createApi(
       return true;
     },
     movePlacement: (id, x, y, recordUndo = false) => {
+      if (![x, y].every(Number.isFinite)) return false;
       const page = editablePage();
       if (!page) {
         return false;
@@ -1288,6 +1468,54 @@ function createApi(
       });
       return true;
     },
+    removePlacement,
+    duplicatePlacement,
+    resizePlacement: (id, width, height) => {
+      if (![width, height].every(Number.isFinite) || width < 1 || height < 1) return false;
+      return editPlacement(id, (placements, index) => {
+        const current = placements[index];
+        const ratio = Math.min(width / current.width, height / current.height);
+        const nextWidth = Math.max(1, Math.round(current.width * ratio));
+        const nextHeight = Math.max(1, Math.round(current.height * ratio));
+        if (nextWidth > MAX_WIDTH || nextHeight > MAX_WIDTH || (nextWidth === current.width && nextHeight === current.height)) return null;
+        return placements.map((placement, i) => i === index ? clampPlacementOrigin({ ...placement, width: nextWidth, height: nextHeight }, liveSize()) : placement);
+      });
+    },
+    flipPlacement: (id, axis) => {
+      if (axis !== "x" && axis !== "y") return false;
+      const key = axis === "x" ? "flipX" : "flipY";
+      return editPlacement(id, (placements, index) => placements.map((placement, i) => i === index ? { ...placement, [key]: !placement[key] } : placement));
+    },
+    reorderPlacement: (id, direction) => {
+      if (direction !== -1 && direction !== 1) return false;
+      return editPlacement(id, (placements, index) => {
+        const target = index + direction;
+        if (target < 0 || target >= placements.length) return null;
+        const next = [...placements];
+        [next[index], next[target]] = [next[target], next[index]];
+        return next;
+      });
+    },
+    movePlacementToLayer: (id, layerId) => {
+      const page = editablePage();
+      if (!page || activePageLayer(page).id === layerId) return false;
+      const placement = page.placements.find((item) => item.id === id);
+      const target = pageLayers(page).find((layer) => layer.id === layerId);
+      if (!placement || !target || target.locked || !target.visible) return false;
+      pushUndo();
+      commitLayers(page, pageLayers(page).map((layer) => layer.id === layerId
+        ? { ...layer, placements: [...layer.placements, placement] }
+        : { ...layer, placements: layer.placements.filter((item) => item.id !== id) }), layerId);
+      selectedPlacementId = id;
+      emit();
+      return true;
+    },
+    copySelection,
+    deleteSelection,
+    pasteSelection,
+    cutSelection: () => copySelection() && deleteSelection(),
+    duplicateSelection: () => selectedPlacementId && !workshopOpen
+      ? Boolean(duplicatePlacement(selectedPlacementId)) : copySelection() && pasteSelection(),
     setBrief: (brief) => {
       commit({ ...getSnapshot(), brief });
     },
@@ -1439,6 +1667,39 @@ function createApi(
       commitLayers(page, remaining, selected === id ? remaining[Math.max(0, index - 1)].id : selected);
       return true;
     },
+    duplicateLayer: (id) => {
+      const page = activePage();
+      if (!page) return null;
+      const layers = pageLayers(page);
+      const index = layers.findIndex((layer) => layer.id === id);
+      if (index < 0) return null;
+      const source = layers[index];
+      const copy = { ...source, id: createId("layer"), name: `${source.name} copy`.slice(0, 80), locked: false,
+        pixels: clonePixels(source.pixels), placements: source.placements.map((placement) => ({ ...placement, id: createId("place") })),
+        texts: source.texts.map((mark) => ({ ...mark, id: createId("text") })) };
+      const next = [...layers];
+      next.splice(index + 1, 0, copy);
+      pushUndo();
+      commitLayers(page, next, copy.id);
+      return copy;
+    },
+    mergeLayerDown: (id) => {
+      const page = activePage();
+      if (!page) return false;
+      const layers = pageLayers(page);
+      const index = layers.findIndex((layer) => layer.id === id);
+      if (index < 1) return false;
+      const source = layers[index], below = layers[index - 1];
+      if (source.locked || below.locked || !source.visible || !below.visible) return false;
+      const size = pageSize(page);
+      const bottomPixels = compositePage(below.pixels, size, below.placements, assetById);
+      const topPixels = compositePage(source.pixels, size, source.placements, assetById);
+      const merged = { ...below, pixels: blitStamp(bottomPixels, size, { ...size, x: 0, y: 0, pixels: topPixels }), placements: [], texts: [] };
+      const next = layers.filter((_, i) => i !== index).map((layer) => layer.id === below.id ? merged : layer);
+      pushUndo();
+      commitLayers(page, next, below.id);
+      return true;
+    },
     selectLayer: (id) => {
       const page = activePage();
       if (!page || !pageLayers(page).some((layer) => layer.id === id)) return false;
@@ -1480,9 +1741,24 @@ function createApi(
       patchActivePage({ pixels, placements: [] });
       return true;
     },
-    setDensity: (width) => {
-      dropFloating();
-      commit(applyDensity(getSnapshot(), width));
+    setDensity: (width) => { resizeActiveCanvas(width, "scale"); },
+    resizeCanvas: resizeActiveCanvas,
+    importProject: (input) => {
+      if (!isProject(input)) return false;
+      const imported = normalizeFilm(input);
+      if (!imported) return false;
+      undos.length = 0;
+      redos.length = 0;
+      workshopUndos.length = 0;
+      workshopRedos.length = 0;
+      workshopOpen = false;
+      workshopDraft = null;
+      clearLayerSelection();
+      clipboard = null;
+      color = pickColorForProfile(activeProfile(imported));
+      commit(imported);
+      touchWorkshopDraft();
+      return true;
     },
     addPage: (input = {}) => {
       const current = getSnapshot();
@@ -1508,6 +1784,7 @@ function createApi(
       page.boardY = position.y;
       const pages = [...current.pages, page];
       undos.length = 0;
+      redos.length = 0;
       clearLayerSelection();
       commit({
         ...current,
@@ -1522,6 +1799,7 @@ function createApi(
         return false;
       }
       undos.length = 0;
+      redos.length = 0;
       clearSelection();
       clearPlacementSelection();
       dropFloating();
@@ -1546,6 +1824,7 @@ function createApi(
             : item,
         );
       undos.length = 0;
+      redos.length = 0;
       dropFloating();
       clearPlacementSelection();
       commit({
@@ -1983,6 +2262,9 @@ function createApi(
         case "text":
         case "shape":
         case "move":
+        case "select":
+        case "eyedropper":
+        case "line":
           return;
         case "pencil":
         case "eraser":
@@ -2020,6 +2302,24 @@ function createApi(
         default:
           return assertNever(currentTool, "Unknown tool");
       }
+    },
+    paintLine: (x0, y0, x1, y1, recordUndo = true) => {
+      const surface = getPaintSurface();
+      if (!surface || ![x0, y0, x1, y1].every(Number.isFinite)) return;
+      const { size } = surface;
+      x0 = Math.max(0, Math.min(size.width - 1, Math.round(x0)));
+      x1 = Math.max(0, Math.min(size.width - 1, Math.round(x1)));
+      y0 = Math.max(0, Math.min(size.height - 1, Math.round(y0)));
+      y1 = Math.max(0, Math.min(size.height - 1, Math.round(y1)));
+      if (recordUndo) surface.pushUndoFn();
+      dropFloating();
+      const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      let pixels = surface.pixels;
+      for (let i = 0; i <= steps; i += 1) {
+        const fraction = steps ? i / steps : 0;
+        pixels = paintBrush(pixels, size, Math.round(x0 + (x1 - x0) * fraction), Math.round(y0 + (y1 - y0) * fraction), brushSize, tool === "eraser" ? EMPTY : color);
+      }
+      surface.commit(pixels);
     },
     drawPixels: (dots) => {
       const page = editablePage();
@@ -2094,27 +2394,8 @@ function createApi(
       pushUndo();
       patchActive(paintScene(prompt, liveSize()));
     },
-    undo: () => {
-      if (workshopOpen) {
-        const previous = workshopUndos.pop();
-        if (!previous || !workshopDraft) {
-          return false;
-        }
-        dropFloating();
-        workshopDraft = { ...workshopDraft, pixels: previous };
-        touchWorkshopDraft();
-        return true;
-      }
-      const previous = undos.pop();
-      if (!previous) {
-        return false;
-      }
-      const page = activePage();
-      if (!page) return false;
-      clearLayerSelection();
-      commitLayers(page, previous.layers!, previous.activeLayerId);
-      return true;
-    },
+    undo: () => restoreHistory(),
+    redo: () => restoreHistory(true),
   };
 }
 

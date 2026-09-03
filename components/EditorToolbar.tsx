@@ -1,5 +1,6 @@
 "use client";
 
+import { ProjectControls } from "./ProjectControls";
 import { useId } from "react";
 import { useFilm } from "@/lib/film-store";
 import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
@@ -14,6 +15,9 @@ export type EditorToolbarProps = {
 
 function toolLabel(tool: DrawTool): string {
   switch (tool) {
+    case "eyedropper": return "Eyedropper";
+    case "select": return "Select";
+    case "line": return "Line";
     case "pencil":
       return "Draw";
     case "eraser":
@@ -33,6 +37,9 @@ function toolLabel(tool: DrawTool): string {
 
 function toolDescription(tool: DrawTool): string {
   switch (tool) {
+    case "eyedropper": return "Pick a color (I)";
+    case "select": return "Select pixels (M)";
+    case "line": return "Draw a straight line (L)";
     case "pencil":
       return "Draw on the page";
     case "eraser":
@@ -55,12 +62,14 @@ function ToolbarButton({
   description,
   children,
   active,
+  disabled,
   onClick,
 }: {
   label: string;
   description: string;
   children: React.ReactNode;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   const tooltipId = useId();
@@ -70,6 +79,7 @@ function ToolbarButton({
       className="toolbar-button"
       aria-label={label}
       aria-pressed={active}
+      disabled={disabled}
       aria-describedby={tooltipId}
       onClick={onClick}
     >
@@ -110,13 +120,23 @@ export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
         })}
       </nav>
       <div className="top-actions">
+        <ProjectControls />
+        <details className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
+          <button type="button" onClick={() => api.copySelection()}>Copy</button>
+          <button type="button" onClick={() => api.cutSelection()}>Cut</button>
+          <button type="button" onClick={() => api.pasteSelection()}>Paste</button>
+          <button type="button" onClick={() => api.duplicateSelection()}>Duplicate</button>
+          <button type="button" onClick={() => api.deleteSelection()}>Delete selection</button>
+        </div></details>
         <ToolbarButton
+          disabled={!api.canUndo}
           label="Undo"
           description="Undo the last change"
           onClick={() => api.undo()}
         >
           <ChromeIcon name="undo" />
         </ToolbarButton>
+        <ToolbarButton label="Redo" description="Redo (Ctrl/Cmd+Shift+Z)" disabled={!api.canRedo} onClick={() => api.redo()}><ChromeIcon name="redo" /></ToolbarButton>
         <ToolbarButton
           label="Clear"
           description="Clear the selected layer"

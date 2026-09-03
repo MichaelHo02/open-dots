@@ -1,32 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useRef, type CSSProperties, type RefObject } from "react";
 import { activePageLayer } from "@/lib/types";
 import { useFilm } from "@/lib/film-store";
 import { PixelCanvas } from "./PixelCanvas";
 
-export function PageStage({ viewportRef, inspectorOpen, onInspect }: {
+export function PageStage({ viewportRef, inspectorOpen, onInspect, symmetry, showGrid }: {
+  symmetry: "none" | "x" | "y" | "both";
+  showGrid: boolean;
   viewportRef: RefObject<HTMLElement | null>;
   inspectorOpen: boolean;
   onInspect: () => void;
 }) {
   const { active, stageZoom } = useFilm();
   const layer = active ? activePageLayer(active) : null;
-  const leafRef = useRef<HTMLDivElement>(null);
   const inspectionPointer = useRef<number | null>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    const leaf = leafRef.current;
-    if (!leaf) return;
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
-    observer.observe(leaf);
-    return () => observer.disconnect();
-  }, []);
 
   return <main ref={viewportRef} className="stage-wrap screen-only"
     data-zoomed={stageZoom > 1 ? "true" : undefined}
     style={{ "--stage-zoom": stageZoom } as CSSProperties}>
-    <div ref={leafRef} className="leaf" data-grid={active && width / active.width >= 8 ? "true" : undefined}
+    <div className="leaf" data-grid={showGrid ? "true" : undefined}
       onPointerDownCapture={event => {
         if (!event.isPrimary || event.button !== 0 || inspectorOpen) return;
         // Inspect on the first click without painting or stamping the artwork.
@@ -46,7 +39,7 @@ export function PageStage({ viewportRef, inspectorOpen, onInspect }: {
       onKeyDown={event => {
         if (event.key === "Enter" && !inspectorOpen) { event.preventDefault(); onInspect(); }
       }}>
-      <PixelCanvas key={`${active?.id}:${layer?.id}:${layer?.locked}:${layer?.visible}`} />
+      <PixelCanvas symmetry={symmetry} key={`${active?.id}:${layer?.id}:${layer?.locked}:${layer?.visible}`} />
     </div>
   </main>;
 }

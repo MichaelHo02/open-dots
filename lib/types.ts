@@ -24,6 +24,9 @@ export const DRAW_TOOLS = [
   "text",
   "shape",
   "move",
+  "select",
+  "eyedropper",
+  "line",
 ] as const;
 export type DrawTool = (typeof DRAW_TOOLS)[number];
 
@@ -138,6 +141,8 @@ export interface FloatingPixels extends PixelStamp {
  * are preserved. width/height are the rendered size (native or scaled).
  */
 export interface Placement {
+  flipX?: boolean;
+  flipY?: boolean;
   id: string;
   assetId: string;
   x: number;
@@ -235,6 +240,8 @@ export interface FilmApi {
   selectedId: string | null;
   selectedKind: MarkKind | null;
   selectedPlacementId: string | null;
+  canUndo: boolean;
+  canRedo: boolean;
   setTool: (tool: DrawTool) => void;
   setColor: (color: string) => void;
   setFrame: (frame: TextFrame) => void;
@@ -258,6 +265,17 @@ export interface FilmApi {
     y: number,
     recordUndo?: boolean,
   ) => boolean;
+  removePlacement: (id: string) => boolean;
+  duplicatePlacement: (id: string) => Placement | null;
+  resizePlacement: (id: string, width: number, height: number) => boolean;
+  flipPlacement: (id: string, axis: "x" | "y") => boolean;
+  reorderPlacement: (id: string, direction: -1 | 1) => boolean;
+  movePlacementToLayer: (id: string, layerId: string) => boolean;
+  copySelection: () => boolean;
+  cutSelection: () => boolean;
+  pasteSelection: () => boolean;
+  deleteSelection: () => boolean;
+  duplicateSelection: () => boolean;
   setBrief: (brief: string) => void;
   setPalette: (colors?: string[], name?: string) => boolean;
   selectPalette: (id: string) => boolean;
@@ -267,11 +285,15 @@ export interface FilmApi {
   resetPalette: () => void;
   addLayer: () => PageLayer | null;
   removeLayer: (id: string) => boolean;
+  duplicateLayer: (id: string) => PageLayer | null;
+  mergeLayerDown: (id: string) => boolean;
   selectLayer: (id: string) => boolean;
   updateLayer: (id: string, patch: { name?: string; visible?: boolean; locked?: boolean }) => boolean;
   moveLayer: (id: string, direction: -1 | 1) => boolean;
   flattenLayer: () => boolean;
   setDensity: (width: number) => void;
+  resizeCanvas: (width: number, mode: "scale" | "canvas") => boolean;
+  importProject: (input: unknown) => boolean;
   addPage: (input?: { story?: string; draw?: string }) => Page;
   selectPage: (index: number) => boolean;
   removePage: (index: number) => boolean;
@@ -323,6 +345,7 @@ export interface FilmApi {
   moveText: (id: string, x: number, y: number) => boolean;
   removeText: (id: string) => boolean;
   paint: (x: number, y: number, recordUndo?: boolean) => void;
+  paintLine: (x0: number, y0: number, x1: number, y1: number, recordUndo?: boolean) => void;
   getAsset: (id: string) => Asset | null;
   drawAssetPixels: (
     id: string,
@@ -356,6 +379,7 @@ export interface FilmApi {
   clearPage: () => void;
   drawScene: (prompt: string) => void;
   undo: () => boolean;
+  redo: () => boolean;
   active: Page | null;
 }
 

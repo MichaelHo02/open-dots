@@ -530,14 +530,13 @@ export function placementStamp(
     height: asset.height,
     pixels: asset.pixels,
   };
-  if (placement.width === asset.width && placement.height === asset.height) {
-    return base;
-  }
-  return {
-    ...scaleStamp(base, placement.width, placement.height),
-    x: placement.x,
-    y: placement.y,
-  };
+  const stamp = placement.width === asset.width && placement.height === asset.height
+    ? base : { ...scaleStamp(base, placement.width, placement.height), x: placement.x, y: placement.y };
+  if (!placement.flipX && !placement.flipY) return stamp;
+  return { ...stamp, pixels: stamp.pixels.map((_, i) => {
+    const x = i % stamp.width, y = Math.floor(i / stamp.width);
+    return stamp.pixels[(placement.flipY ? stamp.height - 1 - y : y) * stamp.width + (placement.flipX ? stamp.width - 1 - x : x)];
+  }) };
 }
 
 /**

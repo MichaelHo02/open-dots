@@ -594,6 +594,8 @@ function summarize(api: FilmApi) {
         id: placement.id,
         assetId: placement.assetId,
         layerId: placement.layerId,
+        flipX: placement.flipX ?? false,
+        flipY: placement.flipY ?? false,
         x: placement.x,
         y: placement.y,
         width: placement.width,

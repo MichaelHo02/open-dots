@@ -18,3 +18,7 @@ const flattened = { ...base, pixels: compositePage(base.pixels, page, base.place
 assert.deepEqual(compositedPagePixels({ ...layered, layers: [flattened, top] }, [asset]), [blue, green]);
 assert.equal(JSON.stringify(page), legacy, 'Composition must not mutate saved artwork');
 console.log('PASS: legacy art, layer order, visibility, locked rendering, transparent flattening, non-mutation');
+const flipped = { ...page, placements: [{ ...page.placements[0], flipX: true }] };
+assert.deepEqual(compositedPagePixels(flipped, [asset]), [red, blue]);
+assert.deepEqual(compositedPagePixels({ ...flipped, placements: [{ ...flipped.placements[0], flipX: false }] }, [asset]), [blue, red]);
+console.log('PASS: flipped asset transparency and source asset preservation');
