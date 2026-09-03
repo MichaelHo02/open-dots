@@ -16,30 +16,34 @@ strict matcher failures are ordering failures rather than missing capability:
 the model often read `get_storybook` before the requested mutation, so the
 requested tool appeared one step later and was then counted as unexpected.
 
-## 256×144 visual-scorer calibration
+## Story-page visual benchmark
 
-The generated reference was mechanically reduced to exactly 256×144 and
-scored against the original with the committed visual rubric. This checks that
-the target composition remains legible and that the scorer penalizes soft
-downsampling. It is not presented as agent-created artwork.
+The earlier Moon Garden benchmark and its calibration were removed because
+they required too many detailed assets for a fair first agent run. The current
+challenge uses a simpler campsite reference with two characters, six reusable
+visual groups, repeated trees/stars, three depth bands, and one line of text.
 
-- Score: **76/100 — pass** (threshold 75)
-- Candidate: [moon-garden-256x144-calibration.png](./moon-garden-256x144-calibration.png)
-- Full score: [moon-garden-downscale-calibration.json](./moon-garden-downscale-calibration.json)
-- Candidate SHA-256: `3fc548197f37357d58e9547189c412ea56807e61d850761678980cff33829093`
+Its mechanical 256×144 downscale scored **95/100**. This is calibration
+evidence that the composition survives the target resolution, not an agent
+result:
+
+- Candidate: [campsite-256x144-calibration.png](./campsite-256x144-calibration.png)
+- Full score: [campsite-downscale-calibration.json](./campsite-downscale-calibration.json)
+- Candidate SHA-256: `90480d1ad8724fd3db39f7c5f4de9370e53ca66d24171554da5a0fa2d846c4ad`
 
 | Category | Score |
 | --- | ---: |
-| Composition | 20/25 |
-| Characters | 15/20 |
-| Assets and density | 15/20 |
-| Pixel craft | 12/20 |
-| Story text | 9/10 |
-| Palette and mood | 5/5 |
+| Composition | 19/20 |
+| Characters | 20/20 |
+| Asset reuse and layout | 20/20 |
+| Pixel craft | 18/20 |
+| Story text | 10/10 |
+| Palette and lighting | 8/10 |
 
-The next evidence run should attach the reference to a browser agent, execute
-the challenge prompt, export its 256×144 page, and save the score with:
+The next evidence run should attach `../fixtures/campsite-story-page.png` to a
+browser agent, execute the prompt in `../campsite.challenge.json`, export its
+256×144 page, and save the score with:
 
 ```bash
-npm run eval:story-page -- --output evals/reports/agent-moon-garden.json path/to/agent-page.png
+npm run eval:story-page -- --output evals/reports/agent-campsite.json path/to/agent-page.png
 ```

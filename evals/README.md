@@ -63,9 +63,9 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/open-dots.evals.json -v
 
 ## Story-page visual benchmark
 
-`moon-garden.challenge.json` pairs an original reference PNG with the creation
+`campsite.challenge.json` pairs an original reference PNG with the creation
 prompt and a 100-point visual rubric. Attach
-`fixtures/moon-garden-story-page.png` to the browser agent, give it the prompt
+`fixtures/campsite-story-page.png` to the browser agent, give it the prompt
 from the challenge file, and export the resulting page PNG. Then score it:
 
 ```bash
@@ -75,7 +75,7 @@ npm run eval:story-page -- path/to/candidate.png
 Save a reviewable JSON report for submission evidence:
 
 ```bash
-npm run eval:story-page -- --output evals/reports/agent-moon-garden.json path/to/candidate.png
+npm run eval:story-page -- --output evals/reports/agent-campsite.json path/to/candidate.png
 ```
 
 Run the local input/rubric check without calling Gemini:

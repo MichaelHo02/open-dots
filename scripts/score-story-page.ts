@@ -20,7 +20,7 @@ type Score = {
 };
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const challengePath = resolve(root, "evals/moon-garden.challenge.json");
+const challengePath = resolve(root, "evals/campsite.challenge.json");
 
 function mimeType(path: string): string {
   if (extname(path).toLowerCase() !== ".png") throw new Error(`${path} must be a PNG`);
