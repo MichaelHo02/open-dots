@@ -1,7 +1,7 @@
 /**
  * In an isolated Playwright CLI session already open on localhost:3000:
  * playwright-cli run-code "$(cat scripts/inspector-browser-check.js)"
- * Uses existing artwork read-only; only tool selection/inspector visibility change.
+ * Preserves existing artwork; adds then removes one temporary blank page.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- Playwright CLI consumes this function expression.
 async (page) => {
@@ -27,7 +27,25 @@ async (page) => {
   if (!(await inspector.getByRole("button", { name: "Star", exact: true }).isVisible())) {
     throw new Error("Shape controls missing from inspector");
   }
+  const pages = page.getByRole("navigation", { name: "Pages", exact: true });
+  const count = await pages.getByRole("button", { name: /^Page \d+$/ }).count();
+  const selected = await pages.locator('[aria-current="page"]').getAttribute("aria-label");
+  await pages.getByRole("button", { name: "New page", exact: true }).click();
+  try {
+    if (await pages.locator('[aria-current="page"]').getAttribute("aria-label") !== `Page ${count + 1}`) {
+      throw new Error("New page was not appended and selected");
+    }
+    if (!(await inspector.getByText(`Page ${count + 1}`, { exact: true }).isVisible())) {
+      throw new Error("Inspector index does not match selected page");
+    }
+  } finally {
+    await inspector.getByRole("button", { name: "Delete page", exact: true }).click();
+    await pages.getByRole("button", { name: selected, exact: true }).click();
+  }
+  if (await pages.getByRole("button", { name: /^Page \d+$/ }).count() !== count) {
+    throw new Error("Temporary page was not removed");
+  }
   await close.click();
   if (await inspector.isVisible()) throw new Error("Inspector did not close");
-  return "PASS: non-destructive selection, contextual controls, keyboard tooltips, close";
+  return "PASS: non-destructive selection, contextual controls, keyboard tooltips, ordered page creation/deletion, close";
 }

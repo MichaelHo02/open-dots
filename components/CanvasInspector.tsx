@@ -1,8 +1,8 @@
 "use client";
 
-import { X } from "lucide-react";
+import { X, Trash2 } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
-import { DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE, MIN_TEXT_SIZE, MAX_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel, readingOrder } from "@/lib/types";
+import { DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE, MIN_TEXT_SIZE, MAX_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel } from "@/lib/types";
 import { FrameSample } from "./BubbleFrame";
 import { TextSizePreview } from "./TextSizePreview";
 
@@ -10,7 +10,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
   const api = useFilm();
   const { film, active, tool, brushSize, textSize, textFont, color, frame, shapeFilled, workshopOpen } = api;
   const density = active ?? film.pages[0];
-  const number = readingOrder(film.pages).findIndex(page => page.id === active?.id) + 1;
+  const number = film.activeIndex + 1;
   return (
     <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <div className="inspector-heading">
@@ -147,6 +147,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
           ) : null}
 
       {tool === "move" ? <section className="sidebar-section"><p className="sidebar-label">Move</p><p className="sidebar-help">Drag an asset to move it, or drag across pixels to select them.</p></section> : null}
+      {!workshopOpen && <button type="button" className="pill ghost" disabled={film.pages.length <= 1} onClick={() => api.removePage(film.activeIndex)}><Trash2 size={14} aria-hidden="true" />Delete page</button>}
     </aside>
   );
 }

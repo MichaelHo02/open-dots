@@ -34,8 +34,6 @@ import {
   toPixelMark,
 } from "./pixel-font";
 import {
-  BOARD_NODE_GAP,
-  BOARD_NODE_WIDTH,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   EMPTY,
@@ -74,7 +72,6 @@ import {
   normalizeStoredPixel,
   pageSize,
   parseHex,
-  readingOrder,
   resizePixels,
   type BrushSize,
   type DrawTool,
@@ -1415,29 +1412,10 @@ function createApi(
         };
         page.pixels = rasterizeTextRun(page.pixels, size, storyMark);
       }
-      let position = defaultBoardPosition(current.pages.length);
-      if (current.pages.length > 0) {
-        let bestRight = Number.NEGATIVE_INFINITY;
-        let bestY = 0;
-        for (const item of current.pages) {
-          const right = item.boardX + BOARD_NODE_WIDTH;
-          if (right > bestRight) {
-            bestRight = right;
-            bestY = item.boardY;
-          }
-        }
-        position = { x: bestRight + BOARD_NODE_GAP, y: bestY };
-      }
+      const position = defaultBoardPosition(current.pages.length);
       page.boardX = position.x;
       page.boardY = position.y;
-      const order = readingOrder(current.pages);
-      const tail = order[order.length - 1];
-      const linked = tail
-        ? current.pages.map((item) =>
-            item.id === tail.id ? { ...item, nextPageId: page.id } : item,
-          )
-        : current.pages;
-      const pages = [...linked, page];
+      const pages = [...current.pages, page];
       undos.length = 0;
       dropFloating();
       commit({

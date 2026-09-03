@@ -1,16 +1,16 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { AssetWorkshop } from "./AssetWorkshop";
 import { ColorAddPopover } from "./ColorAddPopover";
 import { PaletteProfileControls } from "./PaletteProfileControls";
 import { useFilm } from "@/lib/film-store";
-import { MAX_ASSETS, isBuiltInPalette, isDefaultPaletteId, readingOrder } from "@/lib/types";
+import { MAX_ASSETS, isBuiltInPalette, isDefaultPaletteId } from "@/lib/types";
 import { ChromeIcon } from "./ChromeIcons";
 import { CanvasInspector } from "./CanvasInspector";
 import { EditorToolbar } from "./EditorToolbar";
-import { AssetThumb } from "./PagePreview";
-import { BoardStage } from "./BoardStage";
+import { AssetThumb, PagePreview } from "./PagePreview";
+import { PageStage } from "./PageStage";
 import { PresentMode } from "./PresentMode";
 import { StageZoomControls } from "./StageZoomControls";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
@@ -18,6 +18,7 @@ import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
 export function FilmApp() {
   const api = useFilm();
   const stageWrapRef = useRef<HTMLElement>(null);
+  const selectedPageRef = useRef<HTMLButtonElement>(null);
   const {
     film,
     color,
@@ -29,7 +30,10 @@ export function FilmApp() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
-  const presentPages = readingOrder(film.pages);
+  useEffect(() => {
+    selectedPageRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [film.activeIndex, workshopOpen]);
+  const presentPages = film.pages;
   const openPresent = () => {
     const start = presentPages.findIndex((page) => page.id === active?.id);
     setPresentIndex(start < 0 ? 0 : start);
@@ -179,6 +183,7 @@ export function FilmApp() {
         </aside>
 
         <div className="workspace">
+          <div className="page-workspace">
           <div className="workspace-zoom screen-only" aria-label="Zoom"><StageZoomControls /></div>
           {workshopOpen ? (
             <main
@@ -191,8 +196,30 @@ export function FilmApp() {
               <AssetWorkshop />
             </main>
           ) : (
-            <BoardStage viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
+            <PageStage viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
           )}
+          </div>
+          {!workshopOpen && <nav className="strip screen-only" aria-label="Pages">
+            <div className="strip-thumbs">
+              {film.pages.map((page, index) => <button
+                key={page.id} type="button" className="thumb"
+                data-active={index === film.activeIndex}
+                aria-label={`Page ${index + 1}`}
+                aria-current={index === film.activeIndex ? "page" : undefined}
+                ref={index === film.activeIndex ? selectedPageRef : undefined}
+                onClick={() => { api.selectPage(index); api.resetStageZoom(); setInspectorOpen(true); }}
+              >
+                <PagePreview page={page} assets={film.assets} />
+                <span className="page-index">Page {index + 1}</span>
+              </button>)}
+            </div>
+            <div className="strip-actions">
+              <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
+              <button type="button" className="pill ghost" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}>
+                <ChromeIcon name="page" size={16} />New page
+              </button>
+            </div>
+          </nav>}
         </div>
         {inspectorOpen && <CanvasInspector onClose={() => setInspectorOpen(false)} />}
       </div>

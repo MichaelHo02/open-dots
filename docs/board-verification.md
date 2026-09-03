@@ -37,3 +37,21 @@ Verified in the user's Codex in-app browser on 2026-09-03:
 - The left palette/library remains visible, and global zoom remains outside the inspector. Checked the normal 1250px viewport and a temporary 900px viewport, then restored the normal size.
 - Dense artwork stays readable because the editor grid is hidden below four CSS pixels per cell.
 - Production build and targeted lint passed. Added `scripts/inspector-browser-check.js` as a replayable Playwright CLI regression; syntax checked it with Node. The interaction assertions above were exercised directly through Codex browser controls.
+
+## Fixed page editor — 2026-09-03
+
+Supersedes the freeform board UI: one fixed canvas, bottom numbered thumbnails,
+New page appended in array order, retained right inspector, and Present in the
+same numbered order. Legacy board metadata remains readable for saved books.
+
+Verified in the user's localhost browser: first canvas click opens settings
+without changing the get_page_image result; New page selects Page 3 and shows
+3 / 3; removing that temporary page restores two pages; Page 1 selects the matching
+inspector; Present advances 1 / 2 to 2 / 2. Existing Page 2 image stayed identical
+after the checks. Browser error log was empty. No existing page was deleted.
+
+Extended scripts/inspector-browser-check.js with an append/select/delete regression
+check. Syntax checked; equivalent lifecycle was exercised through browser tools.
+TypeScript and targeted ESLint passed (seven existing store warnings, no errors).
+Production build passed with `npx next build --webpack`; default Turbopack failed
+because its CSS worker could not bind a local port in this environment.

@@ -1045,7 +1045,6 @@ input {
 }
 
 .leaf .stage-board,
-.board-node .stage-board,
 .workshop-board {
   --grid-cols: 128;
   --grid-rows: 72;
@@ -1074,8 +1073,7 @@ input {
     0 8px 24px color-mix(in srgb, var(--ink) 6%, transparent);
 }
 
-.leaf .stage-board,
-.board-node .stage-board {
+.leaf .stage-board {
   width: 100%;
   aspect-ratio: 16 / 9;
 }
@@ -1103,7 +1101,6 @@ input {
 }
 
 .leaf .stage,
-.board-node .stage,
 .workshop-board .stage {
   position: relative;
   z-index: 0;
@@ -1545,7 +1542,7 @@ input {
 }
 
 .thumb canvas {
-  width: 160px;
+  width: 112px;
   height: auto;
   aspect-ratio: 16 / 9;
   display: block;
@@ -1916,48 +1913,6 @@ input {
   }
 }
 
-/* Story board: page coordinates and links share the same pan/zoom transform. */
-.board-viewport {
-  position: relative;
-  flex: 1 1 0;
-  min-height: 0;
-  overflow: hidden;
-  background: var(--surface-soft);
-  touch-action: none;
-}
-.board-content { position: absolute; inset: 0; pointer-events: none; }
-.board-toolbar {
-  position: absolute; top: 12px; left: 16px; z-index: 4;
-  display: flex; gap: 8px;
-}
-.board-node {
-  position: absolute; pointer-events: auto;
-  background: var(--canvas);
-  outline: 1px solid var(--hairline);
-  box-shadow: 0 4px 16px #0000000a;
-}
-.board-node[data-active] { outline: 2px solid var(--brand-accent); }
-.board-node-head {
-  height: 26px; display: flex; align-items: center; gap: 8px;
-  padding: 0 6px; cursor: grab; user-select: none;
-  background: var(--canvas); font-size: 11px;
-}
-.board-node-title { flex: 1; white-space: nowrap; }
-.board-node-del { border: 0; background: transparent; cursor: pointer; }
-.board-node-canvas { height: 180px; overflow: hidden; }
-.board-node-preview, .board-node-preview canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
-.board-edges { position: absolute; overflow: visible; pointer-events: none; }
-.board-edge { fill: none; stroke: var(--brand-accent); stroke-width: 2; }
-.board-edge-live { stroke-dasharray: 5 4; }
-.board-node-port {
-  position: absolute; right: -8px; top: 108px;
-  width: 16px; height: 16px; padding: 0; border-radius: 50%;
-  border: 2px solid var(--brand-accent); background: var(--canvas); cursor: crosshair;
-}
-.board-pan-veil { position: absolute; inset: 0; z-index: 3; cursor: grab; }
-.board-viewport[data-panning], .board-viewport[data-panning] * { cursor: grabbing; }
-.board-next { max-width: 130px; font-size: 10px; border: 1px solid var(--hairline); }
-
 /* Compact application toolbar and selection inspector. */
 .editor-toolbar { position: relative; z-index: 10; gap: 24px; min-height: 56px; padding: 8px 16px; }
 .editor-toolbar .tool-list, .editor-toolbar .top-actions { gap: 4px; }
@@ -1995,7 +1950,7 @@ input {
 .canvas-inspector .panel-scale { width: 100%; min-width: 0; max-width: none; }
 .canvas-inspector .size { justify-self: end; }
 .canvas-inspector .sidebar-section { padding-top: 16px; border-top: 1px solid var(--hairline); }
-.board-node:not([data-grid]) .stage-board::after { display: none; }
+.leaf:not([data-grid]) .stage-board::after { display: none; }
 @media (max-width: 1000px) {
   .canvas-inspector { width: 224px; flex-basis: 224px; padding: 12px; }
 }
@@ -2016,3 +1971,15 @@ input {
   .canvas-inspector { position: absolute; right: 0; top: 0; bottom: 70px; z-index: 8; width: 224px; box-shadow: -4px 0 12px #0000000a; }
   .workspace-zoom { right: 8px; bottom: 8px; }
 }
+
+/* Fixed page stage with an ordered filmstrip. */
+.page-workspace { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
+.page-workspace .stage-wrap:not([data-mode="workshop"]) { padding: 24px 24px 72px; overflow: auto; }
+.page-workspace .stage-wrap[data-zoomed="true"] { justify-items: start; }
+.strip { flex-shrink: 0; }
+.thumb { flex-shrink: 0; }
+.thumb[data-active="true"] { border-color: var(--brand-accent); background: color-mix(in srgb, var(--brand-accent) 8%, var(--canvas)); }
+.thumb:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
+.page-index { display: block; margin-top: 6px; font-size: 12px; }
+.page-count { text-align: center; color: #737373; font-size: 12px; }
+@media (max-width: 600px) { .canvas-inspector { bottom: 130px; } .strip { padding: 8px; gap: 8px; } }
