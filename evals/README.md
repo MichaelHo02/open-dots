@@ -60,3 +60,23 @@ npx webmcp-evals smoke -u http://localhost:3000 -e evals/open-dots.evals.json -v
 > Note: `smoke` resolves matcher constraints to sample values, so cases whose
 > arguments are model-dependent (`colors`, asset `id`s) are best exercised via
 > `browser` mode with a live model.
+
+## Story-page visual benchmark
+
+`moon-garden.challenge.json` pairs an original reference PNG with the creation
+prompt and a 100-point visual rubric. Attach
+`fixtures/moon-garden-story-page.png` to the browser agent, give it the prompt
+from the challenge file, and export the resulting page PNG. Then score it:
+
+```bash
+npm run eval:story-page -- path/to/candidate.png
+```
+
+Run the local input/rubric check without calling Gemini:
+
+```bash
+npm run eval:story-page -- --check path/to/candidate.png
+```
+
+This is separate from `webmcp-evals browser`: its current message schema is
+text-only and its JSON report does not preserve WebMCP PNG result blocks.
