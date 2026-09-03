@@ -72,6 +72,12 @@ from the challenge file, and export the resulting page PNG. Then score it:
 npm run eval:story-page -- path/to/candidate.png
 ```
 
+Save a reviewable JSON report for submission evidence:
+
+```bash
+npm run eval:story-page -- --output evals/reports/agent-moon-garden.json path/to/candidate.png
+```
+
 Run the local input/rubric check without calling Gemini:
 
 ```bash
@@ -80,3 +86,6 @@ npm run eval:story-page -- --check path/to/candidate.png
 
 This is separate from `webmcp-evals browser`: its current message schema is
 text-only and its JSON report does not preserve WebMCP PNG result blocks.
+
+Selected, reviewable evidence is committed under `reports/`; bulky disposable
+runner output remains under the ignored root `/.evals/` directory.

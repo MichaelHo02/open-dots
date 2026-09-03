@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -142,7 +142,17 @@ async function main() {
   const body = await response.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
   const text = body.candidates?.[0]?.content?.parts?.find((part) => part.text)?.text;
   if (!text) throw new Error("Gemini returned no score");
-  console.log(JSON.stringify(validateScore(JSON.parse(text) as Score, challenge), null, 2));
+  const output = `${JSON.stringify(validateScore(JSON.parse(text) as Score, challenge), null, 2)}\n`;
+  const outputFlag = process.argv.indexOf("--output");
+  if (outputFlag >= 0) {
+    const outputArg = process.argv[outputFlag + 1];
+    if (!outputArg) throw new Error("--output requires a path");
+    const outputPath = resolve(outputArg);
+    await mkdir(dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, output);
+    console.log(`Report saved to ${outputPath}`);
+  }
+  console.log(output.trimEnd());
 }
 
 main().catch((error) => {
