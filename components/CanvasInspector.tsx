@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { SelectionControls } from "./SelectionControls";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
 import { activePageLayer, DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH } from "@/lib/types";
 import { LayersPanel } from "./LayersPanel";
@@ -34,6 +34,11 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
                   <span className="size">{density?.width ?? DEFAULT_WIDTH}×{density?.height ?? DEFAULT_HEIGHT}</span>
                   <AppTooltipTrigger label="Increase density"><button type="button" className="icon-tooltip" aria-label="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button></AppTooltipTrigger>
                 </div>
+              </section>
+            ) : null}
+            {!workshopOpen ? (
+              <section className="sidebar-section">
+                <button type="button" className="pill danger-subtle" onClick={() => api.clearPage()}><Trash2 size={15} aria-hidden="true" />Clear selected layer</button>
               </section>
             ) : null}
     </aside>

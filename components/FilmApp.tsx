@@ -56,7 +56,7 @@ export function FilmApp() {
       data-present={presenting}
       data-workshop={workshopOpen ? "true" : undefined}
     >
-      <EditorToolbar onPresent={openPresent} />
+      <EditorToolbar onPresent={openPresent} inspectorOpen={inspectorOpen} onToggleInspector={() => setInspectorOpen(open => !open)} />
 
       <div className="studio">
         <aside className="sidebar screen-only">
@@ -192,7 +192,7 @@ export function FilmApp() {
               <AssetWorkshop symmetry={symmetry} showGrid={showGrid} />
             </main>
           ) : (
-            <PageStage symmetry={symmetry} showGrid={showGrid} viewportRef={stageWrapRef} inspectorOpen={inspectorOpen} onInspect={() => setInspectorOpen(true)} />
+            <PageStage symmetry={symmetry} showGrid={showGrid} viewportRef={stageWrapRef} />
           )}
           </div>
           {!workshopOpen && <nav className="strip screen-only" aria-label="Pages">
@@ -206,7 +206,7 @@ export function FilmApp() {
                 aria-label={`Page ${index + 1}. Drag to reorder.`}
                 aria-current={index === film.activeIndex ? "page" : undefined}
                 ref={index === film.activeIndex ? selectedPageRef : undefined}
-                onClick={() => { api.selectPage(index); api.resetStageZoom(); setInspectorOpen(true); }}
+                onClick={() => { api.selectPage(index); api.resetStageZoom(); }}
                 onKeyDown={(event) => {
                   if (!event.altKey || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
                   event.preventDefault();
@@ -242,7 +242,7 @@ export function FilmApp() {
               <AppTooltipTrigger label="Delete page"><button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => {
                 if (window.confirm(`Delete page ${film.activeIndex + 1}? This cannot be undone.`)) api.removePage(film.activeIndex);
               }}><Trash2 size={16} aria-hidden="true" /></button></AppTooltipTrigger>
-              <AppTooltipTrigger label="New page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button></AppTooltipTrigger>
+              <AppTooltipTrigger label="New page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); }}><Plus size={17} aria-hidden="true" /></button></AppTooltipTrigger>
             </div>
           </nav>}
         </div>

@@ -2,7 +2,7 @@
 
 import { ProjectControls } from "./ProjectControls";
 import { useEffect, useRef } from "react";
-import { ClipboardPaste, Copy, CopyPlus, Images, Scissors, Trash2 } from "lucide-react";
+import { ClipboardPaste, Copy, CopyPlus, Images, PanelRight, Scissors, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useFilm } from "@/lib/film-store";
 import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
@@ -13,6 +13,8 @@ import { AppTooltipTrigger } from "./AppTooltip";
 
 export type EditorToolbarProps = {
   onPresent: () => void;
+  inspectorOpen: boolean;
+  onToggleInspector: () => void;
 };
 
 function toolLabel(tool: DrawTool): string {
@@ -86,7 +88,7 @@ function ToolbarButton({
   );
 }
 
-export function EditorToolbar({ onPresent }: EditorToolbarProps) {
+export function EditorToolbar({ onPresent, inspectorOpen, onToggleInspector }: EditorToolbarProps) {
   const api = useFilm();
   const toolbar = useRef<HTMLElement>(null);
 
@@ -146,11 +148,12 @@ export function EditorToolbar({ onPresent }: EditorToolbarProps) {
         </ToolbarButton>
         <ToolbarButton label="Redo" description="Redo (Ctrl/Cmd+Shift+Z)" disabled={!api.canRedo} onClick={() => api.redo()}><ChromeIcon name="redo" /></ToolbarButton>
         <ToolbarButton
-          label="Clear"
-          description="Clear the selected layer"
-          onClick={() => api.clearPage()}
+          label="Canvas settings"
+          description={`${inspectorOpen ? "Hide" : "Show"} canvas settings`}
+          active={inspectorOpen}
+          onClick={onToggleInspector}
         >
-          <ChromeIcon name="clear" />
+          <PanelRight size={18} aria-hidden="true" />
         </ToolbarButton>
         <ToolbarButton
           label="Present"
