@@ -20,6 +20,7 @@ import {
 } from "@/lib/draw";
 import { useFilm } from "@/lib/film-store";
 import {
+  activePageLayer,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   assertNever,
@@ -116,6 +117,8 @@ export function PixelCanvas() {
   const [dragging, setDragging] = useState(false);
   const width = active?.width ?? DEFAULT_WIDTH;
   const height = active?.height ?? DEFAULT_HEIGHT;
+  const layer = active ? activePageLayer(active) : null;
+  const editable = !layer || (layer.visible && !layer.locked);
   const marking = tool === "text";
   const selectedAsset = film.assets.find((item) => item.id === selectedAssetId) ?? null;
   const selectedPlacement =
@@ -453,6 +456,7 @@ export function PixelCanvas() {
       ref={boardRef}
       className="stage-board"
       data-tool={tool}
+      data-locked={!editable ? "true" : undefined}
       data-marking={marking}
       data-asset-stamp={selectedAsset ? "true" : undefined}
       data-over-selection={overSelection ? "true" : undefined}
@@ -466,6 +470,7 @@ export function PixelCanvas() {
       onPointerLeave={() => {
         setBrushPixel(null);
         setOverSelection(false);
+        if (!gesture.current) setPreview(null);
       }}
     >
       <canvas
@@ -476,6 +481,7 @@ export function PixelCanvas() {
         tabIndex={0}
         aria-label="Pixel canvas"
         onPointerDown={(event) => {
+          if (!editable) return;
           if (selectedAsset && tool !== "text" && event.button === 0) {
             beginAssetGesture(event);
             event.preventDefault();
@@ -512,6 +518,7 @@ export function PixelCanvas() {
           }
         }}
         onPointerMove={(event) => {
+          if (!editable) return;
           const at = pixelFromEvent(event);
           if (
             (tool === "move" || tool === "shape" || selectedAsset) &&
@@ -537,6 +544,7 @@ export function PixelCanvas() {
           }
           const current = gesture.current;
           if (!current) {
+            if (selectedAsset && at) setPreview({ type: "asset", x0: at.x, y0: at.y, x1: at.x, y1: at.y });
             return;
           }
           if (!at) {

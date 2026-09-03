@@ -11,6 +11,7 @@ import {
   blitStamp,
   clonePixels,
   compositedPagePixels,
+  compositePage,
   drawLine,
   extractStamp,
   fillRect,
@@ -71,6 +72,8 @@ import {
   normalizeTextSize,
   normalizeStoredPixel,
   pageSize,
+  pageLayers,
+  activePageLayer,
   parseHex,
   resizePixels,
   type BrushSize,
@@ -80,6 +83,7 @@ import {
   type FloatingPixels,
   type MarkKind,
   type Page,
+  type PageLayer,
   type PaletteProfile,
   type PixelStamp,
   type Placement,
@@ -117,13 +121,36 @@ const LEGACY_KEYS = [
 const UNDO_LIMIT = 40;
 const FilmContext = createContext<FilmApi | null>(null);
 
-type PageUndo = {
-  pixels: string[];
-  placements: Placement[];
-};
+type PageUndo = Pick<Page, "pixels" | "placements" | "texts" | "layers" | "activeLayerId">;
 
 function clonePlacements(placements: Placement[] | undefined): Placement[] {
   return (placements ?? []).map((placement) => ({ ...placement }));
+}
+
+function withLayers(page: Page, layers: PageLayer[], activeId = page.activeLayerId): Page {
+  const active = layers.find((layer) => layer.id === activeId) ?? layers[0];
+  return { ...page, layers, activeLayerId: active.id,
+    pixels: active.pixels, placements: active.placements, texts: active.texts };
+}
+
+function editablePage(): Page | null {
+  const page = activePage();
+  if (!page) return null;
+  const layer = activePageLayer(page);
+  return layer.visible && !layer.locked ? page : null;
+}
+
+function clearLayerSelection() {
+  selectedAssetId = null;
+  clearSelection();
+  clearPlacementSelection();
+  dropFloating();
+}
+
+function commitLayers(page: Page, layers: PageLayer[], activeId = page.activeLayerId) {
+  const film = getSnapshot();
+  clearLayerSelection();
+  commit({ ...film, pages: film.pages.map((item) => item.id === page.id ? withLayers(page, layers, activeId) : item) });
 }
 
 function clampPlacementOrigin(placement: Placement, size: Size): Placement {
@@ -439,7 +466,7 @@ function migratePage(
     typeof page.nextPageId === "string" && page.nextPageId.trim()
       ? page.nextPageId
       : null;
-  return {
+  const migrated: Page = {
     id: page.id || createId("page"),
     width: size.width,
     height: size.height,
@@ -450,6 +477,20 @@ function migratePage(
     boardY: Number.isFinite(boardY) ? boardY : Number.NaN,
     nextPageId,
   };
+  if (!Array.isArray(page.layers) || !page.layers.length) return migrated;
+  const ids = new Set<string>();
+  const layers = page.layers.filter((layer) => layer && typeof layer === "object").map((layer, index): PageLayer => {
+    let id = typeof layer.id === "string" && layer.id.trim() ? layer.id : createId("layer");
+    if (ids.has(id)) id = createId("layer");
+    ids.add(id);
+    const pixels = Array.from({ length: size.width * size.height }, (_, i) =>
+      normalizeStoredPixel(Array.isArray(layer.pixels) ? layer.pixels[i] : EMPTY, paperAsEmpty));
+    return { id, name: typeof layer.name === "string" && layer.name.trim() ? layer.name.trim().slice(0, 80) : `Layer ${index + 1}`,
+      visible: layer.visible !== false, locked: layer.locked === true, pixels,
+      placements: normalizePlacements(layer.placements),
+      texts: Array.isArray(layer.texts) ? layer.texts.filter((mark) => mark && typeof mark.body === "string").map(normalizeTextMark) : [] };
+  });
+  return layers.length ? withLayers(migrated, layers, page.activeLayerId) : migrated;
 }
 
 /**
@@ -664,10 +705,13 @@ function pushUndo() {
   if (!page) {
     return;
   }
-  undos.push({
-    pixels: clonePixels(page.pixels),
-    placements: clonePlacements(page.placements),
-  });
+  const layers = pageLayers(page).map((layer) => ({ ...layer,
+    pixels: clonePixels(layer.pixels), placements: clonePlacements(layer.placements),
+    texts: layer.texts.map((mark) => ({ ...mark })),
+  }));
+  const snapshot = withLayers(page, layers);
+  undos.push({ pixels: snapshot.pixels, placements: snapshot.placements, texts: snapshot.texts,
+    layers, activeLayerId: snapshot.activeLayerId });
   if (undos.length > UNDO_LIMIT) {
     undos.shift();
   }
@@ -706,7 +750,7 @@ function getPaintSurface(): PaintSurface | null {
       pushUndoFn: pushWorkshopUndo,
     };
   }
-  const page = activePage();
+  const page = editablePage();
   if (!page) {
     return null;
   }
@@ -720,36 +764,22 @@ function getPaintSurface(): PaintSurface | null {
 
 function applyDensity(film: Film, width: number): Film {
   const page = activePage(film);
-  if (!page) {
-    return film;
-  }
+  if (!page || !editablePage()) return film;
   const size = landscapeSize(width);
   const from = pageSize(page);
-  if (size.width === from.width && size.height === from.height) {
-    return film;
-  }
+  if (size.width === from.width && size.height === from.height) return film;
   undos.length = 0;
-  floating = null;
-  return {
-    ...film,
-    pages: film.pages.map((item, index) =>
-      index === film.activeIndex
-        ? {
-            ...item,
-            width: size.width,
-            height: size.height,
-            pixels: resizePixels(item.pixels, from, size),
-            texts: [],
-            placements: clonePlacements(item.placements).map((placement) =>
-              clampPlacementOrigin(placement, size),
-            ),
-          }
-        : item,
-    ),
-  };
+  clearLayerSelection();
+  const layers = pageLayers(page).map((layer) => ({ ...layer,
+    pixels: resizePixels(layer.pixels, from, size), texts: [],
+    placements: clonePlacements(layer.placements).map((placement) => clampPlacementOrigin(placement, size)),
+  }));
+  return { ...film, pages: film.pages.map((item, index) => index === film.activeIndex
+    ? withLayers({ ...item, width: size.width, height: size.height }, layers) : item) };
 }
 
 function patchTexts(page: Page, nextTexts: TextMark[], recordUndo = true) {
+  if (!editablePage()) return;
   if (recordUndo) {
     pushUndo();
   }
@@ -758,22 +788,17 @@ function patchTexts(page: Page, nextTexts: TextMark[], recordUndo = true) {
   patchActivePage({ pixels, texts: nextTexts });
 }
 
-function patchActivePage(
-  patch: Partial<
-    Pick<Page, "pixels" | "texts" | "width" | "height" | "placements">
-  >,
-) {
+function patchActivePage(patch: Partial<Pick<Page, "pixels" | "texts" | "width" | "height" | "placements">>) {
   const film = memory;
-  const page = activePage(film);
-  if (!page) {
-    return;
-  }
-  commit({
-    ...film,
-    pages: film.pages.map((item, index) =>
-      index === film.activeIndex ? { ...item, ...patch } : item,
-    ),
-  });
+  const page = editablePage();
+  if (!page) return;
+  const active = activePageLayer(page);
+  const layers = pageLayers(page).map((layer) => layer.id === active.id ? {
+    ...layer, pixels: patch.pixels ?? layer.pixels,
+    texts: patch.texts ?? layer.texts, placements: patch.placements ?? layer.placements,
+  } : layer);
+  commit({ ...film, pages: film.pages.map((item, index) => index === film.activeIndex
+    ? withLayers({ ...item, ...patch }, layers) : item) });
 }
 
 function patchActive(pixels: string[]) {
@@ -839,7 +864,7 @@ function placeStamp(
   stamp: PixelStamp,
   keepFloating: boolean,
 ): PixelStamp | null {
-  const page = activePage();
+  const page = editablePage();
   if (!page) {
     return null;
   }
@@ -949,7 +974,9 @@ function createApi(
       return activePage();
     },
     setTool: (next) => {
+      selectedAssetId = null;
       if (next === tool) {
+        emit();
         return;
       }
       if (next !== "move") {
@@ -1228,13 +1255,14 @@ function createApi(
         return false;
       }
       selectedPlacementId = id;
+      selectedAssetId = null;
       clearSelection();
       dropFloating();
       emit();
       return true;
     },
     movePlacement: (id, x, y, recordUndo = false) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return false;
       }
@@ -1389,6 +1417,57 @@ function createApi(
       );
       commit(withActivePalette(current, restored, palettes));
     },
+    addLayer: () => {
+      const page = activePage();
+      if (!page) return null;
+      const layers = pageLayers(page);
+      const layer: PageLayer = { id: createId("layer"), name: `Layer ${layers.length + 1}`,
+        visible: true, locked: false, pixels: emptyPixels(page.width, page.height), placements: [], texts: [] };
+      pushUndo();
+      commitLayers(page, [...layers, layer], layer.id);
+      return layer;
+    },
+    selectLayer: (id) => {
+      const page = activePage();
+      if (!page || !pageLayers(page).some((layer) => layer.id === id)) return false;
+      commitLayers(page, pageLayers(page), id);
+      return true;
+    },
+    updateLayer: (id, patch) => {
+      const page = activePage();
+      const layer = page && pageLayers(page).find((item) => item.id === id);
+      if (!page || !layer) return false;
+      if (patch.name !== undefined && (typeof patch.name !== "string" || !patch.name.trim())) return false;
+      if (patch.visible !== undefined && typeof patch.visible !== "boolean") return false;
+      if (patch.locked !== undefined && typeof patch.locked !== "boolean") return false;
+      const next = { ...layer, name: patch.name?.trim().slice(0, 80) ?? layer.name,
+        visible: patch.visible ?? layer.visible, locked: patch.locked ?? layer.locked };
+      if (next.name === layer.name && next.visible === layer.visible && next.locked === layer.locked) return false;
+      pushUndo();
+      commitLayers(page, pageLayers(page).map((item) => item.id === id ? next : item));
+      return true;
+    },
+    moveLayer: (id, direction) => {
+      const page = activePage();
+      if (!page || (direction !== -1 && direction !== 1)) return false;
+      const layers = [...pageLayers(page)];
+      const index = layers.findIndex((layer) => layer.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= layers.length) return false;
+      pushUndo();
+      [layers[index], layers[target]] = [layers[target], layers[index]];
+      commitLayers(page, layers);
+      return true;
+    },
+    flattenLayer: () => {
+      const page = editablePage();
+      if (!page || !page.placements.length) return false;
+      const pixels = compositePage(page.pixels, pageSize(page), page.placements, assetById);
+      pushUndo();
+      clearLayerSelection();
+      patchActivePage({ pixels, placements: [] });
+      return true;
+    },
     setDensity: (width) => {
       dropFloating();
       commit(applyDensity(getSnapshot(), width));
@@ -1417,7 +1496,7 @@ function createApi(
       page.boardY = position.y;
       const pages = [...current.pages, page];
       undos.length = 0;
-      dropFloating();
+      clearLayerSelection();
       commit({
         ...current,
         pages,
@@ -1506,7 +1585,7 @@ function createApi(
       return true;
     },
     addText: (input) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return null;
       }
@@ -1705,12 +1784,9 @@ function createApi(
       commit({
         ...current,
         assets: current.assets.filter((item) => item.id !== id),
-        pages: current.pages.map((item) => ({
-          ...item,
-          placements: (item.placements ?? []).filter(
-            (placement) => placement.assetId !== id,
-          ),
-        })),
+        pages: current.pages.map((item) => withLayers(item, pageLayers(item).map((layer) => ({
+          ...layer, placements: layer.placements.filter((placement) => placement.assetId !== id),
+        })))),
       });
       return true;
     },
@@ -1766,7 +1842,7 @@ function createApi(
       const width = Math.max(1, Math.floor(input.width));
       const height = Math.max(1, Math.floor(input.height));
       if (input.target === "page") {
-        const page = activePage();
+        const page = editablePage();
         if (!page) {
           return false;
         }
@@ -1802,7 +1878,7 @@ function createApi(
       if (!asset) {
         return null;
       }
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return null;
       }
@@ -1846,7 +1922,7 @@ function createApi(
       return placement;
     },
     setText: (id, body) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page?.texts.some((mark) => mark.id === id)) {
         return false;
       }
@@ -1857,7 +1933,7 @@ function createApi(
       return true;
     },
     moveText: (id, x, y) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page?.texts.some((mark) => mark.id === id)) {
         return false;
       }
@@ -1877,7 +1953,7 @@ function createApi(
       return true;
     },
     removeText: (id) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page?.texts.some((mark) => mark.id === id)) {
         return false;
       }
@@ -1934,7 +2010,7 @@ function createApi(
       }
     },
     drawPixels: (dots) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return 0;
       }
@@ -1946,7 +2022,7 @@ function createApi(
       return dots.filter((dot) => inBounds(dot.x, dot.y, size)).length;
     },
     rect: (x, y, width, height, paint) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return;
       }
@@ -1955,7 +2031,7 @@ function createApi(
       patchActive(fillRect(page.pixels, liveSize(), x, y, width, height, paint));
     },
     line: (x0, y0, x1, y1, paint) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return;
       }
@@ -1964,7 +2040,7 @@ function createApi(
       patchActive(drawLine(page.pixels, liveSize(), x0, y0, x1, y1, paint));
     },
     fill: (x, y, paint) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return;
       }
@@ -1983,7 +2059,7 @@ function createApi(
         touchWorkshopDraft();
         return;
       }
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return;
       }
@@ -1998,7 +2074,7 @@ function createApi(
       });
     },
     drawScene: (prompt) => {
-      const page = activePage();
+      const page = editablePage();
       if (!page) {
         return;
       }
@@ -2021,12 +2097,10 @@ function createApi(
       if (!previous) {
         return false;
       }
-      dropFloating();
-      clearPlacementSelection();
-      patchActivePage({
-        pixels: previous.pixels,
-        placements: previous.placements,
-      });
+      const page = activePage();
+      if (!page) return false;
+      clearLayerSelection();
+      commitLayers(page, previous.layers!, previous.activeLayerId);
       return true;
     },
   };

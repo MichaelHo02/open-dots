@@ -168,15 +168,14 @@ export function FilmApp() {
             <section className="sidebar-section" aria-label="Stamp hint">
               <p className="sidebar-label">Stamp</p>
               <p className="sidebar-help">
-                Click to place at native size. Drag to scale proportionally.
-                Click the asset again to deselect.
+                {film.assets.find(asset => asset.id === selectedAssetId)?.name}
               </p>
               <button
                 type="button"
                 className="pill ghost"
                 onClick={() => api.selectAsset(null)}
               >
-                Deselect asset
+                Cancel placement
               </button>
             </section>
           ) : null}

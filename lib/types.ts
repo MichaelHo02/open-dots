@@ -162,6 +162,16 @@ export interface WorkshopDraft {
   pixels: string[];
 }
 
+export interface PageLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  pixels: string[];
+  placements: Placement[];
+  texts: TextMark[];
+}
+
 export interface Page {
   id: string;
   width: number;
@@ -171,11 +181,26 @@ export interface Page {
   texts: TextMark[];
   /** Movable asset overlays composited over `pixels`, back-to-front. */
   placements: Placement[];
+  /** Layers ordered back-to-front; legacy buffers mirror the active layer. */
+  layers?: PageLayer[];
+  activeLayerId?: string;
   /** Node position on the story board (px at zoom 1, node top-left). */
   boardX: number;
   boardY: number;
   /** Directed story link: the page read after this one, if any. */
   nextPageId?: string | null;
+}
+
+export function pageLayers(page: Pick<Page, "id" | "pixels" | "placements" | "texts" | "layers">): PageLayer[] {
+  return page.layers?.length ? page.layers : [{
+    id: page.id + "-base", name: "Background", visible: true, locked: false,
+    pixels: page.pixels, placements: page.placements ?? [], texts: page.texts ?? [],
+  }];
+}
+
+export function activePageLayer(page: Page): PageLayer {
+  const layers = pageLayers(page);
+  return layers.find((layer) => layer.id === page.activeLayerId) ?? layers[0];
 }
 
 export interface Film {
@@ -240,6 +265,11 @@ export interface FilmApi {
   renamePalette: (id: string, name: string) => boolean;
   addSwatch: (color: string) => boolean;
   resetPalette: () => void;
+  addLayer: () => PageLayer | null;
+  selectLayer: (id: string) => boolean;
+  updateLayer: (id: string, patch: { name?: string; visible?: boolean; locked?: boolean }) => boolean;
+  moveLayer: (id: string, direction: -1 | 1) => boolean;
+  flattenLayer: () => boolean;
   setDensity: (width: number) => void;
   addPage: (input?: { story?: string; draw?: string }) => Page;
   selectPage: (index: number) => boolean;
@@ -839,10 +869,9 @@ export function isPaintedPixel(color: string): boolean {
 }
 
 export function isEmptyPage(page: Page): boolean {
-  const blankPixels = page.pixels.every((pixel) => !isPaintedPixel(pixel));
-  const blankText = (page.texts ?? []).every((mark) => !mark.body.trim());
-  const noPlacements = (page.placements ?? []).length === 0;
-  return blankPixels && blankText && noPlacements;
+  return pageLayers(page).every((layer) =>
+    layer.pixels.every((pixel) => !isPaintedPixel(pixel)) &&
+    layer.texts.every((mark) => !mark.body.trim()) && layer.placements.length === 0);
 }
 
 /**

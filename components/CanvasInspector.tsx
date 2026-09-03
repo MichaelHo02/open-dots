@@ -2,9 +2,10 @@
 
 import { X, Trash2 } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
-import { DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE, MIN_TEXT_SIZE, MAX_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel } from "@/lib/types";
+import { activePageLayer, DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH, MIN_BRUSH_SIZE, MAX_BRUSH_SIZE, MIN_TEXT_SIZE, MAX_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel } from "@/lib/types";
 import { FrameSample } from "./BubbleFrame";
 import { TextSizePreview } from "./TextSizePreview";
+import { LayersPanel } from "./LayersPanel";
 
 export function CanvasInspector({ onClose }: { onClose: () => void }) {
   const api = useFilm();
@@ -18,6 +19,9 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
         <button type="button" className="inspector-close" aria-label="Close canvas settings" onClick={onClose}><X size={16} aria-hidden="true" /></button>
       </div>
             {!workshopOpen ? (
+              <LayersPanel />
+            ) : null}
+            {!workshopOpen ? (
               <section className="access-group access-density" aria-label="Density">
                 <p className="sidebar-label">Density</p>
                 <label className="scale-field panel-scale">
@@ -28,6 +32,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
                     step={16}
                     value={density?.width ?? DEFAULT_WIDTH}
                     aria-label="Pixels across this page"
+                    disabled={!!active && (activePageLayer(active).locked || !activePageLayer(active).visible)}
                     onChange={(event) =>
                       api.setDensity(Number(event.target.value))
                     }
@@ -146,7 +151,6 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
             </>
           ) : null}
 
-      {tool === "move" ? <section className="sidebar-section"><p className="sidebar-label">Move</p><p className="sidebar-help">Drag an asset to move it, or drag across pixels to select them.</p></section> : null}
       {!workshopOpen && <button type="button" className="pill ghost" disabled={film.pages.length <= 1} onClick={() => api.removePage(film.activeIndex)}><Trash2 size={14} aria-hidden="true" />Delete page</button>}
     </aside>
   );

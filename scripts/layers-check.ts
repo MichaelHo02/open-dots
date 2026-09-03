@@ -1,0 +1,20 @@
+/** Run: node --import tsx scripts/layers-check.ts */
+import assert from 'node:assert/strict';
+import { compositePage, compositedPagePixels } from '../lib/draw';
+import { pageLayers, type Page, type Asset, type PageLayer } from '../lib/types';
+const red = '#ff0000', blue = '#0000ff', green = '#00ff00';
+const asset: Asset = { id: 'sprite', name: 'Sprite', width: 2, height: 1, pixels: [blue, ''] };
+const page: Page = { id: 'old', width: 2, height: 1, pixels: [red, red], placements: [{ id: 'stamp', assetId: asset.id, x: 0, y: 0, width: 2, height: 1 }], texts: [], boardX: 0, boardY: 0 };
+const legacy = JSON.stringify(page);
+assert.deepEqual(compositedPagePixels(page, [asset]), [blue, red]);
+const base = pageLayers(page)[0];
+const top: PageLayer = { id: 'top', name: 'Top', pixels: ['', green], texts: [], placements: [], visible: true, locked: false };
+const layered = { ...page, layers: [base, top], activeLayerId: top.id };
+assert.deepEqual(compositedPagePixels(layered, [asset]), [blue, green]);
+assert.deepEqual(compositedPagePixels({ ...layered, layers: [top, base] }, [asset]), [blue, red]);
+assert.deepEqual(compositedPagePixels({ ...layered, layers: [base, { ...top, visible: false }] }, [asset]), [blue, red]);
+assert.deepEqual(compositedPagePixels({ ...layered, layers: [{ ...base, locked: true }, top] }, [asset]), [blue, green]);
+const flattened = { ...base, pixels: compositePage(base.pixels, page, base.placements, () => asset), placements: [] };
+assert.deepEqual(compositedPagePixels({ ...layered, layers: [flattened, top] }, [asset]), [blue, green]);
+assert.equal(JSON.stringify(page), legacy, 'Composition must not mutate saved artwork');
+console.log('PASS: legacy art, layer order, visibility, locked rendering, transparent flattening, non-mutation');

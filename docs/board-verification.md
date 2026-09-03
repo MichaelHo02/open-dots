@@ -55,3 +55,28 @@ check. Syntax checked; equivalent lifecycle was exercised through browser tools.
 TypeScript and targeted ESLint passed (seven existing store warnings, no errors).
 Production build passed with `npx next build --webpack`; default Turbopack failed
 because its CSS worker could not bind a local port in this environment.
+
+## Named page layers — 2026-09-03
+
+Each page now has ordered named layers containing paint plus movable asset
+placements. Existing artwork is preserved in a Background layer. The right
+inspector supports select, rename, visibility, lock, reorder, and Flatten assets.
+Flatten composites all placements into that layer's paint without changing its
+appearance; Undo restores the placements. Painting and stamping target the active
+layer. Hidden/locked layers reject edits. Asset placement has a hover preview,
+and selecting a drawing tool cancels stamping even if that tool was already active.
+
+Browser verification used a temporary third page: named Floor and Characters;
+stamped a library trainer; checked flatten PNG equality and Undo restoring the
+asset row; locked Characters and confirmed a Draw click left its image unchanged;
+reloaded and verified names/lock/placement persisted; hid/showed and reordered the
+layer. Removed only the temporary page, selected existing Page 1, and confirmed
+its get_page_image result was identical to the pre-check result.
+
+Runnable checks: `node --import tsx scripts/layers-check.ts` (composition/legacy
+art), `node --import tsx scripts/layers-store-check.ts` (actual store edit guards,
+isolation, flatten/undo), and `node --import tsx scripts/webmcp-evals.ts` (19/19).
+The node --import form avoids the tsx CLI's sandbox-blocked IPC socket.
+Final production build: `npx next build --webpack` passed. Targeted ESLint had
+zero errors and eight pre-existing warnings. TypeScript passed. Additional
+store regressions confirmed lifted/moved pixel selections survive layer changes.

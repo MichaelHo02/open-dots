@@ -1,4 +1,5 @@
 import {
+  pageLayers,
   EMPTY,
   TRANSPARENT,
   assertNever,
@@ -566,16 +567,19 @@ export function compositePage(
 
 /** Composite a page's background with its overlay stamps (assets looked up by id). */
 export function compositedPagePixels(
-  page: Pick<Page, "pixels" | "width" | "height" | "placements">,
+  page: Pick<Page, "id" | "pixels" | "texts" | "width" | "height" | "placements" | "layers">,
   assets: readonly Asset[],
 ): string[] {
   const byId = new Map(assets.map((asset) => [asset.id, asset]));
-  return compositePage(
-    page.pixels,
-    { width: page.width, height: page.height },
-    page.placements,
-    (id) => byId.get(id),
-  );
+  let pixels = emptyPixels(page.width, page.height);
+  for (const layer of pageLayers(page)) {
+    if (!layer.visible) continue;
+    for (let i = 0; i < pixels.length; i++) {
+      if (isPaintedPixel(layer.pixels[i])) pixels[i] = layer.pixels[i];
+    }
+    pixels = compositePage(pixels, page, layer.placements, id => byId.get(id));
+  }
+  return pixels;
 }
 
 /**

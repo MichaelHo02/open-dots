@@ -1,4 +1,6 @@
 import {
+  activePageLayer,
+  pageLayers,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   MAX_ASSET_SIDE,
@@ -585,10 +587,13 @@ function summarize(api: FilmApi) {
         size: mark.size,
       })),
       empty: isEmptyPage(page),
-      placementCount: (page.placements ?? []).length,
-      placements: (page.placements ?? []).map((placement) => ({
+      activeLayerId: activePageLayer(page).id,
+      layers: pageLayers(page).map(layer => ({ id: layer.id, name: layer.name, visible: layer.visible, locked: layer.locked, placementIds: layer.placements.map(item => item.id) })),
+      placementCount: pageLayers(page).reduce((count, layer) => count + layer.placements.length, 0),
+      placements: pageLayers(page).flatMap(layer => layer.placements.map(placement => ({ ...placement, layerId: layer.id }))).map((placement) => ({
         id: placement.id,
         assetId: placement.assetId,
+        layerId: placement.layerId,
         x: placement.x,
         y: placement.y,
         width: placement.width,
@@ -626,7 +631,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_film",
       description:
-        "Read the book: pages with overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
+        "Read the book: pages with named layers, activeLayerId and overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       annotations: { readOnlyHint: true },
       inputSchema: { type: "object", properties: {} },
       execute: async () => toolResult(summarize(apiRef.current)),
@@ -771,7 +776,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "place_text",
       description:
-        "Rasterize words into the active page pixels at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
+        "Rasterize words into the selected layer at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1049,7 +1054,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "stamp_assets",
       description:
-        `Add movable overlay placements on the active page (max ${MAX_ASSETS} per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.`,
+        `Add movable overlay placements on the selected layer of the active page (max ${MAX_ASSETS} per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1172,7 +1177,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "draw_pixels",
       description:
-        `Paint directly on the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the page. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.`,
+        `Paint into the selected layer of the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the selected layer. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1339,7 +1344,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           pageWidth,
           pageHeight,
         );
-        const placements = page.placements ?? [];
+        const placements = pageLayers(page).filter(layer => layer.visible).flatMap(layer => layer.placements);
         const summary = {
           pageIndex: pageIndex ?? apiRef.current.film.activeIndex,
           id: page.id,
@@ -1384,7 +1389,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "clear_page",
       description:
-        "Erase the active page to a blank transparent canvas, including rasterized text and overlay placements. If the asset workshop is open, clears the workshop draft instead.",
+        "Erase the selected layer of the active page, including its painted text and overlay placements. Other layers remain unchanged. If the asset workshop is open, clears the workshop draft instead.",
       inputSchema: { type: "object", properties: {} },
       execute: async () => {
         apiRef.current.clearPage();
@@ -1419,6 +1424,11 @@ function withSafeExecute(tool: WebMCPTool): WebMCPTool {
     ...tool,
     execute: async (input: Record<string, unknown>) => {
       try {
+        const api = sharedApiRef.current;
+        if (["draw_pixels", "stamp_assets", "place_text", "clear_page"].includes(tool.name) && api?.active && !api.workshopOpen) {
+          const layer = activePageLayer(api.active);
+          if (layer.locked || !layer.visible) return toolError(`Layer "${layer.name}" is ${layer.locked ? "locked" : "hidden"}. Select an editable layer in the editor first.`);
+        }
         return await run(input);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

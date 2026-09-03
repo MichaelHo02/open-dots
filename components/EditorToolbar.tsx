@@ -98,7 +98,7 @@ export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
               key={item}
               label={label}
               description={toolDescription(item)}
-              active={api.tool === item}
+              active={!api.selectedAssetId && api.tool === item}
               onClick={() => {
                 api.setTool(item);
                 onToolSelect?.();
@@ -119,7 +119,7 @@ export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
         </ToolbarButton>
         <ToolbarButton
           label="Clear"
-          description="Clear the current page"
+          description="Clear the selected layer"
           onClick={() => api.clearPage()}
         >
           <ChromeIcon name="clear" />

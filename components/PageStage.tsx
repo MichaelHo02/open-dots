@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { activePageLayer } from "@/lib/types";
 import { useFilm } from "@/lib/film-store";
 import { PixelCanvas } from "./PixelCanvas";
 
@@ -10,6 +11,7 @@ export function PageStage({ viewportRef, inspectorOpen, onInspect }: {
   onInspect: () => void;
 }) {
   const { active, stageZoom } = useFilm();
+  const layer = active ? activePageLayer(active) : null;
   const leafRef = useRef<HTMLDivElement>(null);
   const inspectionPointer = useRef<number | null>(null);
   const [width, setWidth] = useState(0);
@@ -44,7 +46,7 @@ export function PageStage({ viewportRef, inspectorOpen, onInspect }: {
       onKeyDown={event => {
         if (event.key === "Enter" && !inspectorOpen) { event.preventDefault(); onInspect(); }
       }}>
-      <PixelCanvas key={active?.id} />
+      <PixelCanvas key={`${active?.id}:${layer?.id}:${layer?.locked}:${layer?.visible}`} />
     </div>
   </main>;
 }

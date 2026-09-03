@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./tool-cursors.css";
+@import "./layers.css";
 
 :root {
   --primary: #000000;
@@ -1983,3 +1984,5 @@ input {
 .page-index { display: block; margin-top: 6px; font-size: 12px; }
 .page-count { text-align: center; color: #737373; font-size: 12px; }
 @media (max-width: 600px) { .canvas-inspector { bottom: 130px; } .strip { padding: 8px; gap: 8px; } }
+
+.stage-board[data-locked="true"] .stage { cursor: not-allowed; }
