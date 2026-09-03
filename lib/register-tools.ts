@@ -1,6 +1,4 @@
 import {
-  DEFAULT_ASSET_HEIGHT,
-  DEFAULT_ASSET_WIDTH,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   MAX_ASSET_SIDE,
@@ -8,19 +6,16 @@ import {
   MIN_WIDTH,
   MAX_ASSETS,
   MAX_DRAW_PIXELS,
-  SHAPE_SCALES,
-  TEXT_FONTS,
-  TEXT_FRAMES,
   MAX_TEXT_SIZE,
   MIN_TEXT_SIZE,
   clampUnit,
   isEmptyPage,
-  normalizeFont,
-  normalizeFrame,
-  normalizeScale,
   normalizeTextSize,
   pageSize,
   type FilmApi,
+  type Page,
+  type Asset,
+  type Size,
 } from "./types";
 import {
   asBoolean,
@@ -35,11 +30,44 @@ import {
   solidPixelGrid,
   toolError,
   toolResult,
+  toolResultWithImage,
 } from "./tool-result";
-import { ensureWebMCPPolyfill, type WebMCPTool } from "./webmcp-polyfill";
-import { shapeScalePixels } from "./draw";
+import {
+  buildPixelArtGuide,
+  normalizeGuideTopic,
+  type PixelArtGuideTopic,
+} from "./pixel-art-guide";
+import {
+  buildNextRequired,
+  emptyAssetNextRequired,
+  assetHasPaintedPixels,
+  getAgentChecklist,
+  guideNextRequired,
+  inferPassHint,
+  inferSceneHint,
+  pageSceneHintContext,
+  markAssetEdited,
+  markAssetVerified,
+  markGuideLoaded,
+  recordStampedAssets,
+  type PassHint,
+} from "./agent-session";
+import {
+  computePixelStats,
+  extractPixelRegion,
+  pixelsToPngBase64,
+} from "./rasterize";
+import {
+  ensureWebMCPPolyfill,
+  withToolAnnotations,
+  type WebMCPTool,
+} from "./webmcp-polyfill";
+import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "./draw";
 
 type ApiRef = { current: FilmApi };
+
+/** Stable ref object — execute closures always read the latest film API. */
+const sharedApiRef: ApiRef = { current: null! };
 
 function asUnit(value: unknown, span: number): number | undefined {
   const n = asNumber(value);
@@ -60,15 +88,19 @@ function activeSize(api: FilmApi) {
   return pageSize(page);
 }
 
-function asPixel(value: unknown, span: number): number | undefined {
-  const n = asNumber(value);
-  if (n === undefined) {
-    return undefined;
+function resolvePage(api: FilmApi, pageIndex?: number): Page | null {
+  if (pageIndex === undefined) {
+    return api.active;
   }
-  if (n > 1) {
-    return Math.round(n);
+  return api.film.pages[pageIndex] ?? null;
+}
+
+function parseImageScale(value: unknown): number {
+  const scale = asInteger(value);
+  if (scale === undefined) {
+    return 1;
   }
-  return Math.round(clampUnit(n) * Math.max(1, span));
+  return Math.max(1, Math.min(8, scale));
 }
 
 function assetSummary(api: FilmApi) {
@@ -79,12 +111,6 @@ function assetSummary(api: FilmApi) {
     height: asset.height,
   }));
 }
-
-const ASSET_WORKFLOW =
-  `Lego-style workflow for complex scenes: decompose a reference into small reusable assets (floor tile, furniture, character sprites ≤${MAX_ASSET_SIDE}×${MAX_ASSET_SIDE}), add_asset each one, then stamp_assets to compose the page. Do not paint entire pages pixel-by-pixel — a 128×72 canvas has 9,216 cells; draw_pixels caps at ${MAX_DRAW_PIXELS} per call.`;
-
-const QUALITY_ASSET_WORKFLOW =
-  `High-quality sprite workflow: (1) set_palette for a cohesive theme; (2) add_asset with template \"empty\" at 8×8–48×48 (32×32 is a good default); (3) draw_asset_pixels in regional chunks — a full 32×32 = 1,024 pixels, well under the ${MAX_DRAW_PIXELS} cap; (4) get_asset to preview rows and fix mistakes; (5) clear_rect on the asset to erase a region before redraw; (6) duplicate_asset for color variants; (7) stamp_assets back-to-front (floor → furniture → characters). Never one-shot a complex sprite in add_asset — iterate with draw_asset_pixels.`;
 
 function applyPixelOffset(
   dots: Array<{ x: number; y: number; color: string }>,
@@ -100,6 +126,200 @@ function applyPixelOffset(
     y: dot.y + offsetY,
   }));
 }
+
+/** Cap on structural ops per call — each op expands server-side into many pixels. */
+const MAX_SHAPE_OPS = 512;
+
+type RectOp = { x: number; y: number; width: number; height: number; color: string };
+type LineOp = { x0: number; y0: number; x1: number; y1: number; color: string };
+type FillOp = { x: number; y: number; color: string };
+
+/** Structural ops shared by asset and page painters — the bulk advantage over per-pixel tools. */
+interface BufferOps {
+  rects: RectOp[];
+  lines: LineOp[];
+  fills: FillOp[];
+  dots: Array<{ x: number; y: number; color: string }>;
+}
+
+function asOpColor(value: unknown): string | undefined {
+  // "" is a valid erase color; only reject non-strings.
+  return typeof value === "string" ? value : undefined;
+}
+
+function parseRectOps(value: unknown, offsetX: number, offsetY: number): RectOp[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const ops: RectOp[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = item as Record<string, unknown>;
+    const x = asInteger(row.x);
+    const y = asInteger(row.y);
+    const width = asInteger(row.width);
+    const height = asInteger(row.height);
+    const color = asOpColor(row.color);
+    if (x === undefined || y === undefined || width === undefined || height === undefined || color === undefined) {
+      continue;
+    }
+    if (width < 1 || height < 1) {
+      continue;
+    }
+    ops.push({ x: x + offsetX, y: y + offsetY, width, height, color });
+  }
+  return ops;
+}
+
+function parseLineOps(value: unknown, offsetX: number, offsetY: number): LineOp[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const ops: LineOp[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = item as Record<string, unknown>;
+    const x0 = asInteger(row.x0);
+    const y0 = asInteger(row.y0);
+    const x1 = asInteger(row.x1);
+    const y1 = asInteger(row.y1);
+    const color = asOpColor(row.color);
+    if (x0 === undefined || y0 === undefined || x1 === undefined || y1 === undefined || color === undefined) {
+      continue;
+    }
+    ops.push({ x0: x0 + offsetX, y0: y0 + offsetY, x1: x1 + offsetX, y1: y1 + offsetY, color });
+  }
+  return ops;
+}
+
+function parseFillOps(value: unknown, offsetX: number, offsetY: number): FillOp[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const ops: FillOp[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = item as Record<string, unknown>;
+    const x = asInteger(row.x);
+    const y = asInteger(row.y);
+    const color = asOpColor(row.color);
+    if (x === undefined || y === undefined || color === undefined) {
+      continue;
+    }
+    ops.push({ x: x + offsetX, y: y + offsetY, color });
+  }
+  return ops;
+}
+
+function collectBufferOps(
+  input: Record<string, unknown>,
+  offsetX: number,
+  offsetY: number,
+): BufferOps {
+  const dots = asDots(input.pixels) ?? [];
+  return {
+    rects: parseRectOps(input.rects, offsetX, offsetY),
+    lines: parseLineOps(input.lines, offsetX, offsetY),
+    fills: parseFillOps(input.fills, offsetX, offsetY),
+    dots: applyPixelOffset(dots, offsetX, offsetY),
+  };
+}
+
+function bufferOpCount(ops: BufferOps): number {
+  return ops.rects.length + ops.lines.length + ops.fills.length + ops.dots.length;
+}
+
+/** Apply ops in a fixed, predictable order: rects → lines → fills → pixels (pixels win for detail). */
+function applyBufferOps(base: string[], size: Size, ops: BufferOps): string[] {
+  let next = base;
+  for (const rect of ops.rects) {
+    next = fillRect(next, size, rect.x, rect.y, rect.width, rect.height, rect.color);
+  }
+  for (const line of ops.lines) {
+    next = drawLine(next, size, line.x0, line.y0, line.x1, line.y1, line.color);
+  }
+  for (const fill of ops.fills) {
+    next = floodFill(next, size, fill.x, fill.y, fill.color);
+  }
+  if (ops.dots.length > 0) {
+    next = setPixels(next, size, ops.dots);
+  }
+  return next;
+}
+
+/** Changed cells between two equal-length buffers, as {x,y,color} dots ("" = erase). */
+function diffToDots(
+  before: string[],
+  after: string[],
+  width: number,
+): Array<{ x: number; y: number; color: string }> {
+  const dots: Array<{ x: number; y: number; color: string }> = [];
+  for (let i = 0; i < after.length; i += 1) {
+    if (before[i] !== after[i]) {
+      dots.push({ x: i % width, y: Math.floor(i / width), color: after[i] ?? "" });
+    }
+  }
+  return dots;
+}
+
+/** JSON Schema fragments reused by the two painters for rects/lines/fills. */
+const RECT_OPS_SCHEMA = {
+  type: "array",
+  maxItems: MAX_SHAPE_OPS,
+  description:
+    "Filled rectangles: each {x,y,width,height,color} paints a solid block. One rect can cover any region; color \"\" erases the block.",
+  items: {
+    type: "object",
+    properties: {
+      x: { type: "integer" },
+      y: { type: "integer" },
+      width: { type: "integer" },
+      height: { type: "integer" },
+      color: { type: "string", description: "#rrggbb or \"\" to erase" },
+    },
+    required: ["x", "y", "width", "height", "color"],
+  },
+} as const;
+
+const LINE_OPS_SCHEMA = {
+  type: "array",
+  maxItems: MAX_SHAPE_OPS,
+  description:
+    "Straight lines: each {x0,y0,x1,y1,color} draws an edge or outline. Use for silhouettes, seams, and furniture edges. color \"\" erases.",
+  items: {
+    type: "object",
+    properties: {
+      x0: { type: "integer" },
+      y0: { type: "integer" },
+      x1: { type: "integer" },
+      y1: { type: "integer" },
+      color: { type: "string", description: "#rrggbb or \"\" to erase" },
+    },
+    required: ["x0", "y0", "x1", "y1", "color"],
+  },
+} as const;
+
+const FILL_OPS_SCHEMA = {
+  type: "array",
+  maxItems: MAX_SHAPE_OPS,
+  description:
+    "Flood fills: each {x,y,color} bucket-fills the contiguous region touching x,y. Outline first (lines/rects), then flood the enclosed area. color \"\" erases.",
+  items: {
+    type: "object",
+    properties: {
+      x: { type: "integer" },
+      y: { type: "integer" },
+      color: { type: "string", description: "#rrggbb or \"\" to erase" },
+    },
+    required: ["x", "y", "color"],
+  },
+} as const;
 
 function drawPixelsLimitError(count: number) {
   const cells = DEFAULT_WIDTH * DEFAULT_HEIGHT;
@@ -197,14 +417,157 @@ function resolveAssetPixels(input: Record<string, unknown>): {
   return null;
 }
 
+function editorState(api: FilmApi) {
+  return {
+    tool: api.tool,
+    color: api.color,
+    brushSize: api.brushSize,
+    frame: api.frame,
+    shapeFilled: api.shapeFilled,
+    textFont: api.textFont,
+    textSize: api.textSize,
+    selectedAssetId: api.selectedAssetId,
+    selectedPlacementId: api.selectedPlacementId,
+    workshopOpen: api.workshopOpen,
+    workshopDraft: api.workshopDraft
+      ? {
+          id: api.workshopDraft.id,
+          name: api.workshopDraft.name,
+          width: api.workshopDraft.width,
+          height: api.workshopDraft.height,
+        }
+      : null,
+  };
+}
+
+function assetMutationFeedback(
+  asset: Asset,
+  summary: Record<string, unknown>,
+  options?: { dots?: Array<{ x: number; y: number; color: string }> },
+) {
+  markAssetEdited(asset.id);
+  const stats = computePixelStats(asset.pixels, asset.width, asset.height);
+  const passHint: PassHint = inferPassHint(stats, options?.dots);
+  const png = pixelsToPngBase64(asset.pixels, asset.width, asset.height);
+  if (!png) {
+    return toolError("Could not rasterize asset image (canvas unavailable)");
+  }
+  return toolResultWithImage(
+    {
+      ...summary,
+      assetId: asset.id,
+      passHint,
+      nextRequired: buildNextRequired(passHint),
+    },
+    { data: png, mimeType: "image/png" },
+  );
+}
+
+export type WebmcpPhase = "registering" | "ready";
+
+export type WebmcpStatus = {
+  phase: WebmcpPhase;
+  ready: boolean;
+  native: boolean;
+  toolCount: number;
+  expectedToolCount: number;
+  /** Stable for this document load; changes only on refresh/navigation. */
+  generation: number;
+};
+
+const WEBMCP_WINDOW_KEY = "__openDotsWebmcp";
+
+type WindowRegistration = {
+  apiRef: ApiRef;
+  generation: number;
+  native: boolean;
+  count: number;
+};
+
+function getWindowRegistration(): WindowRegistration | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return (
+    (window as unknown as Record<string, WindowRegistration | undefined>)[
+      WEBMCP_WINDOW_KEY
+    ] ?? null
+  );
+}
+
+function setWindowRegistration(state: WindowRegistration): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  (window as unknown as Record<string, WindowRegistration>)[WEBMCP_WINDOW_KEY] =
+    state;
+}
+
+const WEBMCP_REFRESH_HINT =
+  "After a page refresh or navigation, re-fetch live WebMCP tools and wait until webmcp.ready is true before mutating. In-flight calls that used a pre-refresh snapshot are invalid. Film data (assets, pages) persists in localStorage — call get_film to recover asset ids.";
+
+let webmcpStatus: WebmcpStatus = {
+  phase: "registering",
+  ready: false,
+  native: false,
+  toolCount: 0,
+  expectedToolCount: 0,
+  generation: 0,
+};
+
+let registrationPending: Promise<{ native: boolean; count: number }> | null =
+  null;
+let registrationCompleted: { native: boolean; count: number } | null = null;
+
+const winBoot = getWindowRegistration();
+if (winBoot) {
+  registrationCompleted = { native: winBoot.native, count: winBoot.count };
+  webmcpStatus = {
+    phase: "ready",
+    ready: true,
+    native: winBoot.native,
+    toolCount: winBoot.count,
+    expectedToolCount: winBoot.count,
+    generation: winBoot.generation,
+  };
+}
+
+export function getWebmcpStatus(): WebmcpStatus {
+  return { ...webmcpStatus };
+}
+
 function summarize(api: FilmApi) {
   const { film } = api;
+  const agentChecklist = getAgentChecklist();
+  const guideNudge = guideNextRequired();
+  const webmcp = getWebmcpStatus();
+  const nextRequired = !webmcp.ready
+    ? "WebMCP tools are still registering after load. Re-fetch live tools and retry get_film until webmcp.ready is true before add_asset or other mutations."
+    : guideNudge;
   return {
     size: activeSize(api),
     brief: film.brief,
     palette: film.palette,
     paletteName: film.paletteName ?? null,
+    activePaletteId: film.activePaletteId,
+    palettes: film.palettes.map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      swatches: profile.swatches,
+      active: profile.id === film.activePaletteId,
+    })),
     color: api.color,
+    editor: {
+      ...editorState(api),
+      agentSession: agentChecklist,
+    },
+    agentChecklist,
+    webmcp: {
+      ...webmcp,
+      hint: WEBMCP_REFRESH_HINT,
+      registering: webmcp.phase === "registering",
+    },
+    ...(nextRequired ? { nextRequired } : {}),
     activeIndex: film.activeIndex,
     pageCount: film.pages.length,
     assets: assetSummary(api),
@@ -222,148 +585,102 @@ function summarize(api: FilmApi) {
         size: mark.size,
       })),
       empty: isEmptyPage(page),
+      placementCount: (page.placements ?? []).length,
+      placements: (page.placements ?? []).map((placement) => ({
+        id: placement.id,
+        assetId: placement.assetId,
+        x: placement.x,
+        y: placement.y,
+        width: placement.width,
+        height: placement.height,
+      })),
       active: index === film.activeIndex,
     })),
   };
 }
 
-export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
+export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
+  const apiRef = sharedApiRef;
   const tools: WebMCPTool[] = [
+    {
+      name: "get_pixel_art_guide",
+      description:
+        "Load the pixel-art playbook — call this first each session before drawing. Covers composition, palettes, shading, material recipes, character patterns, the draw-look-fix loop, and anti-patterns. Pass topic workflow, shading, composition, or tools; omit for the full playbook.",
+      annotations: { readOnlyHint: true },
+      inputSchema: {
+        type: "object",
+        properties: {
+          topic: {
+            type: "string",
+            enum: ["workflow", "shading", "composition", "tools", "full"],
+            description: "Section to return; omit for full playbook",
+          },
+        },
+      },
+      execute: async (input) => {
+        const topic: PixelArtGuideTopic = normalizeGuideTopic(input.topic);
+        markGuideLoaded();
+        return toolResult(buildPixelArtGuide(topic));
+      },
+    },
     {
       name: "get_film",
       description:
-        `Read the book: each page’s density, text marks, asset library (id, name, size — not pixel grids), Color swatches, and active page. ${ASSET_WORKFLOW} ${QUALITY_ASSET_WORKFLOW}`,
+        "Read the book: pages with overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
       annotations: { readOnlyHint: true },
       inputSchema: { type: "object", properties: {} },
       execute: async () => toolResult(summarize(apiRef.current)),
     },
     {
-      name: "set_canvas",
-      description:
-        `Set how many pixels fit on the active page. Width is ${MIN_WIDTH}–${MAX_WIDTH}; height follows 16:9. Other pages keep their own density. Existing art on this page is cropped or padded.`,
-      inputSchema: {
-        type: "object",
-        properties: {
-          width: {
-            type: "integer",
-            description: `Pixels across the canvas, ${MIN_WIDTH}–${MAX_WIDTH}. Height follows 16:9.`,
-          },
-        },
-        required: ["width"],
-      },
-      execute: async (input) => {
-        const width = asInteger(input.width);
-        if (width === undefined) {
-          return toolError("width is required");
-        }
-        apiRef.current.setDensity(width);
-        return toolResult(summarize(apiRef.current));
-      },
-    },
-    {
-      name: "set_brief",
-      description:
-        "Optional. Store a short note for the book. Story text belongs on the page — use place_text for words and place_shape to stamp a pixel decoration, not a caption under the art.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          brief: {
-            type: "string",
-            description: "The story or sequence the film should tell",
-          },
-        },
-        required: ["brief"],
-      },
-      execute: async (input) => {
-        const brief = asString(input.brief);
-        if (brief === undefined) {
-          return toolError("brief is required");
-        }
-        apiRef.current.setBrief(brief);
-        return toolResult({ brief });
-      },
-    },
-    {
       name: "set_palette",
       description:
-        "Replace the Color sidebar swatches so the human can reuse a theme instead of picking hex by hex. When the user describes a mood or story (ocean at night, birthday, bedtime), choose 6–10 harmonious #rrggbb colors from DESIGN.md-friendly brights (lime #dceeb1, lilac #c5b0f4, cream #f4ecd6, pink #efd4d4, mint #c8e6cd, coral #f3c9b6, navy #1f1d3d, magenta #ff3d8b) plus ink #000000 and paper #ffffff, then call this. Do not invent a story form on the page. Clamps to 4–16 valid hexes. If the current draw color is not in the new list, it snaps to the first swatch.",
+        "Create or update a named color profile and select it. Pass any number of #rrggbb swatches in colors — there is no count cap, and the built-in Default profile is never overwritten. Pass name (e.g. Bedtime) plus colors to create or update a theme; omit name to update the current non-Default profile, or to create Theme N when Default is active; pass name without colors to select an existing profile including Default. Extra #rrggbb colors can be used inline in draw ops without adding them to the profile first. Optional mood examples: lime #dceeb1, lilac #c5b0f4, cream #f4ecd6, pink #efd4d4, mint #c8e6cd, coral #f3c9b6, navy #1f1d3d, magenta #ff3d8b, plus ink #000000 and paper #ffffff.",
       inputSchema: {
         type: "object",
         properties: {
           colors: {
             type: "array",
             items: { type: "string", description: "#rrggbb" },
-            minItems: 4,
-            maxItems: 16,
-            description: "4–16 #rrggbb swatches that replace the Color row",
+            minItems: 1,
+            description:
+              "Any number of #rrggbb swatches for a named theme profile. Omit to select an existing profile by name.",
           },
           name: {
             type: "string",
             description:
-              "Optional short theme label shown in the inspector, e.g. Bedtime",
+              "Theme label (e.g. Bedtime). Creates or updates that profile. Omit to update the current non-Default theme or create Theme N. Pass name without colors to select.",
           },
         },
-        required: ["colors"],
       },
       execute: async (input) => {
         const colors = Array.isArray(input.colors)
           ? input.colors.filter((item): item is string => typeof item === "string")
           : undefined;
-        if (!colors) {
-          return toolError("colors must be an array of #rrggbb strings");
-        }
         const name = asString(input.name);
-        const ok = apiRef.current.setPalette(colors, name);
-        if (!ok) {
-          return toolError("Need 4–16 valid #rrggbb colors");
-        }
-        const { film } = apiRef.current;
-        return toolResult({
-          palette: film.palette,
-          paletteName: film.paletteName ?? null,
-          color: apiRef.current.color,
-        });
-      },
-    },
-    {
-      name: "add_swatch",
-      description:
-        "Add one #rrggbb color to the current Color swatches (max 16). Prefer set_palette to design a whole mood/theme.",
-      inputSchema: {
-        type: "object",
-        properties: {
-          color: { type: "string", description: "#rrggbb" },
-        },
-        required: ["color"],
-      },
-      execute: async (input) => {
-        const color = asString(input.color);
-        if (!color) {
-          return toolError("color is required");
-        }
-        const ok = apiRef.current.addSwatch(color);
-        if (!ok) {
+        if (!colors && !name) {
           return toolError(
-            "Need a valid #rrggbb color, and the palette can hold at most 16 swatches",
+            "Provide colors to create/update a named theme, or name to select an existing profile",
           );
         }
-        return toolResult({
-          palette: apiRef.current.film.palette,
-          color: apiRef.current.color,
-        });
-      },
-    },
-    {
-      name: "reset_palette",
-      description:
-        "Reset the Color swatches to the default Open Dots palette (ink, paper, and DESIGN.md brights) and clear any theme name.",
-      inputSchema: { type: "object", properties: {} },
-      execute: async () => {
-        apiRef.current.resetPalette();
+        const ok = apiRef.current.setPalette(colors, name);
+        if (!ok) {
+          return toolError(
+            colors
+              ? "Need at least one valid #rrggbb color"
+              : `No color profile named "${name}"`,
+          );
+        }
         const { film } = apiRef.current;
         return toolResult({
           palette: film.palette,
           paletteName: film.paletteName ?? null,
+          activePaletteId: film.activePaletteId,
+          palettes: film.palettes.map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+            swatches: profile.swatches,
+            active: profile.id === film.activePaletteId,
+          })),
           color: apiRef.current.color,
         });
       },
@@ -371,40 +688,48 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "add_page",
       description:
-        `Append a new page and select it. For complex art, compose with add_asset + stamp_assets. Optional story places a line of text via place_text. Optional draw runs a simple procedural slide (night, rain, city) — not for dense reference art.`,
+        `Append a new landscape page and select it. Optional width sets pixel density (${MIN_WIDTH}–${MAX_WIDTH}; height follows 16:9; default ${DEFAULT_WIDTH}); use 160–224 for rich scenes. Compose complex art with add_asset + stamp_assets rather than painting the whole page. Optional story rasterizes one line of words — do not add a story form or caption box on the page.`,
       inputSchema: {
         type: "object",
         properties: {
+          width: {
+            type: "integer",
+            description: `Optional page density in pixels across, ${MIN_WIDTH}–${MAX_WIDTH}. Height follows 16:9. Default ${DEFAULT_WIDTH}.`,
+          },
           story: {
             type: "string",
-            description: "Optional story line placed on the page",
-          },
-          draw: {
-            type: "string",
-            description: "If set, paint this scene onto the new page",
+            description:
+              "Optional line of words rasterized onto the page. Do not add a form or caption box.",
           },
         },
       },
       execute: async (input) => {
-        const page = apiRef.current.addPage({
-          story: asString(input.story) ?? asString(input.caption),
-          draw: asString(input.draw),
+        const api = apiRef.current;
+        const page = api.addPage({
+          story: asString(input.story),
         });
+        const width = asInteger(input.width);
+        if (width !== undefined) {
+          api.setDensity(width);
+        }
+        const active = api.active ?? page;
         return toolResult({
-          id: page.id,
-          index: apiRef.current.film.activeIndex,
-          texts: page.texts,
-          empty: isEmptyPage(page),
+          id: active.id,
+          index: api.film.activeIndex,
+          size: pageSize(active),
+          texts: active.texts,
+          empty: isEmptyPage(active),
         });
       },
     },
     {
       name: "select_page",
-      description: "Put a page on the canvas by 0-based index.",
+      description:
+        "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_film if you need current indexes.",
       inputSchema: {
         type: "object",
         properties: {
-          index: { type: "integer", description: "Page index" },
+          index: { type: "integer", description: "0-based page index from get_film" },
         },
         required: ["index"],
       },
@@ -422,10 +747,13 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     },
     {
       name: "remove_page",
-      description: "Delete a page by index. The film must keep at least one page.",
+      description:
+        "Delete a page by 0-based index. The book must keep at least one page. Returns the updated book summary.",
       inputSchema: {
         type: "object",
-        properties: { index: { type: "integer" } },
+        properties: {
+          index: { type: "integer", description: "0-based page index to delete" },
+        },
         required: ["index"],
       },
       execute: async (input) => {
@@ -443,7 +771,7 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "place_text",
       description:
-        "Rasterize story words into page pixels at x,y (0–1 or pixel coords). font defaults to inter; size is glyph scale 1–8 (default 2). Use place_shape for decorations, not captions.",
+        "Rasterize words into the active page pixels at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
       inputSchema: {
         type: "object",
         properties: {
@@ -451,16 +779,11 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           x: { type: "number", description: "Horizontal position, 0–1 or pixels" },
           y: { type: "number", description: "Vertical position, 0–1 or pixels" },
           color: { type: "string", description: "#rrggbb" },
-          font: {
-            type: "string",
-            enum: [...TEXT_FONTS],
-            description: "inter (default) or geist-mono",
-          },
           size: {
             type: "integer",
             minimum: MIN_TEXT_SIZE,
             maximum: MAX_TEXT_SIZE,
-            description: "Glyph scale 1–8 (legacy s/m/l also accepted)",
+            description: "Glyph scale 1–8 (default 2)",
           },
         },
         required: ["body"],
@@ -477,8 +800,6 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           y: asUnit(input.y, size.height) ?? 0.78,
           body,
           color: asString(input.color),
-          font:
-            input.font !== undefined ? normalizeFont(input.font) : undefined,
           size:
             input.size !== undefined ? normalizeTextSize(input.size) : undefined,
         });
@@ -489,86 +810,24 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "place_shape",
+      name: "get_asset_image",
       description:
-        "Rasterize a pixel shape onto the active page: circle, rectangle, square, heart, or star. Uses the current Color and Fill unless overridden. x, y, width, and height are pixels (or 0–1 for x/y). Square stays 1:1. These become pixels, not overlays.",
+        "Rasterize an asset to PNG so you can compare it to a reference (optional scale 1–8). Returns JSON stats plus the image, and comma-separated rows as a text fallback. Call after each draw pass (outline → fill → shade → highlight) before stamping.",
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {
-          kind: {
-            type: "string",
-            enum: [...TEXT_FRAMES],
-            description: "circle, rectangle, square, heart, or star",
-          },
-          x: { type: "number", description: "Left edge, 0–1 or pixels" },
-          y: { type: "number", description: "Top edge, 0–1 or pixels" },
-          width: { type: "integer", description: "Width in pixels" },
-          height: { type: "integer", description: "Height in pixels" },
-          color: { type: "string", description: "#rrggbb" },
+          id: { type: "string", description: "Asset id from add_asset or get_film.assets" },
           scale: {
-            type: "string",
-            enum: [...SHAPE_SCALES],
-            description: "Fallback size if width/height omitted: s, m, or l",
+            type: "integer",
+            minimum: 1,
+            maximum: 8,
+            description: "Nearest-neighbor upscale for inspection (default 1 = native 1:1)",
           },
-          filled: {
+          includeRows: {
             type: "boolean",
-            description: "true for a solid fill, false for a stroke outline",
+            description: "Include comma-separated rows in text summary (default true)",
           },
-        },
-      },
-      execute: async (input) => {
-        const api = apiRef.current;
-        const size = activeSize(api);
-        const scale = normalizeScale(input.scale);
-        const fallback = shapeScalePixels(scale, size);
-        const width = asInteger(input.width) ?? fallback;
-        const height =
-          asInteger(input.height) ??
-          (normalizeFrame(input.kind) === "rectangle"
-            ? Math.max(2, Math.round(fallback * 1.6))
-            : fallback);
-        const x0 = asPixel(input.x, size.width) ?? Math.round(size.width * 0.5 - width / 2);
-        const y0 = asPixel(input.y, size.height) ?? Math.round(size.height * 0.4 - height / 2);
-        const stamp = api.stampShape({
-          x0,
-          y0,
-          x1: x0 + Math.max(1, width) - 1,
-          y1: y0 + Math.max(1, height) - 1,
-          color: asString(input.color),
-          kind:
-            input.kind !== undefined ? normalizeFrame(input.kind) : undefined,
-          filled: asBoolean(input.filled),
-          keepFloating: false,
-        });
-        if (!stamp) {
-          return toolError("No active page");
-        }
-        return toolResult({
-          kind: input.kind !== undefined ? normalizeFrame(input.kind) : api.frame,
-          x: stamp.x,
-          y: stamp.y,
-          width: stamp.width,
-          height: stamp.height,
-        });
-      },
-    },
-    {
-      name: "list_assets",
-      description:
-        `List the film asset library (max ${MAX_ASSETS} assets, each side ≤${MAX_ASSET_SIDE}px). Returns id, name, and size — not pixel grids. Use get_asset to read pixels for inspection. After add_asset, call list_assets for ids before stamp_assets. ${QUALITY_ASSET_WORKFLOW}`,
-      annotations: { readOnlyHint: true },
-      inputSchema: { type: "object", properties: {} },
-      execute: async () => toolResult({ assets: assetSummary(apiRef.current) }),
-    },
-    {
-      name: "get_asset",
-      description:
-        `Read one asset’s full pixel buffer for inspection and iterative fixes. Returns id, name, width, height, rows (comma-separated #rrggbb per row; \"\" = transparent), and pixels (row-major flat array). Use after draw_asset_pixels to verify shading and outlines before stamp_assets. ${QUALITY_ASSET_WORKFLOW}`,
-      annotations: { readOnlyHint: true },
-      inputSchema: {
-        type: "object",
-        properties: {
-          id: { type: "string", description: "Asset id from add_asset or list_assets" },
         },
         required: ["id"],
       },
@@ -581,27 +840,55 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
         if (!asset) {
           return toolError(`Asset not found: ${id}`);
         }
-        return toolResult({
+        const scale = parseImageScale(input.scale);
+        const png = pixelsToPngBase64(asset.pixels, asset.width, asset.height, scale);
+        if (!png) {
+          return toolError("Could not rasterize asset image (canvas unavailable)");
+        }
+        const includeRows = input.includeRows === undefined ? true : asBoolean(input.includeRows);
+        markAssetVerified(asset.id);
+        const stats = computePixelStats(asset.pixels, asset.width, asset.height);
+        const summary = {
           id: asset.id,
           name: asset.name,
           width: asset.width,
           height: asset.height,
-          rows: pixelsToRows(asset.pixels, asset.width, asset.height),
-          pixels: asset.pixels,
-        });
+          imageScale: scale,
+          renderedWidth: asset.width * scale,
+          renderedHeight: asset.height * scale,
+          stats: {
+            paintedCount: stats.paintedCount,
+            coverage: stats.coverage,
+            bounds: stats.bounds,
+            colorCount: stats.colorCount,
+          },
+          rows:
+            includeRows === false
+              ? undefined
+              : pixelsToRows(asset.pixels, asset.width, asset.height),
+          verified: true,
+          nextRequired:
+            "Compare the PNG to your reference. Fix with draw_asset_pixels (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
+          hint: "Compare the attached PNG at native scale (use scale 4–8 to peep). Text fallback: rows in the response.",
+        };
+        return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
     {
       name: "draw_asset_pixels",
       description:
-        `Paint up to ${MAX_DRAW_PIXELS} pixels into an existing asset buffer (regional edits). Each {x,y,color} is relative to the asset top-left (0,0). Optional offsetX/offsetY shift all coords — tile a 16×16 motif at (16,0) with offsetX:16. A full 64×64 asset = 4,096 pixels (fits in one call). Empty string color erases to transparent. Workflow: add_asset template empty → draw_asset_pixels in chunks → get_asset to verify → stamp_assets. ${QUALITY_ASSET_WORKFLOW}`,
+        `Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤${MAX_DRAW_PIXELS}/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", description: "Asset id to paint into" },
+          rects: RECT_OPS_SCHEMA,
+          lines: LINE_OPS_SCHEMA,
+          fills: FILL_OPS_SCHEMA,
           pixels: {
             type: "array",
             maxItems: MAX_DRAW_PIXELS,
+            description: "Fine-detail pixels (applied last). For blocks/bands prefer rects.",
             items: {
               type: "object",
               properties: {
@@ -624,17 +911,14 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
             description: "Added to every y (default 0)",
           },
         },
-        required: ["id", "pixels"],
+        required: ["id"],
       },
       execute: async (input) => {
         const id = asString(input.id);
         if (!id) {
           return toolError("id is required");
         }
-        const dots = asDots(input.pixels);
-        if (!dots?.length) {
-          return toolError("pixels must be a non-empty array of {x,y,color}");
-        }
+        const dots = asDots(input.pixels) ?? [];
         if (dots.length > MAX_DRAW_PIXELS) {
           return toolError(drawPixelsLimitError(dots.length));
         }
@@ -644,58 +928,35 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
         }
         const offsetX = asInteger(input.offsetX) ?? 0;
         const offsetY = asInteger(input.offsetY) ?? 0;
-        const adjusted = applyPixelOffset(dots, offsetX, offsetY);
-        const painted = apiRef.current.drawAssetPixels(id, adjusted);
-        return toolResult({
-          id,
-          painted,
-          width: asset.width,
-          height: asset.height,
-        });
-      },
-    },
-    {
-      name: "duplicate_asset",
-      description:
-        `Fork an existing asset for variants (e.g. alternate outfit, mirrored pose). Optional name; defaults to \"<original> copy\". Returns new id, name, width, height. Refine the copy with draw_asset_pixels. Library max ${MAX_ASSETS} assets.`,
-      inputSchema: {
-        type: "object",
-        properties: {
-          id: { type: "string", description: "Source asset id" },
-          name: {
-            type: "string",
-            description: "Label for the copy; defaults to \"<original> copy\"",
-          },
-        },
-        required: ["id"],
-      },
-      execute: async (input) => {
-        const id = asString(input.id);
-        if (!id) {
-          return toolError("id is required");
-        }
-        const asset = apiRef.current.duplicateAsset(
-          id,
-          asString(input.name),
-        );
-        if (!asset) {
+        const ops = collectBufferOps(input, offsetX, offsetY);
+        if (bufferOpCount(ops) === 0) {
           return toolError(
-            `Cannot duplicate: asset not found, library full (max ${MAX_ASSETS}), or invalid name`,
+            "Provide at least one of pixels, rects, lines, or fills. Each {x,y,color}; color \"\" erases.",
           );
         }
-        return toolResult({
-          id: asset.id,
-          name: asset.name,
-          width: asset.width,
-          height: asset.height,
-          sourceId: id,
-        });
+        const size: Size = { width: asset.width, height: asset.height };
+        const next = applyBufferOps(asset.pixels, size, ops);
+        const changed = diffToDots(asset.pixels, next, asset.width);
+        const painted = apiRef.current.drawAssetPixels(id, changed);
+        const updated = apiRef.current.getAsset(id);
+        if (!updated) {
+          return toolError(`Asset not found: ${id}`);
+        }
+        return assetMutationFeedback(
+          updated,
+          {
+            painted,
+            width: updated.width,
+            height: updated.height,
+          },
+          { dots: changed },
+        );
       },
     },
     {
       name: "add_asset",
       description:
-        `Save a reusable pixel sprite to the film library (≤${MAX_ASSET_SIDE}×${MAX_ASSET_SIDE}px). For quality art, start with template \"empty\" + width + height (e.g. 32×32), then refine with draw_asset_pixels in chunks — do not try to one-shot complex sprites here. Options: (1) template \"empty\" + width + height — blank transparent canvas (preferred start); (2) draw_asset_pixels after empty create — iterate regions; (3) pixels (row-major #rrggbb flat array, \"\" transparent) + width + height for simple fills; (4) rows (comma-separated #rrggbb per row) + width + height; (5) fill (#rrggbb) + width + height for a solid block; (6) copy a page rect with x, y, width, height (optional pageIndex). Default blank size is ${DEFAULT_ASSET_WIDTH}×${DEFAULT_ASSET_HEIGHT}. Call get_asset to verify before stamping. ${QUALITY_ASSET_WORKFLOW}`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -716,8 +977,7 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           rows: {
             type: "array",
             items: { type: "string" },
-            description:
-              "Alternative to pixels: one comma-separated #rrggbb row per line; must match width×height",
+            description: "Comma-separated #rrggbb per row (+ width + height)",
           },
           template: {
             type: "string",
@@ -764,7 +1024,21 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
             `Need a valid asset: pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect (x,y,width,height). pixels.length must equal width×height.`,
           );
         }
-        return toolResult({
+        const isEmptyTemplate =
+          asString(input.template) === "empty" && !assetHasPaintedPixels(asset);
+        if (isEmptyTemplate) {
+          markAssetEdited(asset.id);
+          return toolResult({
+            id: asset.id,
+            name: asset.name,
+            width: asset.width,
+            height: asset.height,
+            template: "empty",
+            passHint: "outline",
+            nextRequired: emptyAssetNextRequired(),
+          });
+        }
+        return assetMutationFeedback(asset, {
           id: asset.id,
           name: asset.name,
           width: asset.width,
@@ -773,56 +1047,9 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "stamp_asset",
-      description:
-        `Stamp one saved asset onto the active page at pixel x,y (top-left). scale=1 is native 1:1 (recommended for pixel-crisp art); scale 2 doubles both dimensions with nearest-neighbor. Optional width/height override scale. For many placements, prefer stamp_assets. Layer order: stamp background tiles and furniture first, characters last. Verify sprites with get_asset before stamping. ${ASSET_WORKFLOW}`,
-      inputSchema: {
-        type: "object",
-        properties: {
-          id: { type: "string", description: "Asset id from add_asset or list_assets" },
-          x: { type: "integer", description: "Left edge in page pixels" },
-          y: { type: "integer", description: "Top edge in page pixels" },
-          scale: {
-            type: "number",
-            description: "Uniform scale; 1 is native size, 2 doubles width and height",
-          },
-          width: { type: "integer", description: "Destination width in pixels (overrides scale)" },
-          height: { type: "integer", description: "Destination height in pixels (overrides scale)" },
-        },
-        required: ["id", "x", "y"],
-      },
-      execute: async (input) => {
-        const id = asString(input.id);
-        const x = asInteger(input.x);
-        const y = asInteger(input.y);
-        if (!id || x === undefined || y === undefined) {
-          return toolError("id, x, and y are required");
-        }
-        const stamp = apiRef.current.stampAsset({
-          id,
-          x,
-          y,
-          scale: asNumber(input.scale),
-          width: asInteger(input.width),
-          height: asInteger(input.height),
-          keepFloating: false,
-        });
-        if (!stamp) {
-          return toolError("Asset not found or no active page");
-        }
-        return toolResult({
-          id,
-          x: stamp.x,
-          y: stamp.y,
-          width: stamp.width,
-          height: stamp.height,
-        });
-      },
-    },
-    {
       name: "stamp_assets",
       description:
-        `Stamp many assets onto the active page in one call (max ${MAX_ASSETS} stamps). Each item needs id, x, y; optional scale (default 1 = native 1:1) or width/height per stamp. Order matters — later stamps paint over earlier ones. Compose back-to-front: sky/background → floor tiles → walls/furniture → props → characters. Use get_asset to verify each sprite before stamping. On failure, reports which stamp index failed and why. ${QUALITY_ASSET_WORKFLOW}`,
+        `Add movable overlay placements on the active page (max ${MAX_ASSETS} per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -832,12 +1059,15 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
             items: {
               type: "object",
               properties: {
-                id: { type: "string" },
-                x: { type: "integer" },
-                y: { type: "integer" },
-                scale: { type: "number" },
-                width: { type: "integer" },
-                height: { type: "integer" },
+                id: { type: "string", description: "Asset id from add_asset or get_film" },
+                x: { type: "integer", description: "Page column of the stamp top-left (0 = left)" },
+                y: { type: "integer", description: "Page row of the stamp top-left (0 = top)" },
+                scale: {
+                  type: "number",
+                  description: "Uniform scale; default 1 is native size",
+                },
+                width: { type: "integer", description: "Optional stamp width in page pixels" },
+                height: { type: "integer", description: "Optional stamp height in page pixels" },
               },
               required: ["id", "x", "y"],
             },
@@ -863,6 +1093,8 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
         const placed: Array<{
           index: number;
           id: string;
+          placementId: string;
+          assetId: string;
           x: number;
           y: number;
           width: number;
@@ -872,7 +1104,7 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           const stamp = stamps[index]!;
           if (!api.getAsset(stamp.id)) {
             return toolError(
-              `Stamp ${index}: asset not found "${stamp.id}". Call list_assets for valid ids.`,
+              `Stamp ${index}: asset not found "${stamp.id}". Call get_film for valid ids.`,
             );
           }
           const result = api.stampAsset({
@@ -883,30 +1115,46 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
             width: stamp.width,
             height: stamp.height,
             keepFloating: false,
+            recordUndo: index === 0,
           });
           if (!result) {
             return toolError(
-              `Stamp ${index}: failed to place "${stamp.id}" at (${stamp.x},${stamp.y}) — asset missing or no active page`,
+              `Stamp ${index}: failed to place "${stamp.id}" at (${stamp.x},${stamp.y}) — use positive dimensions with each scaled side at most 256 pixels`,
             );
           }
           placed.push({
             index,
             id: stamp.id,
+            placementId: result.id,
+            assetId: stamp.id,
             x: result.x,
             y: result.y,
             width: result.width,
             height: result.height,
           });
         }
-        return toolResult({ stamped: placed.length, stamps: placed });
+        const stampedIds = [...new Set(placed.map((stamp) => stamp.id))];
+        const unverifiedStamped = recordStampedAssets(stampedIds);
+        const response: Record<string, unknown> = {
+          stamped: placed.length,
+          stamps: placed,
+        };
+        if (unverifiedStamped.length > 0) {
+          response.warning = `Stamped ${unverifiedStamped.length} asset(s) without visual verify since last edit: ${unverifiedStamped.join(", ")}. Call get_asset_image on each before finalizing composition.`;
+          response.unverifiedAssetIds = unverifiedStamped;
+          response.nextRequired =
+            "Call get_asset_image on unverified assets and compare PNGs to your reference before continuing.";
+        }
+        return toolResult(response);
       },
     },
     {
       name: "remove_asset",
-      description: "Remove an asset from the film library by id.",
+      description:
+        "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_film for valid ids.",
       inputSchema: {
         type: "object",
-        properties: { id: { type: "string" } },
+        properties: { id: { type: "string", description: "Asset id from get_film" } },
         required: ["id"],
       },
       execute: async (input) => {
@@ -924,13 +1172,17 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
     {
       name: "draw_pixels",
       description:
-        `Paint up to ${MAX_DRAW_PIXELS} pixels on the active page for tiny touch-ups or tiled regional fills. Each {x,y,color} is page coords; optional offsetX/offsetY shift all coords — tile 32×32 chunks across a page (e.g. offsetX:32 for the next column). For sprites and scenes, build assets with add_asset + draw_asset_pixels, then stamp_assets — not page-wide pixel arrays.`,
+        `Paint directly on the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the page. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.`,
       inputSchema: {
         type: "object",
         properties: {
+          rects: RECT_OPS_SCHEMA,
+          lines: LINE_OPS_SCHEMA,
+          fills: FILL_OPS_SCHEMA,
           pixels: {
             type: "array",
             maxItems: MAX_DRAW_PIXELS,
+            description: "Fine-detail page pixels (applied last). For blocks prefer rects.",
             items: {
               type: "object",
               properties: {
@@ -946,125 +1198,393 @@ export function buildFilmTools(apiRef: ApiRef): WebMCPTool[] {
           },
           offsetX: {
             type: "integer",
-            description: "Added to every x (default 0) — use to tile 32×32 regions",
+            description: "Added to every x (default 0) — use to tile motifs",
           },
           offsetY: {
             type: "integer",
             description: "Added to every y (default 0)",
           },
         },
-        required: ["pixels"],
       },
       execute: async (input) => {
-        const dots = asDots(input.pixels);
-        if (!dots?.length) {
-          return toolError("pixels must be a non-empty array of {x,y,color}");
-        }
+        const dots = asDots(input.pixels) ?? [];
         if (dots.length > MAX_DRAW_PIXELS) {
           return toolError(drawPixelsLimitError(dots.length));
         }
+        const api = apiRef.current;
+        const page = api.active;
+        if (!page) {
+          return toolError("No active page — call add_page first");
+        }
         const offsetX = asInteger(input.offsetX) ?? 0;
         const offsetY = asInteger(input.offsetY) ?? 0;
-        const adjusted = applyPixelOffset(dots, offsetX, offsetY);
-        const painted = apiRef.current.drawPixels(adjusted);
-        return toolResult({ painted, offsetX, offsetY });
+        const ops = collectBufferOps(input, offsetX, offsetY);
+        if (bufferOpCount(ops) === 0) {
+          return toolError(
+            "Provide at least one of pixels, rects, lines, or fills. Each {x,y,color}; color \"\" erases.",
+          );
+        }
+        const size = activeSize(api);
+        const next = applyBufferOps(page.pixels, size, ops);
+        const changed = diffToDots(page.pixels, next, size.width);
+        const painted = api.drawPixels(changed);
+        return toolResult({
+          painted,
+          offsetX,
+          offsetY,
+          hint: "Page paint. For characters/props use assets + stamp_assets. Call get_page_image to compare against your reference.",
+        });
       },
     },
     {
-      name: "clear_rect",
+      name: "get_page_image",
       description:
-        `Erase a rectangular region to transparent (page) or transparent (asset). Use before redraw to fix mistakes without recreating the whole buffer. target \"page\" clears on the active page; target \"asset\" requires assetId. Coords are top-left x,y plus width×height in pixels.`,
+        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page draw_pixels, or noisy colorCount). Call after every few stamps, not only at the end.",
+      annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {
-          target: {
-            type: "string",
-            enum: ["page", "asset"],
-            description: "Whether to clear on the active page or an asset buffer",
+          pageIndex: {
+            type: "integer",
+            description: "0-based page index; defaults to active page",
           },
-          assetId: {
-            type: "string",
-            description: "Required when target is asset",
+          x: {
+            type: "integer",
+            description: "Optional region left edge in page pixels (requires y, width, height)",
           },
-          x: { type: "integer", description: "Left edge" },
-          y: { type: "integer", description: "Top edge" },
-          width: { type: "integer", description: "Region width in pixels" },
-          height: { type: "integer", description: "Region height in pixels" },
+          y: {
+            type: "integer",
+            description: "Optional region top edge in page pixels",
+          },
+          width: {
+            type: "integer",
+            description: "Optional region width in page pixels",
+          },
+          height: {
+            type: "integer",
+            description: "Optional region height in page pixels",
+          },
+          scale: {
+            type: "integer",
+            minimum: 1,
+            maximum: 8,
+            description: "Nearest-neighbor upscale (default 1)",
+          },
         },
-        required: ["target", "x", "y", "width", "height"],
       },
       execute: async (input) => {
-        const target = asString(input.target);
-        const x = asInteger(input.x);
-        const y = asInteger(input.y);
-        const width = asInteger(input.width);
-        const height = asInteger(input.height);
-        if (!target || (target !== "page" && target !== "asset")) {
-          return toolError('target must be "page" or "asset"');
+        const pageIndex = asInteger(input.pageIndex);
+        const page = resolvePage(apiRef.current, pageIndex);
+        if (!page) {
+          return toolError(
+            pageIndex === undefined
+              ? "No active page"
+              : `Page index out of range: ${pageIndex}`,
+          );
         }
-        if (x === undefined || y === undefined || width === undefined || height === undefined) {
-          return toolError("x, y, width, and height are required integers");
+        const { width: pageWidth, height: pageHeight } = pageSize(page);
+        const regionX = asInteger(input.x);
+        const regionY = asInteger(input.y);
+        const regionWidth = asInteger(input.width);
+        const regionHeight = asInteger(input.height);
+        const hasRegion =
+          regionX !== undefined ||
+          regionY !== undefined ||
+          regionWidth !== undefined ||
+          regionHeight !== undefined;
+        if (
+          hasRegion &&
+          (regionX === undefined ||
+            regionY === undefined ||
+            regionWidth === undefined ||
+            regionHeight === undefined)
+        ) {
+          return toolError(
+            "Region crop requires all of x, y, width, and height, or omit all four for the full page",
+          );
         }
-        if (width < 1 || height < 1) {
+        if (hasRegion && (regionWidth! < 1 || regionHeight! < 1)) {
           return toolError("width and height must be at least 1");
         }
-        const assetId = asString(input.assetId);
-        if (target === "asset" && !assetId) {
-          return toolError("assetId is required when target is asset");
+        const scale = parseImageScale(input.scale);
+        const assets = apiRef.current.film.assets;
+        const display = compositedPagePixels(page, assets);
+        const raster = hasRegion
+          ? extractPixelRegion(
+              display,
+              pageWidth,
+              pageHeight,
+              regionX!,
+              regionY!,
+              regionWidth!,
+              regionHeight!,
+            )
+          : {
+              pixels: display,
+              width: pageWidth,
+              height: pageHeight,
+            };
+        const png = pixelsToPngBase64(
+          raster.pixels,
+          raster.width,
+          raster.height,
+          scale,
+        );
+        if (!png) {
+          return toolError("Could not rasterize page image (canvas unavailable)");
         }
-        const ok = apiRef.current.clearRect({
-          target,
-          assetId,
-          x,
-          y,
-          width,
-          height,
-        });
-        if (!ok) {
-          if (target === "page") {
-            return toolError("No active page");
-          }
-          return toolError(`Asset not found: ${assetId}`);
-        }
-        return toolResult({ target, assetId: assetId ?? null, x, y, width, height, cleared: true });
+        const stats = computePixelStats(raster.pixels, raster.width, raster.height);
+        const backgroundStats = computePixelStats(
+          page.pixels,
+          pageWidth,
+          pageHeight,
+        );
+        const placements = page.placements ?? [];
+        const summary = {
+          pageIndex: pageIndex ?? apiRef.current.film.activeIndex,
+          id: page.id,
+          region: hasRegion
+            ? { x: regionX, y: regionY, width: regionWidth, height: regionHeight }
+            : null,
+          width: raster.width,
+          height: raster.height,
+          imageScale: scale,
+          renderedWidth: raster.width * scale,
+          renderedHeight: raster.height * scale,
+          empty: hasRegion ? undefined : isEmptyPage(page),
+          placementCount: hasRegion ? undefined : placements.length,
+          placements: hasRegion
+            ? undefined
+            : placements.map((placement) => ({
+                id: placement.id,
+                assetId: placement.assetId,
+                x: placement.x,
+                y: placement.y,
+                width: placement.width,
+                height: placement.height,
+              })),
+          stats: {
+            paintedCount: stats.paintedCount,
+            coverage: stats.coverage,
+            bounds: stats.bounds,
+            colorCount: stats.colorCount,
+          },
+          sceneHint: hasRegion
+            ? undefined
+            : inferSceneHint(
+                stats,
+                pageSceneHintContext(page, assets.length, backgroundStats.coverage),
+              ),
+          nextRequired:
+            "Compare this PNG to your reference. If the sceneHint flags few placements, huge stamps, full-page paint, or noisy colorCount, add overlay stamps or 4–12 tone ramps — do not maximize unique hexes.",
+        };
+        return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
     {
       name: "clear_page",
-      description: "Erase the active page to a blank white canvas.",
+      description:
+        "Erase the active page to a blank transparent canvas, including rasterized text and overlay placements. If the asset workshop is open, clears the workshop draft instead.",
       inputSchema: { type: "object", properties: {} },
       execute: async () => {
         apiRef.current.clearPage();
-        return toolResult({ empty: true });
+        return toolResult({
+          cleared: true,
+          workshopOpen: apiRef.current.workshopOpen,
+          empty: apiRef.current.workshopOpen
+            ? undefined
+            : apiRef.current.active
+              ? isEmptyPage(apiRef.current.active)
+              : true,
+        });
       },
     },
   ];
-  return tools;
+  return tools.map((tool) => withToolAnnotations(withSafeExecute(tool)));
+}
+
+/**
+ * Wrap a tool's execute so any unexpected throw is reported back to the agent
+ * as a structured `isError` result instead of rejecting the WebMCP call.
+ *
+ * Chrome's WebMCP eval guidance treats "the error reported back to the agent
+ * gracefully" as a first-class failure mode — a tool that throws leaves the
+ * model with an opaque rejection it cannot reason about. Every execute here
+ * already returns toolError() for validation problems; this backstops the
+ * runtime paths (canvas unavailable, null film API after refresh, etc.).
+ */
+function withSafeExecute(tool: WebMCPTool): WebMCPTool {
+  const run = tool.execute;
+  return {
+    ...tool,
+    execute: async (input: Record<string, unknown>) => {
+      try {
+        return await run(input);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return toolError(`${tool.name} failed: ${message}`);
+      }
+    },
+  };
+}
+
+function isAlreadyRegisteredError(error: unknown): boolean {
+  if (!(error instanceof DOMException) || error.name !== "InvalidStateError") {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes("already registered") || message.includes("same name");
+}
+
+async function registerOneTool(
+  tool: WebMCPTool,
+  silent: boolean,
+): Promise<void> {
+  const context = document.modelContext;
+  if (!context) {
+    throw new Error("document.modelContext is unavailable");
+  }
+  const annotated = withToolAnnotations(tool);
+  try {
+    await context.registerTool(
+      {
+        name: annotated.name,
+        description: annotated.description,
+        inputSchema: annotated.inputSchema,
+        annotations: annotated.annotations,
+        execute: async (input: Record<string, unknown>) => annotated.execute(input),
+      },
+      "isPolyfill" in context && context.isPolyfill ? { silent } : {},
+    );
+  } catch (error) {
+    if (isAlreadyRegisteredError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function registerFilmToolsOnce(
+  apiRef: ApiRef,
+): Promise<{ native: boolean; count: number }> {
+  sharedApiRef.current = apiRef.current;
+  const context = ensureWebMCPPolyfill();
+  const native = !("isPolyfill" in context && context.isPolyfill);
+  const tools = buildFilmTools(apiRef);
+  const expectedCount = tools.length;
+
+  const existingWin = getWindowRegistration();
+  if (existingWin) {
+    existingWin.apiRef = sharedApiRef;
+    const listed = await context.getTools();
+    if (listed.length >= expectedCount) {
+      // HMR: refresh handler closures in place — no toolchange events.
+      await Promise.all(tools.map((tool) => registerOneTool(tool, true)));
+      webmcpStatus = {
+        phase: "ready",
+        ready: true,
+        native: existingWin.native,
+        toolCount: listed.length,
+        expectedToolCount: expectedCount,
+        generation: existingWin.generation,
+      };
+      return { native: existingWin.native, count: listed.length };
+    }
+  }
+
+  const generation =
+    existingWin?.generation ??
+    (typeof performance !== "undefined" ? performance.timeOrigin : Date.now());
+
+  webmcpStatus = {
+    phase: "registering",
+    ready: false,
+    native,
+    toolCount: 0,
+    expectedToolCount: expectedCount,
+    generation,
+  };
+
+  const registerCounted = async (tool: WebMCPTool) => {
+    await registerOneTool(tool, true);
+    webmcpStatus = {
+      ...webmcpStatus,
+      toolCount: webmcpStatus.toolCount + 1,
+    };
+  };
+
+  const getFilm = tools.find((tool) => tool.name === "get_film");
+  const rest = tools.filter((tool) => tool.name !== "get_film");
+  if (getFilm) {
+    await registerCounted(getFilm);
+  }
+  await Promise.all(rest.map((tool) => registerCounted(tool)));
+
+  if ("flushToolChanges" in context && typeof context.flushToolChanges === "function") {
+    context.flushToolChanges();
+  }
+
+  const count = tools.length;
+  webmcpStatus = {
+    phase: "ready",
+    ready: true,
+    native,
+    toolCount: count,
+    expectedToolCount: count,
+    generation,
+  };
+
+  setWindowRegistration({
+    apiRef: sharedApiRef,
+    generation,
+    native,
+    count,
+  });
+
+  return { native, count };
+}
+
+export function syncWebmcpApiRef(apiRef: ApiRef): void {
+  sharedApiRef.current = apiRef.current;
+  const win = getWindowRegistration();
+  if (win) {
+    win.apiRef = sharedApiRef;
+  }
 }
 
 export async function registerFilmTools(
   apiRef: ApiRef,
-  signal: AbortSignal,
 ): Promise<{ native: boolean; count: number }> {
-  const context = ensureWebMCPPolyfill();
-  const native = !("isPolyfill" in context && context.isPolyfill);
-  const tools = buildFilmTools(apiRef);
+  syncWebmcpApiRef(apiRef);
 
-  for (const tool of tools) {
-    if (signal.aborted) {
-      break;
-    }
-    await document.modelContext?.registerTool(
-      {
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-        annotations: tool.annotations,
-        execute: async (input: Record<string, unknown>) => tool.execute(input),
-      },
-      { signal },
-    );
+  // HMR remount after first registration: refresh handlers in place.
+  if (registrationCompleted && getWindowRegistration()) {
+    return registerFilmToolsOnce(apiRef);
   }
 
-  return { native, count: tools.length };
+  if (registrationPending) {
+    return registrationPending;
+  }
+  registrationPending = (async () => {
+    try {
+      const result = await registerFilmToolsOnce(apiRef);
+      registrationCompleted = result;
+      return result;
+    } catch {
+      const result = await registerFilmToolsOnce(apiRef);
+      registrationCompleted = result;
+      return result;
+    } finally {
+      registrationPending = null;
+    }
+  })().catch((error: unknown) => {
+    registrationPending = null;
+    webmcpStatus = {
+      ...webmcpStatus,
+      phase: "registering",
+      ready: false,
+    };
+    throw error;
+  });
+  return registrationPending;
 }

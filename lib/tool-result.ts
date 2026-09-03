@@ -1,11 +1,41 @@
+export type ToolTextContent = { type: "text"; text: string };
+export type ToolImageContent = {
+  type: "image";
+  data: string;
+  mimeType: string;
+};
+export type ToolContent = ToolTextContent | ToolImageContent;
+
 export function toolResult(data: unknown): {
-  content: Array<{ type: "text"; text: string }>;
+  content: ToolContent[];
 } {
   return {
     content: [
       {
         type: "text",
         text: JSON.stringify(data, null, 2),
+      },
+    ],
+  };
+}
+
+/** Text summary plus a PNG image block for vision-capable agents. */
+export function toolResultWithImage(
+  data: unknown,
+  image: { data: string; mimeType?: string },
+): {
+  content: ToolContent[];
+} {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(data, null, 2),
+      },
+      {
+        type: "image",
+        data: image.data,
+        mimeType: image.mimeType ?? "image/png",
       },
     ],
   };

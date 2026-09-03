@@ -7,15 +7,35 @@
  * @see https://webmachinelearning.github.io/webmcp/
  */
 
+export interface WebMCPToolAnnotations {
+  readOnlyHint: boolean;
+  untrustedContentHint?: boolean;
+}
+
 export interface WebMCPTool {
   name: string;
   description: string;
   inputSchema?: Record<string, unknown>;
-  annotations?: {
-    readOnlyHint?: boolean;
-    untrustedContentHint?: boolean;
-  };
+  /**
+   * Cursor (and other WebMCP clients) classify site tools as read vs write
+   * from `readOnlyHint`. Omit this and write tools vanish from the agent
+   * (only the getters with `readOnlyHint: true` remain). Always set it.
+   */
+  annotations?: Partial<WebMCPToolAnnotations>;
   execute: (input: Record<string, unknown>) => unknown | Promise<unknown>;
+}
+
+/** Spec default is write (`readOnlyHint: false`). Cursor requires the field. */
+export function withToolAnnotations(
+  tool: WebMCPTool,
+): WebMCPTool & { annotations: WebMCPToolAnnotations } {
+  return {
+    ...tool,
+    annotations: {
+      readOnlyHint: false,
+      ...tool.annotations,
+    },
+  };
 }
 
 export interface RegisteredToolView {
@@ -37,9 +57,16 @@ interface StoredTool {
   execute: ExecuteFn;
 }
 
+type RegisterToolOptions = {
+  signal?: AbortSignal;
+  /** Skip toolchange — batch with flushToolChanges() after many registrations. */
+  silent?: boolean;
+};
+
 class ModelContext extends EventTarget {
   readonly isPolyfill = true;
   #tools = new Map<string, StoredTool>();
+  #pendingChange = false;
   #ontoolchange: ((event: Event) => void) | null = null;
 
   get ontoolchange() {
@@ -58,7 +85,7 @@ class ModelContext extends EventTarget {
 
   async registerTool(
     tool: WebMCPTool,
-    options: { signal?: AbortSignal } = {},
+    options: RegisterToolOptions = {},
   ): Promise<void> {
     if (!tool?.name || typeof tool.name !== "string") {
       throw new DOMException("Invalid tool name", "InvalidStateError");
@@ -72,11 +99,19 @@ class ModelContext extends EventTarget {
     if (typeof tool.execute !== "function") {
       throw new DOMException("Tool execute is required", "InvalidStateError");
     }
-    if (this.#tools.has(tool.name)) {
-      this.#tools.delete(tool.name);
-    }
     if (options.signal?.aborted) {
       throw options.signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
+
+    const existing = this.#tools.get(tool.name);
+    if (existing) {
+      // HMR / handler refresh: update closures in place — no toolchange so the
+      // host's tool snapshot stays valid.
+      existing.description = tool.description;
+      existing.inputSchema = tool.inputSchema;
+      existing.annotations = tool.annotations;
+      existing.execute = tool.execute;
+      return;
     }
 
     const stored: StoredTool = {
@@ -95,6 +130,20 @@ class ModelContext extends EventTarget {
       }
     };
     options.signal?.addEventListener("abort", onAbort, { once: true });
+
+    if (options.silent) {
+      this.#pendingChange = true;
+      return;
+    }
+    this.dispatchEvent(new Event("toolchange"));
+  }
+
+  /** Emit one toolchange after a silent batch (initial registration). */
+  flushToolChanges(): void {
+    if (!this.#pendingChange) {
+      return;
+    }
+    this.#pendingChange = false;
     this.dispatchEvent(new Event("toolchange"));
   }
 

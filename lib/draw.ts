@@ -4,7 +4,10 @@ import {
   assertNever,
   emptyPixels,
   isPaintedPixel,
+  type Asset,
+  type Page,
   type PixelStamp,
+  type Placement,
   type ShapeKind,
   type ShapeScale,
   type Size,
@@ -512,6 +515,108 @@ export function stampPlacementFromDrag(
   const y = by >= ay ? ay : ay - height + 1;
 
   return { x, y, width, height, scaled: true };
+}
+
+/** Build the rendered pixel stamp for a placement (native or nearest-neighbor scaled). */
+export function placementStamp(
+  placement: Placement,
+  asset: Asset,
+): PixelStamp {
+  const base: PixelStamp = {
+    x: placement.x,
+    y: placement.y,
+    width: asset.width,
+    height: asset.height,
+    pixels: asset.pixels,
+  };
+  if (placement.width === asset.width && placement.height === asset.height) {
+    return base;
+  }
+  return {
+    ...scaleStamp(base, placement.width, placement.height),
+    x: placement.x,
+    y: placement.y,
+  };
+}
+
+/**
+ * Composite a page's background buffer with its asset placements, back-to-front.
+ * Transparent asset pixels never punch holes in layers below. Returns a fresh
+ * buffer; the page's stored `pixels` (background) is left untouched.
+ */
+export function compositePage(
+  base: string[],
+  size: Size,
+  placements: Placement[] | undefined,
+  resolveAsset: (assetId: string) => Asset | undefined,
+): string[] {
+  if (!placements || placements.length === 0) {
+    return base;
+  }
+  let next = base;
+  for (const placement of placements) {
+    const asset = resolveAsset(placement.assetId);
+    if (!asset) {
+      continue;
+    }
+    next = blitStamp(next, size, placementStamp(placement, asset));
+  }
+  return next;
+}
+
+/** Composite a page's background with its overlay stamps (assets looked up by id). */
+export function compositedPagePixels(
+  page: Pick<Page, "pixels" | "width" | "height" | "placements">,
+  assets: readonly Asset[],
+): string[] {
+  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  return compositePage(
+    page.pixels,
+    { width: page.width, height: page.height },
+    page.placements,
+    (id) => byId.get(id),
+  );
+}
+
+/**
+ * Top-most placement whose painted (non-transparent) pixel covers x,y.
+ * Transparent cells fall through to stamps underneath or the background.
+ */
+export function hitPlacementAt(
+  placements: Placement[] | undefined,
+  x: number,
+  y: number,
+  resolveAsset: (assetId: string) => Asset | undefined,
+): Placement | null {
+  if (!placements || placements.length === 0) {
+    return null;
+  }
+  for (let index = placements.length - 1; index >= 0; index -= 1) {
+    const placement = placements[index]!;
+    if (
+      x < placement.x ||
+      y < placement.y ||
+      x >= placement.x + placement.width ||
+      y >= placement.y + placement.height
+    ) {
+      continue;
+    }
+    const asset = resolveAsset(placement.assetId);
+    if (!asset) {
+      continue;
+    }
+    const stamp = placementStamp(placement, asset);
+    const lx = x - stamp.x;
+    const ly = y - stamp.y;
+    if (lx < 0 || ly < 0 || lx >= stamp.width || ly >= stamp.height) {
+      continue;
+    }
+    const color = stamp.pixels[ly * stamp.width + lx] ?? TRANSPARENT;
+    if (isPaintedPixel(color)) {
+      return placement;
+    }
+  }
+  return null;
 }
 
 export function scaleStamp(

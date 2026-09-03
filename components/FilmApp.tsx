@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { AssetWorkshop } from "./AssetWorkshop";
+import { ColorAddPopover } from "./ColorAddPopover";
+import { PaletteProfileControls } from "./PaletteProfileControls";
 import { useFilm } from "@/lib/film-store";
 import {
   DEFAULT_HEIGHT,
@@ -19,15 +21,20 @@ import {
   brushSizeLabel,
   frameHint,
   frameLabel,
+  isBuiltInPalette,
+  isDefaultPaletteId,
+  readingOrder,
   type DrawTool,
 } from "@/lib/types";
 import { FrameSample } from "./BubbleFrame";
 import { ChromeIcon, toolIconName } from "./ChromeIcons";
 import { OpenDotsLogo, OpenDotsWordmark } from "./OpenDotsLogo";
-import { PagePreview, AssetThumb } from "./PagePreview";
-import { PixelCanvas } from "./PixelCanvas";
+import { AssetThumb } from "./PagePreview";
+import { BoardStage } from "./BoardStage";
 import { TextSizePreview } from "./TextSizePreview";
 import { PresentMode } from "./PresentMode";
+import { StageZoomControls } from "./StageZoomControls";
+import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
 import { WebMCPBridge } from "./WebMCPBridge";
 
 function toolLabel(tool: DrawTool): string {
@@ -69,6 +76,7 @@ function sidebarHint(tool: DrawTool): string {
 
 export function FilmApp() {
   const api = useFilm();
+  const stageWrapRef = useRef<HTMLElement>(null);
   const {
     film,
     tool,
@@ -78,12 +86,21 @@ export function FilmApp() {
     textFont,
     shapeFilled,
     brushSize,
+    stageZoom,
     selectedAssetId,
     workshopOpen,
     active,
   } = api;
   const density = active ?? film.pages[0];
   const [presenting, setPresenting] = useState(false);
+  const [presentIndex, setPresentIndex] = useState(0);
+  const presentPages = readingOrder(film.pages);
+  const openPresent = () => {
+    const start = presentPages.findIndex((page) => page.id === active?.id);
+    setPresentIndex(start < 0 ? 0 : start);
+    setPresenting(true);
+  };
+  useStageZoomShortcuts(stageWrapRef);
   const simpleTool =
     tool === "pencil" ||
     tool === "eraser" ||
@@ -132,7 +149,7 @@ export function FilmApp() {
           <button
             type="button"
             className="pill primary"
-            onClick={() => setPresenting(true)}
+            onClick={openPresent}
           >
             <ChromeIcon name="present" />
             Present
@@ -143,6 +160,46 @@ export function FilmApp() {
 
       <div className="studio">
         <aside className="sidebar screen-only">
+          <section className="sidebar-section sidebar-colors" aria-label="Color">
+            <div className="sidebar-colors-head">
+              <p className="sidebar-label">Color</p>
+            </div>
+            <PaletteProfileControls
+              palettes={film.palettes ?? []}
+              activePaletteId={film.activePaletteId ?? "default"}
+              onSelect={(id) => api.selectPalette(id)}
+              onCreate={(name) => api.addPaletteProfile(name)}
+              onRename={(id, name) => api.renamePalette(id, name)}
+            />
+            <div className="panel-swatches">
+              {film.palette.map((swatch, index) => (
+                <button
+                  key={`${swatch}-${index}`}
+                  type="button"
+                  className="swatch"
+                  data-active={color === swatch}
+                  style={{ background: swatch }}
+                  aria-label={swatch}
+                  onClick={() => api.setColor(swatch)}
+                />
+              ))}
+            </div>
+            <ColorAddPopover
+              currentColor={color}
+              onAdd={(hex) => api.addSwatch(hex)}
+            />
+            {isDefaultPaletteId(film.activePaletteId) &&
+            !isBuiltInPalette(film.palette) ? (
+              <button
+                type="button"
+                className="pill ghost palette-reset"
+                onClick={() => api.resetPalette()}
+              >
+                <ChromeIcon name="reset" />
+                Reset
+              </button>
+            ) : null}
+          </section>
           <section className="sidebar-section sidebar-assets" aria-label="Assets">
             <div className="sidebar-assets-head">
               <p className="sidebar-label">Assets</p>
@@ -331,49 +388,6 @@ export function FilmApp() {
 
         <div className="workspace">
           <div className="access-bar screen-only" aria-label="Page options">
-            <section className="access-group" aria-label="Color">
-              <p className="sidebar-label">Color</p>
-              {film.paletteName ? (
-                <span className="size">{film.paletteName}</span>
-              ) : null}
-              <div className="panel-swatches">
-                {film.palette.map((swatch, index) => (
-                  <button
-                    key={`${swatch}-${index}`}
-                    type="button"
-                    className="swatch"
-                    data-active={color === swatch}
-                    style={{ background: swatch }}
-                    aria-label={swatch}
-                    onClick={() => api.setColor(swatch)}
-                  />
-                ))}
-                <label className="custom-color" title="Pick any color">
-                  <span className="custom-color-ring">
-                    <span
-                      className="custom-color-face"
-                      style={{ background: color }}
-                    />
-                  </span>
-                  <input
-                    type="color"
-                    value={color}
-                    aria-label="Pick any color"
-                    onChange={(event) => api.setColor(event.target.value)}
-                  />
-                </label>
-              </div>
-              {film.paletteName ? (
-                <button
-                  type="button"
-                  className="pill ghost palette-reset"
-                  onClick={() => api.resetPalette()}
-                >
-                  <ChromeIcon name="reset" />
-                  Reset
-                </button>
-              ) : null}
-            </section>
             {!workshopOpen ? (
               <section className="access-group access-density" aria-label="Density">
                 <p className="sidebar-label">Density</p>
@@ -415,65 +429,34 @@ export function FilmApp() {
                 <span className="size">{brushSizeLabel(brushSize)}</span>
               </section>
             ) : null}
+            <section className="access-group access-zoom" aria-label="Zoom">
+              <p className="sidebar-label">Zoom</p>
+              <StageZoomControls />
+            </section>
           </div>
-          <main
-            className="stage-wrap screen-only"
-            data-mode={workshopOpen ? "workshop" : "page"}
-          >
-            {workshopOpen ? (
+          {workshopOpen ? (
+            <main
+              ref={stageWrapRef}
+              className="stage-wrap screen-only"
+              data-mode="workshop"
+              data-zoomed={stageZoom > 1 ? "true" : undefined}
+              style={{ "--stage-zoom": stageZoom } as CSSProperties}
+            >
               <AssetWorkshop />
-            ) : (
-              <article className="leaf">
-                <PixelCanvas />
-              </article>
-            )}
-          </main>
-
-          <nav className="strip screen-only" aria-label="Pages">
-            <div className="strip-thumbs">
-              {film.pages.map((page, index) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  className="thumb"
-                  data-active={index === film.activeIndex}
-                  aria-label={`Page ${index + 1}`}
-                  onClick={() => api.selectPage(index)}
-                >
-                  <PagePreview page={page} />
-                </button>
-              ))}
-            </div>
-            <div className="strip-actions">
-              <button
-                type="button"
-                className="pill primary"
-                onClick={() => api.addPage()}
-              >
-                <ChromeIcon name="page" />
-                Page
-              </button>
-              {film.pages.length > 1 ? (
-                <button
-                  type="button"
-                  className="pill ghost"
-                  onClick={() => api.removePage(film.activeIndex)}
-                >
-                  <ChromeIcon name="delete" />
-                  Delete
-                </button>
-              ) : null}
-            </div>
-          </nav>
+            </main>
+          ) : (
+            <BoardStage viewportRef={stageWrapRef} />
+          )}
         </div>
       </div>
 
       {presenting ? (
         <PresentMode
-          pages={film.pages}
-          index={film.activeIndex}
+          pages={presentPages}
+          assets={film.assets}
+          index={Math.min(presentIndex, Math.max(0, presentPages.length - 1))}
           onClose={() => setPresenting(false)}
-          onSelect={(next) => api.selectPage(next)}
+          onSelect={(next) => setPresentIndex(next)}
         />
       ) : null}
     </div>

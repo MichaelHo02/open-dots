@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { paintPixelGrid } from "@/lib/draw";
+import { paintPixelGrid, compositedPagePixels } from "@/lib/draw";
 import { type Page, type Asset } from "@/lib/types";
 
 export function PagePreview({
   page,
+  assets = [],
   className = "",
 }: {
   page: Page;
+  assets?: Asset[];
   className?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,8 +25,13 @@ export function PagePreview({
     canvas.width = width;
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
-    paintPixelGrid(ctx, page.pixels, width, height);
-  }, [height, page.pixels, width]);
+    paintPixelGrid(
+      ctx,
+      compositedPagePixels(page, assets),
+      width,
+      height,
+    );
+  }, [assets, height, page, width]);
 
   return (
     <span className={`thumb-art ${className}`.trim()}>

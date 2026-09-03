@@ -28,6 +28,7 @@ export type ChromeName =
   | "clear"
   | "present"
   | "page"
+  | "plus"
   | "delete"
   | "reset"
   | "move"
@@ -36,40 +37,12 @@ export type ChromeName =
 const STROKE_WIDTH = 1.75;
 const ICON_SIZE = 16;
 
-function iconFor(name: ChromeName): LucideIcon {
-  switch (name) {
-    case "logo":
-      return BookOpen;
-    case "draw":
-      return Pencil;
-    case "erase":
-      return Eraser;
-    case "fill":
-      return PaintBucket;
-    case "text":
-      return Type;
-    case "shape":
-      return Shapes;
-    case "undo":
-      return Undo2;
-    case "clear":
-      return SquareX;
-    case "present":
-      return MonitorPlay;
-    case "page":
-      return Plus;
-    case "delete":
-      return Trash2;
-    case "reset":
-      return RotateCcw;
-    case "move":
-      return Move;
-    case "asset":
-      return Grid2x2;
-    default:
-      return assertNever(name, "Unknown chrome icon");
-  }
-}
+const icons: Record<ChromeName, LucideIcon> = {
+  logo: BookOpen, draw: Pencil, erase: Eraser, fill: PaintBucket,
+  text: Type, shape: Shapes, undo: Undo2, clear: SquareX,
+  present: MonitorPlay, page: Plus, plus: Plus, delete: Trash2,
+  reset: RotateCcw, move: Move, asset: Grid2x2,
+};
 
 export function ChromeIcon({
   name,
@@ -78,7 +51,7 @@ export function ChromeIcon({
   name: ChromeName;
   size?: number;
 }) {
-  const Icon = iconFor(name);
+  const Icon = icons[name];
   return (
     <Icon
       className="chrome-icon"

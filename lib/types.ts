@@ -54,8 +54,30 @@ export const MAX_BRUSH_SIZE = 24;
 export const DEFAULT_BRUSH_SIZE = 1;
 export type BrushSize = number;
 
+/** Stage zoom relative to fit-in-viewport size (0.5×–4×). */
+export const MIN_STAGE_ZOOM = 0.5;
+export const MAX_STAGE_ZOOM = 4;
+export const DEFAULT_STAGE_ZOOM = 1;
+export const STAGE_ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
+export type StageZoom = number;
+
 export const SHAPE_SCALES = ["s", "m", "l"] as const;
 export type ShapeScale = (typeof SHAPE_SCALES)[number];
+
+/**
+ * Board layout — each page is an artboard node on the pannable/zoomable board.
+ * Node width is fixed (density-independent) so artboards read as uniform slides;
+ * `boardX`/`boardY` mark the node top-left in board coordinates (px at zoom 1).
+ */
+export const BOARD_NODE_WIDTH = 320;
+export const BOARD_NODE_HEADER = 26;
+export const BOARD_NODE_CANVAS_HEIGHT = Math.round((BOARD_NODE_WIDTH * 9) / 16);
+export const BOARD_NODE_HEIGHT = BOARD_NODE_HEADER + BOARD_NODE_CANVAS_HEIGHT;
+export const BOARD_NODE_GAP = 72;
+
+export function defaultBoardPosition(index: number): { x: number; y: number } {
+  return { x: index * (BOARD_NODE_WIDTH + BOARD_NODE_GAP), y: 0 };
+}
 
 export const PALETTE = [
   "#000000",
@@ -70,9 +92,16 @@ export const PALETTE = [
   "#ff3d8b",
 ] as const;
 
-export const MIN_PALETTE = 4;
-export const MAX_PALETTE = 16;
+export const DEFAULT_PALETTE_ID = "default";
+export const DEFAULT_PALETTE_NAME = "Default";
 export const MAX_PALETTE_NAME = 32;
+
+export interface PaletteProfile {
+  id: string;
+  name: string;
+  swatches: string[];
+  lastColor?: string;
+}
 
 export interface Size {
   width: number;
@@ -102,6 +131,21 @@ export interface FloatingPixels extends PixelStamp {
   under: string[];
 }
 
+/**
+ * An asset placed on a page as a movable overlay — it is NOT baked into
+ * `page.pixels`. Placements composite over the background buffer back-to-front
+ * (array order), so overlapping stamps can be rearranged and pixels underneath
+ * are preserved. width/height are the rendered size (native or scaled).
+ */
+export interface Placement {
+  id: string;
+  assetId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface Asset {
   id: string;
   name: string;
@@ -122,16 +166,28 @@ export interface Page {
   id: string;
   width: number;
   height: number;
+  /** Background buffer painted by draw_pixels / pencil / fill. */
   pixels: string[];
   texts: TextMark[];
+  /** Movable asset overlays composited over `pixels`, back-to-front. */
+  placements: Placement[];
+  /** Node position on the story board (px at zoom 1, node top-left). */
+  boardX: number;
+  boardY: number;
+  /** Directed story link: the page read after this one, if any. */
+  nextPageId?: string | null;
 }
 
 export interface Film {
   brief: string;
   pages: Page[];
   activeIndex: number;
+  /** Swatches of the active profile — kept in sync with `palettes`. */
   palette: string[];
+  /** Active theme name; omitted when Default is selected. */
   paletteName?: string;
+  palettes: PaletteProfile[];
+  activePaletteId: string;
   assets: Asset[];
 }
 
@@ -146,12 +202,14 @@ export interface FilmApi {
   textSize: TextSize;
   shapeFilled: boolean;
   brushSize: BrushSize;
+  stageZoom: StageZoom;
   selectedAssetId: string | null;
   workshopOpen: boolean;
   workshopDraft: WorkshopDraft | null;
   floating: FloatingPixels | null;
   selectedId: string | null;
   selectedKind: MarkKind | null;
+  selectedPlacementId: string | null;
   setTool: (tool: DrawTool) => void;
   setColor: (color: string) => void;
   setFrame: (frame: TextFrame) => void;
@@ -159,20 +217,35 @@ export interface FilmApi {
   setTextSize: (size: TextSize) => void;
   setShapeFilled: (filled: boolean) => void;
   setBrushSize: (size: BrushSize) => void;
+  setStageZoom: (zoom: StageZoom) => void;
+  stepStageZoom: (direction: 1 | -1) => void;
+  resetStageZoom: () => void;
   selectAsset: (id: string | null) => boolean;
   openWorkshop: (assetId?: string) => boolean;
   closeWorkshop: (save?: boolean) => boolean;
   setWorkshopName: (name: string) => void;
   setWorkshopSize: (size: number) => boolean;
   selectMark: (id: string | null, kind?: MarkKind) => boolean;
+  selectPlacement: (id: string | null) => boolean;
+  movePlacement: (
+    id: string,
+    x: number,
+    y: number,
+    recordUndo?: boolean,
+  ) => boolean;
   setBrief: (brief: string) => void;
-  setPalette: (colors: string[], name?: string) => boolean;
+  setPalette: (colors?: string[], name?: string) => boolean;
+  selectPalette: (id: string) => boolean;
+  addPaletteProfile: (name?: string) => PaletteProfile | null;
+  renamePalette: (id: string, name: string) => boolean;
   addSwatch: (color: string) => boolean;
   resetPalette: () => void;
   setDensity: (width: number) => void;
   addPage: (input?: { story?: string; draw?: string }) => Page;
   selectPage: (index: number) => boolean;
   removePage: (index: number) => boolean;
+  movePage: (id: string, x: number, y: number) => boolean;
+  linkPages: (fromId: string, toId: string | null) => boolean;
   addText: (input: {
     x: number;
     y: number;
@@ -213,7 +286,8 @@ export interface FilmApi {
     width?: number;
     height?: number;
     keepFloating?: boolean;
-  }) => PixelStamp | null;
+    recordUndo?: boolean;
+  }) => Placement | null;
   setText: (id: string, body: string) => boolean;
   moveText: (id: string, x: number, y: number) => boolean;
   removeText: (id: string) => boolean;
@@ -260,6 +334,87 @@ export function assertNever(value: never, message: string): never {
 
 export function defaultPalette(): string[] {
   return [...PALETTE];
+}
+
+export function defaultPaletteProfile(): PaletteProfile {
+  return {
+    id: DEFAULT_PALETTE_ID,
+    name: DEFAULT_PALETTE_NAME,
+    swatches: defaultPalette(),
+  };
+}
+
+export function isDefaultPaletteId(id: string): boolean {
+  return id === DEFAULT_PALETTE_ID;
+}
+
+export function isReservedPaletteName(value: string): boolean {
+  return value.trim().toLowerCase() === DEFAULT_PALETTE_NAME.toLowerCase();
+}
+
+export function isBuiltInPalette(swatches: string[]): boolean {
+  if (swatches.length !== PALETTE.length) {
+    return false;
+  }
+  return swatches.every((hex, index) => hex === PALETTE[index]);
+}
+
+export function nextThemeName(profiles: PaletteProfile[]): string {
+  const used = new Set(profiles.map((profile) => profile.name.toLowerCase()));
+  let n = 1;
+  while (used.has(`theme ${n}`)) {
+    n += 1;
+  }
+  return `Theme ${n}`;
+}
+
+export function findPaletteByName(
+  profiles: PaletteProfile[],
+  name: string,
+): PaletteProfile | undefined {
+  const needle = name.trim().toLowerCase();
+  if (!needle) {
+    return undefined;
+  }
+  if (isReservedPaletteName(needle)) {
+    return profiles.find((profile) => isDefaultPaletteId(profile.id));
+  }
+  return profiles.find(
+    (profile) =>
+      !isDefaultPaletteId(profile.id) &&
+      profile.name.toLowerCase() === needle,
+  );
+}
+
+export function isPaletteNameTaken(
+  profiles: PaletteProfile[],
+  name: string,
+  exceptId?: string,
+): boolean {
+  const needle = name.trim().toLowerCase();
+  if (!needle) {
+    return false;
+  }
+  return profiles.some(
+    (profile) =>
+      profile.id !== exceptId && profile.name.toLowerCase() === needle,
+  );
+}
+
+/** Custom profile name that is non-empty, not Default, and not already used. */
+export function usablePaletteName(
+  value: unknown,
+  profiles: PaletteProfile[],
+  exceptId?: string,
+): string | undefined {
+  const name = normalizePaletteName(value);
+  if (!name || isReservedPaletteName(name)) {
+    return undefined;
+  }
+  if (isPaletteNameTaken(profiles, name, exceptId)) {
+    return undefined;
+  }
+  return name;
 }
 
 export function parseHex(value: unknown): string | null {
@@ -326,11 +481,8 @@ export function normalizePalette(input: unknown): string[] | null {
     }
     seen.add(hex);
     next.push(hex);
-    if (next.length >= MAX_PALETTE) {
-      break;
-    }
   }
-  if (next.length < MIN_PALETTE) {
+  if (next.length === 0) {
     return null;
   }
   return next;
@@ -342,6 +494,60 @@ export function normalizePaletteName(value: unknown): string | undefined {
   }
   const next = value.trim().slice(0, MAX_PALETTE_NAME);
   return next || undefined;
+}
+
+export function normalizePaletteProfile(input: unknown): PaletteProfile | null {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+  const raw = input as Partial<PaletteProfile>;
+  const swatches = normalizePalette(raw.swatches);
+  if (!swatches) {
+    return null;
+  }
+  const name = normalizePaletteName(raw.name);
+  const id =
+    typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : null;
+  if (!id || !name) {
+    return null;
+  }
+  const lastColor = parseHex(raw.lastColor);
+  const profile: PaletteProfile = {
+    id,
+    name: isDefaultPaletteId(id) ? DEFAULT_PALETTE_NAME : name,
+    swatches: isDefaultPaletteId(id) && swatches.length === 0
+      ? defaultPalette()
+      : swatches,
+  };
+  if (lastColor && profile.swatches.includes(lastColor)) {
+    profile.lastColor = lastColor;
+  }
+  return profile;
+}
+
+export function ensurePaletteProfiles(
+  profiles: PaletteProfile[],
+): PaletteProfile[] {
+  const seen = new Set<string>();
+  const next: PaletteProfile[] = [];
+  for (const profile of profiles) {
+    if (seen.has(profile.id)) {
+      continue;
+    }
+    seen.add(profile.id);
+    next.push(
+      isDefaultPaletteId(profile.id)
+        ? { ...profile, name: DEFAULT_PALETTE_NAME }
+        : profile,
+    );
+  }
+  const hasDefault = next.some((profile) => isDefaultPaletteId(profile.id));
+  if (!hasDefault) {
+    next.unshift(defaultPaletteProfile());
+  }
+  const def = next.find((profile) => isDefaultPaletteId(profile.id));
+  const rest = next.filter((profile) => !isDefaultPaletteId(profile.id));
+  return def ? [def, ...rest] : [defaultPaletteProfile(), ...rest];
 }
 
 export function isTextFrame(value: unknown): value is TextFrame {
@@ -475,6 +681,43 @@ export function brushSizeLabel(size: BrushSize): string {
   return `${normalizeBrushSize(size)}×${normalizeBrushSize(size)}`;
 }
 
+export function normalizeStageZoom(value: unknown): StageZoom {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) {
+    return DEFAULT_STAGE_ZOOM;
+  }
+  return Math.min(
+    MAX_STAGE_ZOOM,
+    Math.max(MIN_STAGE_ZOOM, Math.round(n * 100) / 100),
+  );
+}
+
+export function stageZoomLabel(zoom: StageZoom): string {
+  return `${Math.round(normalizeStageZoom(zoom) * 100)}%`;
+}
+
+export function stepStageZoomValue(
+  current: StageZoom,
+  direction: 1 | -1,
+): StageZoom {
+  const normalized = normalizeStageZoom(current);
+  if (direction > 0) {
+    for (const step of STAGE_ZOOM_STEPS) {
+      if (step > normalized + 0.001) {
+        return step;
+      }
+    }
+    return STAGE_ZOOM_STEPS[STAGE_ZOOM_STEPS.length - 1];
+  }
+  for (let index = STAGE_ZOOM_STEPS.length - 1; index >= 0; index -= 1) {
+    const step = STAGE_ZOOM_STEPS[index];
+    if (step < normalized - 0.001) {
+      return step;
+    }
+  }
+  return STAGE_ZOOM_STEPS[0];
+}
+
 export function textSizePx(size: TextSize): number {
   return 7 * normalizeTextSize(size);
 }
@@ -598,5 +841,44 @@ export function isPaintedPixel(color: string): boolean {
 export function isEmptyPage(page: Page): boolean {
   const blankPixels = page.pixels.every((pixel) => !isPaintedPixel(pixel));
   const blankText = (page.texts ?? []).every((mark) => !mark.body.trim());
-  return blankPixels && blankText;
+  const noPlacements = (page.placements ?? []).length === 0;
+  return blankPixels && blankText && noPlacements;
+}
+
+/**
+ * Resolve the story reading order by following `nextPageId` pointers from each
+ * head (a page no other page links to). Cycles are broken by a visited guard,
+ * and any pages left unvisited (disconnected islands) are appended in array
+ * order so no page is ever dropped. Falls back to array order when there are
+ * no links at all.
+ */
+export function readingOrder(pages: Page[]): Page[] {
+  const byId = new Map(pages.map((page) => [page.id, page] as const));
+  const targeted = new Set<string>();
+  for (const page of pages) {
+    if (page.nextPageId && byId.has(page.nextPageId)) {
+      targeted.add(page.nextPageId);
+    }
+  }
+  const order: Page[] = [];
+  const visited = new Set<string>();
+  const walk = (start: Page) => {
+    let current: Page | undefined = start;
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      order.push(current);
+      current = current.nextPageId ? byId.get(current.nextPageId) : undefined;
+    }
+  };
+  for (const page of pages) {
+    if (!targeted.has(page.id)) {
+      walk(page);
+    }
+  }
+  for (const page of pages) {
+    if (!visited.has(page.id)) {
+      walk(page);
+    }
+  }
+  return order;
 }

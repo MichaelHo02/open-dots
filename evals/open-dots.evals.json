@@ -1,0 +1,301 @@
+[
+  {
+    "name": "Load the pixel-art guide at session start",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "I want to draw a picture-book scene. Show me how this canvas works first."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "get_pixel_art_guide",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Read the current book state",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "What's already on the pages and in the asset library?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "get_film",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Set an ocean-at-night palette",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Theme the swatches for an ocean at night before we start drawing."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "set_palette",
+        "arguments": { "colors": { "$type": "array" } }
+      }
+    ]
+  },
+  {
+    "name": "Add a dense page for a rich scene",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Add a new, fairly dense page — around 192 pixels wide — for a detailed room."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "add_page",
+        "arguments": { "width": { "$gte": 128 } }
+      }
+    ]
+  },
+  {
+    "name": "Select the first page",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Go back to the first page."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "select_page",
+        "arguments": { "index": 0 }
+      }
+    ]
+  },
+  {
+    "name": "Create a blank 32x32 character sprite",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Start a blank 32 by 32 sprite in the library for a hero character."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "add_asset",
+        "arguments": {
+          "name": { "$any": true },
+          "template": "empty",
+          "width": 32,
+          "height": 32
+        }
+      }
+    ]
+  },
+  {
+    "name": "Add a solid-filled floor tile",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Make an 8 by 8 floor tile filled with a warm brown."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "add_asset",
+        "arguments": {
+          "name": { "$any": true },
+          "fill": { "$pattern": "^#" },
+          "width": 8,
+          "height": 8
+        }
+      }
+    ]
+  },
+  {
+    "name": "Draw an outline pass into a sprite",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Draw the black outline silhouette into the hero sprite."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "draw_asset_pixels",
+        "arguments": { "id": { "$any": true } }
+      }
+    ]
+  },
+  {
+    "name": "Inspect a sprite after a pass",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Let me see the hero sprite so I can check the outline."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "get_asset_image",
+        "arguments": { "id": { "$any": true } }
+      }
+    ]
+  },
+  {
+    "name": "Stamp an asset onto the page",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Place the hero near the middle of the page."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "stamp_assets",
+        "arguments": { "stamps": { "$type": "array" } }
+      }
+    ]
+  },
+  {
+    "name": "Paint a flat background band",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Fill the top third of the page with a night-sky blue."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "draw_pixels",
+        "arguments": null
+      }
+    ]
+  },
+  {
+    "name": "Inspect the full page against the reference",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Show me the whole page so I can compare it to what I described."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "get_page_image",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Rasterize story text onto the page",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Write \"The End\" in the corner of the page."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "place_text",
+        "arguments": { "body": { "$contains": "End" } }
+      }
+    ]
+  },
+  {
+    "name": "Clear the active page",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Wipe this page blank so I can start over."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "clear_page",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Remove the second page",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Delete page 2 (index 1) — we don't need it."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "remove_page",
+        "arguments": { "index": 1 }
+      }
+    ]
+  },
+  {
+    "name": "Remove an asset from the library",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Take the old floor tile out of the asset library."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "remove_asset",
+        "arguments": { "id": { "$any": true } }
+      }
+    ]
+  },
+  {
+    "name": "End-to-end: theme, build, and place a moon",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Build a simple night-sky page: set a night palette, make a small moon sprite, then place it in the sky."
+      }
+    ],
+    "expectedCall": [
+      {
+        "ordered": [
+          {
+            "functionName": "set_palette",
+            "arguments": { "colors": { "$type": "array" } }
+          },
+          {
+            "functionName": "add_asset",
+            "arguments": { "name": { "$any": true } }
+          },
+          {
+            "functionName": "draw_asset_pixels",
+            "arguments": { "id": { "$any": true } },
+            "optional": true
+          },
+          {
+            "functionName": "stamp_assets",
+            "arguments": { "stamps": { "$type": "array" } }
+          }
+        ]
+      }
+    ]
+  }
+]

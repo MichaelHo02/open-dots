@@ -528,6 +528,41 @@ export function styleOpacity(opacity: number): number {
   return Math.round(opacity * 1e6) / 1e6;
 }
 
+/** String CSS values so SSR and client hydration serialize identically. */
+export function styleCssNum(n: number): string {
+  return String(n);
+}
+
+export function styleOpacityValue(opacity: number): string {
+  return String(styleOpacity(opacity));
+}
+
+function normalizeDmxStylePatch(stylePatch: CSSProperties | undefined): CSSProperties | undefined {
+  if (!stylePatch) {
+    return undefined;
+  }
+
+  const normalized = { ...stylePatch };
+
+  if (typeof normalized.opacity === "number") {
+    normalized.opacity = styleOpacityValue(normalized.opacity);
+  }
+
+  const bloomKey = "--dmx-bloom-level" as const;
+  const bloomLevel = (normalized as CSSProperties & Record<string, unknown>)[bloomKey];
+  if (typeof bloomLevel === "number") {
+    (normalized as CSSProperties & Record<string, unknown>)[bloomKey] = styleCssNum(bloomLevel);
+  }
+
+  const pathKey = "--dmx-path" as const;
+  const pathNorm = (normalized as CSSProperties & Record<string, unknown>)[pathKey];
+  if (typeof pathNorm === "number") {
+    (normalized as CSSProperties & Record<string, unknown>)[pathKey] = styleCssNum(pathNorm);
+  }
+
+  return normalized;
+}
+
 const SOURCE_BASE_OPACITY = 0.08;
 const SOURCE_MID_OPACITY = 0.34;
 const SOURCE_PEAK_OPACITY = 0.94;
@@ -730,22 +765,27 @@ export function DotMatrixBase({
   const { resolvedColor, dotFill } = resolveDmxColorTokens(color, colorPreset);
 
   const dmxVarStyle = {
-    width: matrixSpan,
-    height: matrixSpan,
-    "--dmx-speed": speedScale,
-    ["--dmx-dot-size" as const]: `${dotSize}px`,
-    ["--dmx-halo-level" as const]: halo,
+    width: stylePx(matrixSpan),
+    height: stylePx(matrixSpan),
+    "--dmx-speed": styleCssNum(speedScale),
+    ["--dmx-dot-size" as const]: stylePx(dotSize),
+    ["--dmx-halo-level" as const]: styleCssNum(halo),
     ["--dmx-dot-fill" as const]: dotFill,
     color: resolvedColor,
-    ...(ob !== undefined && { ["--dmx-opacity-base" as const]: ob }),
-    ...(om !== undefined && { ["--dmx-opacity-mid" as const]: om }),
-    ...(op !== undefined && { ["--dmx-opacity-peak" as const]: op }),
+    ...(ob !== undefined && { ["--dmx-opacity-base" as const]: styleCssNum(ob) }),
+    ...(om !== undefined && { ["--dmx-opacity-mid" as const]: styleCssNum(om) }),
+    ...(op !== undefined && { ["--dmx-opacity-peak" as const]: styleCssNum(op) }),
     ...(useWrapper
       ? {
         transform: `scale(${scale})`,
         transformOrigin: "center center" as const
       }
-      : { minWidth: minSize, minHeight: minSize })
+      : {
+        ...(minSize != null && {
+          minWidth: stylePx(minSize),
+          minHeight: stylePx(minSize)
+        })
+      })
   } as unknown as CSSProperties;
 
   const dots = Array.from({ length: MATRIX_SIZE * MATRIX_SIZE }).map((_, index) => {
@@ -781,37 +821,40 @@ export function DotMatrixBase({
       const rawOpacity = stylePatch?.opacity;
       if (stylePatch != null && typeof rawOpacity === "number") {
         const remappedOpacity = remapOpacityToTriplet(rawOpacity, ob, om, op);
-        stylePatch = { ...stylePatch, opacity: remappedOpacity };
+        stylePatch = { ...stylePatch, opacity: styleOpacityValue(remappedOpacity) };
         const parts = dmxDotBloomParts(true, rawOpacity, bloom, halo, ob, om, op);
-        (stylePatch as CSSProperties & { "--dmx-bloom-level"?: number })["--dmx-bloom-level"] = parts.level;
+        (stylePatch as CSSProperties & { "--dmx-bloom-level"?: string })["--dmx-bloom-level"] =
+          styleCssNum(parts.level);
         isBloomDot = parts.bloomDot;
       } else {
         const parts = dmxDotBloomParts(true, 0, bloom, halo, ob, om, op);
         if (parts.level > 0) {
           stylePatch = {
             ...(stylePatch ?? {}),
-            ["--dmx-bloom-level" as const]: parts.level
-          } as CSSProperties & { "--dmx-bloom-level"?: number };
+            ["--dmx-bloom-level" as const]: styleCssNum(parts.level)
+          } as CSSProperties & { "--dmx-bloom-level"?: string };
         }
         isBloomDot = parts.bloomDot;
       }
     }
 
+    stylePatch = normalizeDmxStylePatch(stylePatch);
+
     const dotStyle = {
-      width: dotSize,
-      height: dotSize,
-      "--dmx-distance": distance,
-      "--dmx-row": row,
-      "--dmx-col": col,
-      "--dmx-x": `${deltaX}px`,
-      "--dmx-y": `${deltaY}px`,
-      "--dmx-angle": angle,
-      "--dmx-radius": radiusNormalizedValue,
-      "--dmx-manhattan": manhattan,
+      width: stylePx(dotSize),
+      height: stylePx(dotSize),
+      "--dmx-distance": styleCssNum(distance),
+      "--dmx-row": styleCssNum(row),
+      "--dmx-col": styleCssNum(col),
+      "--dmx-x": stylePx(deltaX),
+      "--dmx-y": stylePx(deltaY),
+      "--dmx-angle": styleCssNum(angle),
+      "--dmx-radius": styleCssNum(radiusNormalizedValue),
+      "--dmx-manhattan": styleCssNum(manhattan),
       ...stylePatch,
       ...(!isActive
         ? {
-          opacity: 0,
+          opacity: "0",
           visibility: "hidden" as const,
           pointerEvents: "none" as const,
           animation: "none"
@@ -847,7 +890,7 @@ export function DotMatrixBase({
       )}
       style={dmxVarStyle}
     >
-      <div className="dmx-grid" style={{ gap }}>{dots}</div>
+      <div className="dmx-grid" style={{ gap: stylePx(gap) }}>{dots}</div>
     </div>
   );
 
@@ -862,10 +905,12 @@ export function DotMatrixBase({
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: outerDim,
-          height: outerDim,
-          minWidth: minSize,
-          minHeight: minSize,
+          width: stylePx(outerDim),
+          height: stylePx(outerDim),
+          ...(minSize != null && {
+            minWidth: stylePx(minSize),
+            minHeight: stylePx(minSize)
+          }),
           overflow: "hidden"
         }}
         onMouseEnter={onMouseEnter}
@@ -893,7 +938,7 @@ export function DotMatrixBase({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
-      <div className="dmx-grid" style={{ gap }}>{dots}</div>
+      <div className="dmx-grid" style={{ gap: stylePx(gap) }}>{dots}</div>
     </div>
   );
 }
@@ -1202,26 +1247,31 @@ export function DotMatrix3Base({
   const { resolvedColor, dotFill } = resolveDmxColorTokens(color, colorPreset);
 
   const dmxVarStyle = {
-    width: matrixSpan,
-    height: matrixSpan,
-    "--dmx-speed": speedScale,
-    ["--dmx-dot-size" as const]: `${dotSize}px`,
-    ["--dmx-halo-level" as const]: halo,
+    width: stylePx(matrixSpan),
+    height: stylePx(matrixSpan),
+    "--dmx-speed": styleCssNum(speedScale),
+    ["--dmx-dot-size" as const]: stylePx(dotSize),
+    ["--dmx-halo-level" as const]: styleCssNum(halo),
     ["--dmx-dot-fill" as const]: dotFill,
     color: resolvedColor,
-    ...(ob !== undefined && { ["--dmx-opacity-base" as const]: ob }),
-    ...(om !== undefined && { ["--dmx-opacity-mid" as const]: om }),
-    ...(op !== undefined && { ["--dmx-opacity-peak" as const]: op }),
+    ...(ob !== undefined && { ["--dmx-opacity-base" as const]: styleCssNum(ob) }),
+    ...(om !== undefined && { ["--dmx-opacity-mid" as const]: styleCssNum(om) }),
+    ...(op !== undefined && { ["--dmx-opacity-peak" as const]: styleCssNum(op) }),
     ...(useWrapper
       ? {
         transform: `scale(${scale})`,
         transformOrigin: "center center" as const
       }
-      : { minWidth: minSize, minHeight: minSize })
+      : {
+        ...(minSize != null && {
+          minWidth: stylePx(minSize),
+          minHeight: stylePx(minSize)
+        })
+      })
   } as unknown as CSSProperties;
 
   const gridStyle = {
-    gap,
+    gap: stylePx(gap),
     gridTemplateColumns: `repeat(${MATRIX_SIZE_3}, minmax(0, 1fr))`,
     gridTemplateRows: `repeat(${MATRIX_SIZE_3}, minmax(0, 1fr))`
   };
@@ -1259,37 +1309,40 @@ export function DotMatrix3Base({
       const rawOpacity = stylePatch?.opacity;
       if (stylePatch != null && typeof rawOpacity === "number") {
         const remappedOpacity = remapOpacityToTriplet(rawOpacity, ob, om, op);
-        stylePatch = { ...stylePatch, opacity: remappedOpacity };
+        stylePatch = { ...stylePatch, opacity: styleOpacityValue(remappedOpacity) };
         const parts = dmxDotBloomParts(true, rawOpacity, bloom, halo, ob, om, op);
-        (stylePatch as CSSProperties & { "--dmx-bloom-level"?: number })["--dmx-bloom-level"] = parts.level;
+        (stylePatch as CSSProperties & { "--dmx-bloom-level"?: string })["--dmx-bloom-level"] =
+          styleCssNum(parts.level);
         isBloomDot = parts.bloomDot;
       } else {
         const parts = dmxDotBloomParts(true, 0, bloom, halo, ob, om, op);
         if (parts.level > 0) {
           stylePatch = {
             ...(stylePatch ?? {}),
-            ["--dmx-bloom-level" as const]: parts.level
-          } as CSSProperties & { "--dmx-bloom-level"?: number };
+            ["--dmx-bloom-level" as const]: styleCssNum(parts.level)
+          } as CSSProperties & { "--dmx-bloom-level"?: string };
         }
         isBloomDot = parts.bloomDot;
       }
     }
 
+    stylePatch = normalizeDmxStylePatch(stylePatch);
+
     const dotStyle = {
-      width: dotSize,
-      height: dotSize,
-      "--dmx-distance": distance,
-      "--dmx-row": row,
-      "--dmx-col": col,
-      "--dmx-x": `${deltaX}px`,
-      "--dmx-y": `${deltaY}px`,
-      "--dmx-angle": angle,
-      "--dmx-radius": radiusNormalizedValue,
-      "--dmx-manhattan": manhattan,
+      width: stylePx(dotSize),
+      height: stylePx(dotSize),
+      "--dmx-distance": styleCssNum(distance),
+      "--dmx-row": styleCssNum(row),
+      "--dmx-col": styleCssNum(col),
+      "--dmx-x": stylePx(deltaX),
+      "--dmx-y": stylePx(deltaY),
+      "--dmx-angle": styleCssNum(angle),
+      "--dmx-radius": styleCssNum(radiusNormalizedValue),
+      "--dmx-manhattan": styleCssNum(manhattan),
       ...stylePatch,
       ...(!isActive
         ? {
-          opacity: 0,
+          opacity: "0",
           visibility: "hidden" as const,
           pointerEvents: "none" as const,
           animation: "none"
@@ -1341,10 +1394,12 @@ export function DotMatrix3Base({
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
-          width: outerDim,
-          height: outerDim,
-          minWidth: minSize,
-          minHeight: minSize,
+          width: stylePx(outerDim),
+          height: stylePx(outerDim),
+          ...(minSize != null && {
+            minWidth: stylePx(minSize),
+            minHeight: stylePx(minSize)
+          }),
           overflow: "hidden"
         }}
         onMouseEnter={onMouseEnter}

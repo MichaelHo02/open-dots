@@ -2,15 +2,17 @@
 
 import { useEffect } from "react";
 import { PagePreview } from "./PagePreview";
-import type { Page } from "@/lib/types";
+import type { Asset, Page } from "@/lib/types";
 
 export function PresentMode({
   pages,
+  assets,
   index,
   onClose,
   onSelect,
 }: {
   pages: Page[];
+  assets: Asset[];
   index: number;
   onClose: () => void;
   onSelect: (index: number) => void;
@@ -55,7 +57,7 @@ export function PresentMode({
         onClick={() => onSelect(Math.max(index - 1, 0))}
       />
       <article className="present-page">
-        <PagePreview page={page} />
+        <PagePreview page={page} assets={assets} />
       </article>
       <button
         type="button"

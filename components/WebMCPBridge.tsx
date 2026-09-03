@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { registerFilmTools } from "@/lib/register-tools";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  registerFilmTools,
+  syncWebmcpApiRef,
+} from "@/lib/register-tools";
 import { useFilm } from "@/lib/film-store";
 
 export function WebMCPBridge() {
@@ -11,34 +14,45 @@ export function WebMCPBridge() {
   const [native, setNative] = useState(false);
   const [count, setCount] = useState(0);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     apiRef.current = api;
+    syncWebmcpApiRef(apiRef);
   }, [api]);
 
   useEffect(() => {
-    const controller = new AbortController();
     let cancelled = false;
 
-    registerFilmTools(apiRef, controller.signal)
-      .then((result) => {
-        if (cancelled) {
-          return;
-        }
-        setNative(result.native);
-        setCount(result.count);
-        setStatus("live");
-      })
-      .catch((error: unknown) => {
-        if (cancelled) {
-          return;
-        }
-        console.error("WebMCP registration failed", error);
-        setStatus("error");
-      });
+    // Defer until after hydration so document.modelContext and localStorage
+    // film state are stable before agents poll get_film.
+    const start = () => {
+      // Page-lifetime registration: do not abort on React unmount (Strict Mode /
+      // Fast Refresh). Aborting unregisters tools and invalidates the host's
+      // snapshot. Tools last until this document unloads (refresh/navigation).
+      registerFilmTools(apiRef)
+        .then((result) => {
+          if (cancelled) {
+            return;
+          }
+          setNative(result.native);
+          setCount(result.count);
+          setStatus("live");
+        })
+        .catch((error: unknown) => {
+          if (cancelled) {
+            return;
+          }
+          console.error("WebMCP registration failed", error);
+          setStatus("error");
+        });
+    };
+
+    const id = window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(start);
+    });
 
     return () => {
       cancelled = true;
-      controller.abort();
+      window.cancelAnimationFrame(id);
     };
   }, []);
 

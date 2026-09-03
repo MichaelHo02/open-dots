@@ -1,0 +1,611 @@
+{
+  "tools": [
+    {
+      "name": "get_pixel_art_guide",
+      "description": "Load the pixel-art playbook — call this first each session before drawing. Covers composition, palettes, shading, material recipes, character patterns, the draw-look-fix loop, and anti-patterns. Pass topic workflow, shading, composition, or tools; omit for the full playbook.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "enum": [
+              "workflow",
+              "shading",
+              "composition",
+              "tools",
+              "full"
+            ],
+            "description": "Section to return; omit for full playbook"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_film",
+      "description": "Read the book: pages with overlay placements, named color profiles (palettes + activePaletteId), asset library (id, name, size), the active page, and webmcp.ready. After a refresh, re-fetch live tools, wait until webmcp.ready is true, then call this to recover asset ids before mutating. Call get_pixel_art_guide first; use get_asset_image and get_page_image to inspect pixels.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "set_palette",
+      "description": "Create or update a named color profile and select it. Pass any number of #rrggbb swatches in colors — there is no count cap, and the built-in Default profile is never overwritten. Pass name (e.g. Bedtime) plus colors to create or update a theme; omit name to update the current non-Default profile, or to create Theme N when Default is active; pass name without colors to select an existing profile including Default. Extra #rrggbb colors can be used inline in draw ops without adding them to the profile first. Optional mood examples: lime #dceeb1, lilac #c5b0f4, cream #f4ecd6, pink #efd4d4, mint #c8e6cd, coral #f3c9b6, navy #1f1d3d, magenta #ff3d8b, plus ink #000000 and paper #ffffff.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "#rrggbb"
+            },
+            "minItems": 1,
+            "description": "Any number of #rrggbb swatches for a named theme profile. Omit to select an existing profile by name."
+          },
+          "name": {
+            "type": "string",
+            "description": "Theme label (e.g. Bedtime). Creates or updates that profile. Omit to update the current non-Default theme or create Theme N. Pass name without colors to select."
+          }
+        }
+      }
+    },
+    {
+      "name": "add_page",
+      "description": "Append a new landscape page and select it. Optional width sets pixel density (48–256; height follows 16:9; default 128); use 160–224 for rich scenes. Compose complex art with add_asset + stamp_assets rather than painting the whole page. Optional story rasterizes one line of words — do not add a story form or caption box on the page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "description": "Optional page density in pixels across, 48–256. Height follows 16:9. Default 128."
+          },
+          "story": {
+            "type": "string",
+            "description": "Optional line of words rasterized onto the page. Do not add a form or caption box."
+          }
+        }
+      }
+    },
+    {
+      "name": "select_page",
+      "description": "Select which page is on the canvas by 0-based index. Use after add_page or when editing a different page. Call get_film if you need current indexes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "0-based page index from get_film"
+          }
+        },
+        "required": [
+          "index"
+        ]
+      }
+    },
+    {
+      "name": "remove_page",
+      "description": "Delete a page by 0-based index. The book must keep at least one page. Returns the updated book summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "description": "0-based page index to delete"
+          }
+        },
+        "required": [
+          "index"
+        ]
+      }
+    },
+    {
+      "name": "place_text",
+      "description": "Rasterize words into the active page pixels at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "The words on the page"
+          },
+          "x": {
+            "type": "number",
+            "description": "Horizontal position, 0–1 or pixels"
+          },
+          "y": {
+            "type": "number",
+            "description": "Vertical position, 0–1 or pixels"
+          },
+          "color": {
+            "type": "string",
+            "description": "#rrggbb"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Glyph scale 1–8 (default 2)"
+          }
+        },
+        "required": [
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "get_asset_image",
+      "description": "Rasterize an asset to PNG so you can compare it to a reference (optional scale 1–8). Returns JSON stats plus the image, and comma-separated rows as a text fallback. Call after each draw pass (outline → fill → shade → highlight) before stamping.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Asset id from add_asset or get_film.assets"
+          },
+          "scale": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Nearest-neighbor upscale for inspection (default 1 = native 1:1)"
+          },
+          "includeRows": {
+            "type": "boolean",
+            "description": "Include comma-separated rows in text summary (default true)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "draw_asset_pixels",
+      "description": "Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤4096/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Asset id to paint into"
+          },
+          "rects": {
+            "type": "array",
+            "maxItems": 512,
+            "description": "Filled rectangles: each {x,y,width,height,color} paints a solid block. One rect can cover any region; color \"\" erases the block.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height",
+                "color"
+              ]
+            }
+          },
+          "lines": {
+            "type": "array",
+            "maxItems": 512,
+            "description": "Straight lines: each {x0,y0,x1,y1,color} draws an edge or outline. Use for silhouettes, seams, and furniture edges. color \"\" erases.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x0": {
+                  "type": "integer"
+                },
+                "y0": {
+                  "type": "integer"
+                },
+                "x1": {
+                  "type": "integer"
+                },
+                "y1": {
+                  "type": "integer"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x0",
+                "y0",
+                "x1",
+                "y1",
+                "color"
+              ]
+            }
+          },
+          "fills": {
+            "type": "array",
+            "maxItems": 512,
+            "description": "Flood fills: each {x,y,color} bucket-fills the contiguous region touching x,y. Outline first (lines/rects), then flood the enclosed area. color \"\" erases.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "color"
+              ]
+            }
+          },
+          "pixels": {
+            "type": "array",
+            "maxItems": 4096,
+            "description": "Fine-detail pixels (applied last). For blocks/bands prefer rects.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer",
+                  "description": "Column within asset (0 = left)"
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Row within asset (0 = top)"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "color"
+              ]
+            }
+          },
+          "offsetX": {
+            "type": "integer",
+            "description": "Added to every x (default 0) — use to tile regions"
+          },
+          "offsetY": {
+            "type": "integer",
+            "description": "Added to every y (default 0)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "add_asset",
+      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤48). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Label shown in the Assets list"
+          },
+          "width": {
+            "type": "integer",
+            "description": "Width in pixels, 1–96"
+          },
+          "height": {
+            "type": "integer",
+            "description": "Height in pixels, 1–96"
+          },
+          "pixels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Row-major #rrggbb colors; empty string is transparent"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Comma-separated #rrggbb per row (+ width + height)"
+          },
+          "template": {
+            "type": "string",
+            "enum": [
+              "empty"
+            ],
+            "description": "With width+height, create a transparent blank asset"
+          },
+          "fill": {
+            "type": "string",
+            "description": "With width+height, fill the asset with one #rrggbb color"
+          },
+          "x": {
+            "type": "integer",
+            "description": "Page rect left, if copying from a page"
+          },
+          "y": {
+            "type": "integer",
+            "description": "Page rect top, if copying from a page"
+          },
+          "pageIndex": {
+            "type": "integer",
+            "description": "Page to copy from; defaults to the active page"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "stamp_assets",
+      "description": "Add movable overlay placements on the active page (max 48 per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "stamps": {
+            "type": "array",
+            "maxItems": 48,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Asset id from add_asset or get_film"
+                },
+                "x": {
+                  "type": "integer",
+                  "description": "Page column of the stamp top-left (0 = left)"
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Page row of the stamp top-left (0 = top)"
+                },
+                "scale": {
+                  "type": "number",
+                  "description": "Uniform scale; default 1 is native size"
+                },
+                "width": {
+                  "type": "integer",
+                  "description": "Optional stamp width in page pixels"
+                },
+                "height": {
+                  "type": "integer",
+                  "description": "Optional stamp height in page pixels"
+                }
+              },
+              "required": [
+                "id",
+                "x",
+                "y"
+              ]
+            },
+            "description": "Stamps applied in array order (back-to-front)"
+          }
+        },
+        "required": [
+          "stamps"
+        ]
+      }
+    },
+    {
+      "name": "remove_asset",
+      "description": "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_film for valid ids.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Asset id from get_film"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    {
+      "name": "draw_pixels",
+      "description": "Paint directly on the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤4096 detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the page. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rects": {
+            "type": "array",
+            "maxItems": 512,
+            "description": "Filled rectangles: each {x,y,width,height,color} paints a solid block. One rect can cover any region; color \"\" erases the block.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "width": {
+                  "type": "integer"
+                },
+                "height": {
+                  "type": "integer"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height",
+                "color"
+              ]
+            }
+          },
+          "lines": {
+            "type": "array",
+            "maxItems": 512,
+            "description": "Straight lines: each {x0,y0,x1,y1,color} draws an edge or outline. Use for silhouettes, seams, and furniture edges. color \"\" erases.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x0": {
+                  "type": "integer"
+                },
+                "y0": {
+                  "type": "integer"
+                },
+                "x1": {
+                  "type": "integer"
+                },
+                "y1": {
+                  "type": "integer"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x0",
+                "y0",
+                "x1",
+                "y1",
+                "color"
+              ]
+            }
+          },
+          "fills": {
+            "type": "array",
+            "maxItems": 512,
+            "description": "Flood fills: each {x,y,color} bucket-fills the contiguous region touching x,y. Outline first (lines/rects), then flood the enclosed area. color \"\" erases.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer"
+                },
+                "y": {
+                  "type": "integer"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "color"
+              ]
+            }
+          },
+          "pixels": {
+            "type": "array",
+            "maxItems": 4096,
+            "description": "Fine-detail page pixels (applied last). For blocks prefer rects.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "integer",
+                  "description": "Page column (0 = left)"
+                },
+                "y": {
+                  "type": "integer",
+                  "description": "Page row (0 = top)"
+                },
+                "color": {
+                  "type": "string",
+                  "description": "#rrggbb or \"\" to erase"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "color"
+              ]
+            }
+          },
+          "offsetX": {
+            "type": "integer",
+            "description": "Added to every x (default 0) — use to tile motifs"
+          },
+          "offsetY": {
+            "type": "integer",
+            "description": "Added to every y (default 0)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_page_image",
+      "description": "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page draw_pixels, or noisy colorCount). Call after every few stamps, not only at the end.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageIndex": {
+            "type": "integer",
+            "description": "0-based page index; defaults to active page"
+          },
+          "x": {
+            "type": "integer",
+            "description": "Optional region left edge in page pixels (requires y, width, height)"
+          },
+          "y": {
+            "type": "integer",
+            "description": "Optional region top edge in page pixels"
+          },
+          "width": {
+            "type": "integer",
+            "description": "Optional region width in page pixels"
+          },
+          "height": {
+            "type": "integer",
+            "description": "Optional region height in page pixels"
+          },
+          "scale": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Nearest-neighbor upscale (default 1)"
+          }
+        }
+      }
+    },
+    {
+      "name": "clear_page",
+      "description": "Erase the active page to a blank transparent canvas, including rasterized text and overlay placements. If the asset workshop is open, clears the workshop draft instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

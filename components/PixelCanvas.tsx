@@ -11,6 +11,8 @@ import { PixelTextInput } from "./PixelTextInput";
 import { BrushPreview } from "./BrushPreview";
 import {
   boundsFromCorners,
+  compositedPagePixels,
+  hitPlacementAt,
   paintPixelGrid,
   rasterizeShape,
   scaleStamp,
@@ -37,6 +39,7 @@ type Gesture =
       startX: number;
       startY: number;
       recorded: boolean;
+      placementId?: string;
     };
 
 function paintStamp(
@@ -90,6 +93,9 @@ export function PixelCanvas() {
     stampAsset,
     liftMarquee,
     moveFloating,
+    movePlacement,
+    selectPlacement,
+    selectedPlacementId,
     anchorFloating,
     setText,
     removeText,
@@ -112,6 +118,8 @@ export function PixelCanvas() {
   const height = active?.height ?? DEFAULT_HEIGHT;
   const marking = tool === "text";
   const selectedAsset = film.assets.find((item) => item.id === selectedAssetId) ?? null;
+  const selectedPlacement =
+    active?.placements.find((item) => item.id === selectedPlacementId) ?? null;
   const activeText =
     active?.texts.find((mark) => mark.id === selectedId) ?? null;
 
@@ -125,8 +133,13 @@ export function PixelCanvas() {
     canvas.width = width;
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
-    paintPixelGrid(ctx, page.pixels, width, height);
-  }, [active, height, width]);
+    paintPixelGrid(
+      ctx,
+      compositedPagePixels(page, film.assets),
+      width,
+      height,
+    );
+  }, [active, film.assets, height, width]);
 
   useEffect(() => {
     render();
@@ -206,9 +219,6 @@ export function PixelCanvas() {
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (!floating) {
-        return;
-      }
       if (event.key !== "Enter" && event.key !== "Escape") {
         return;
       }
@@ -216,12 +226,19 @@ export function PixelCanvas() {
       if (target?.closest("textarea, input")) {
         return;
       }
-      event.preventDefault();
-      anchorFloating();
+      if (floating) {
+        event.preventDefault();
+        anchorFloating();
+        return;
+      }
+      if (selectedPlacementId) {
+        event.preventDefault();
+        selectPlacement(null);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [anchorFloating, floating]);
+  }, [anchorFloating, floating, selectPlacement, selectedPlacementId]);
 
   function pixelFromEvent(event: React.PointerEvent) {
     const canvas = canvasRef.current;
@@ -247,6 +264,34 @@ export function PixelCanvas() {
       x < floating.x + floating.width &&
       y < floating.y + floating.height
     );
+  }
+
+  function resolveStampAsset(assetId: string) {
+    return film.assets.find((item) => item.id === assetId);
+  }
+
+  function placementAt(x: number, y: number) {
+    return hitPlacementAt(active?.placements, x, y, resolveStampAsset);
+  }
+
+  function startPlacementMove(at: { x: number; y: number }) {
+    const hit = placementAt(at.x, at.y);
+    if (!hit) {
+      return false;
+    }
+    selectPlacement(hit.id);
+    gesture.current = {
+      type: "move",
+      originX: hit.x,
+      originY: hit.y,
+      startX: at.x,
+      startY: at.y,
+      recorded: false,
+      placementId: hit.id,
+    };
+    setPreview(null);
+    setDragging(true);
+    return true;
   }
 
   function placeText(event: React.PointerEvent) {
@@ -302,6 +347,9 @@ export function PixelCanvas() {
     if (startFloatingMove(at)) {
       return;
     }
+    if (startPlacementMove(at)) {
+      return;
+    }
     if (floating) {
       anchorFloating();
     }
@@ -336,6 +384,9 @@ export function PixelCanvas() {
     }
     event.currentTarget.setPointerCapture(event.pointerId);
     if (startFloatingMove(at)) {
+      return;
+    }
+    if (startPlacementMove(at)) {
       return;
     }
     if (floating) {
@@ -462,8 +513,17 @@ export function PixelCanvas() {
         }}
         onPointerMove={(event) => {
           const at = pixelFromEvent(event);
-          if ((tool === "move" || tool === "shape" || selectedAsset) && floating) {
-            setOverSelection(Boolean(at && hitFloating(at.x, at.y)));
+          if (
+            (tool === "move" || tool === "shape" || selectedAsset) &&
+            (floating || selectedPlacement)
+          ) {
+            setOverSelection(
+              Boolean(
+                at &&
+                  (hitFloating(at.x, at.y) ||
+                    placementAt(at.x, at.y)?.id === selectedPlacementId),
+              ),
+            );
           }
           if (
             (tool === "pencil" || tool === "eraser") &&
@@ -497,7 +557,9 @@ export function PixelCanvas() {
             case "move": {
               const x = current.originX + (at.x - current.startX);
               const y = current.originY + (at.y - current.startY);
-              const moved = moveFloating(x, y, !current.recorded);
+              const moved = current.placementId
+                ? movePlacement(current.placementId, x, y, !current.recorded)
+                : moveFloating(x, y, !current.recorded);
               if (moved && (x !== current.originX || y !== current.originY)) {
                 current.recorded = true;
               }
@@ -533,6 +595,17 @@ export function PixelCanvas() {
             top: `${(floating.y / height) * 100}%`,
             width: `${(floating.width / width) * 100}%`,
             height: `${(floating.height / height) * 100}%`,
+          }}
+        />
+      ) : selectedPlacement ? (
+        <span
+          className="pixel-selection"
+          aria-hidden="true"
+          style={{
+            left: `${(selectedPlacement.x / width) * 100}%`,
+            top: `${(selectedPlacement.y / height) * 100}%`,
+            width: `${(selectedPlacement.width / width) * 100}%`,
+            height: `${(selectedPlacement.height / height) * 100}%`,
           }}
         />
       ) : null}

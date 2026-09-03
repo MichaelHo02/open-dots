@@ -10,6 +10,7 @@ import {
 import {
   blitStamp,
   clonePixels,
+  compositedPagePixels,
   drawLine,
   extractStamp,
   fillRect,
@@ -33,24 +34,39 @@ import {
   toPixelMark,
 } from "./pixel-font";
 import {
+  BOARD_NODE_GAP,
+  BOARD_NODE_WIDTH,
   DEFAULT_HEIGHT,
   DEFAULT_WIDTH,
   EMPTY,
-  MAX_PALETTE,
   MAX_ASSET_NAME,
   MAX_ASSET_SIDE,
   MAX_ASSETS,
+  MAX_WIDTH,
   assertNever,
   clampUnit,
+  defaultBoardPosition,
+  DEFAULT_PALETTE_ID,
   defaultPalette,
+  defaultPaletteProfile,
   emptyPixels,
+  ensurePaletteProfiles,
+  findPaletteByName,
+  isDefaultPaletteId,
+  isReservedPaletteName,
   landscapeSize,
+  nextThemeName,
   normalizeFont,
   normalizeFrame,
   normalizeBrushSize,
   normalizePalette,
   normalizePaletteName,
+  normalizePaletteProfile,
+  usablePaletteName,
   normalizeScale,
+  normalizeStageZoom,
+  stepStageZoomValue,
+  DEFAULT_STAGE_ZOOM,
   DEFAULT_TEXT_FONT,
   DEFAULT_TEXT_SIZE,
   DEFAULT_BRUSH_SIZE,
@@ -58,6 +74,7 @@ import {
   normalizeStoredPixel,
   pageSize,
   parseHex,
+  readingOrder,
   resizePixels,
   type BrushSize,
   type DrawTool,
@@ -66,9 +83,12 @@ import {
   type FloatingPixels,
   type MarkKind,
   type Page,
+  type PaletteProfile,
   type PixelStamp,
+  type Placement,
   type ShapeKind,
   type Size,
+  type StageZoom,
   type TextFont,
   type TextFrame,
   type TextMark,
@@ -79,7 +99,13 @@ import {
   DEFAULT_ASSET_WIDTH,
 } from "./types";
 
-const STORAGE_KEY = "pixel-film-studio:v12";
+const STORAGE_KEY = "pixel-film-studio:v15";
+/** v12–v14 share pixel semantics; v15 only adds board positions + story links. */
+const COMPAT_KEYS = [
+  "pixel-film-studio:v14",
+  "pixel-film-studio:v13",
+  "pixel-film-studio:v12",
+];
 const LEGACY_KEYS = [
   "pixel-film-studio:v11",
   "pixel-film-studio:v10",
@@ -94,6 +120,23 @@ const LEGACY_KEYS = [
 const UNDO_LIMIT = 40;
 const FilmContext = createContext<FilmApi | null>(null);
 
+type PageUndo = {
+  pixels: string[];
+  placements: Placement[];
+};
+
+function clonePlacements(placements: Placement[] | undefined): Placement[] {
+  return (placements ?? []).map((placement) => ({ ...placement }));
+}
+
+function clampPlacementOrigin(placement: Placement, size: Size): Placement {
+  return {
+    ...placement,
+    x: Math.max(0, Math.min(placement.x, size.width - placement.width)),
+    y: Math.max(0, Math.min(placement.y, size.height - placement.height)),
+  };
+}
+
 function blankPage(size: Size): Page {
   return {
     id: createId("page"),
@@ -101,6 +144,10 @@ function blankPage(size: Size): Page {
     height: size.height,
     pixels: emptyPixels(size.width, size.height),
     texts: [],
+    placements: [],
+    boardX: 0,
+    boardY: 0,
+    nextPageId: null,
   };
 }
 
@@ -113,10 +160,16 @@ const SEED: Film = {
       height: DEFAULT_HEIGHT,
       pixels: emptyPixels(DEFAULT_WIDTH, DEFAULT_HEIGHT),
       texts: [],
+      placements: [],
+      boardX: 0,
+      boardY: 0,
+      nextPageId: null,
     },
   ],
   activeIndex: 0,
   palette: defaultPalette(),
+  palettes: [defaultPaletteProfile()],
+  activePaletteId: DEFAULT_PALETTE_ID,
   assets: [],
 };
 
@@ -129,14 +182,16 @@ let textFont: TextFont = DEFAULT_TEXT_FONT;
 let textSize: TextSize = DEFAULT_TEXT_SIZE;
 let shapeFilled = false;
 let brushSize: BrushSize = DEFAULT_BRUSH_SIZE;
+let stageZoom: StageZoom = DEFAULT_STAGE_ZOOM;
 let selectedAssetId: string | null = null;
+let selectedPlacementId: string | null = null;
 let workshopOpen = false;
 let workshopDraft: WorkshopDraft | null = null;
 let workshopRevision = 0;
 let selectedId: string | null = null;
 let selectedKind: MarkKind | null = null;
 let floating: FloatingPixels | null = null;
-const undos: string[][] = [];
+const undos: PageUndo[] = [];
 const workshopUndos: string[][] = [];
 const listeners = new Set<() => void>();
 
@@ -286,6 +341,46 @@ function normalizeAsset(
   };
 }
 
+function normalizePlacements(raw: unknown): Placement[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const placements: Placement[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = item as Partial<Placement>;
+    const assetId = typeof row.assetId === "string" ? row.assetId : null;
+    const x = Math.round(Number(row.x));
+    const y = Math.round(Number(row.y));
+    const width = Math.round(Number(row.width));
+    const height = Math.round(Number(row.height));
+    if (
+      !assetId ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(width) ||
+      !Number.isFinite(height) ||
+      width < 1 ||
+      height < 1 ||
+      width > MAX_WIDTH ||
+      height > MAX_WIDTH
+    ) {
+      continue;
+    }
+    placements.push({
+      id: typeof row.id === "string" && row.id.trim() ? row.id : createId("place"),
+      assetId,
+      x,
+      y,
+      width,
+      height,
+    });
+  }
+  return placements;
+}
+
 function migratePage(
   page: Partial<Page> & {
     story?: string;
@@ -341,12 +436,144 @@ function migratePage(
     const pixelMark = toPixelMark(mark, size);
     nextPixels = rasterizeTextRun(nextPixels, size, pixelMark);
   }
+  const boardX = Number(page.boardX);
+  const boardY = Number(page.boardY);
+  const nextPageId =
+    typeof page.nextPageId === "string" && page.nextPageId.trim()
+      ? page.nextPageId
+      : null;
   return {
     id: page.id || createId("page"),
     width: size.width,
     height: size.height,
     texts: [],
     pixels: nextPixels,
+    placements: normalizePlacements(page.placements),
+    boardX: Number.isFinite(boardX) ? boardX : Number.NaN,
+    boardY: Number.isFinite(boardY) ? boardY : Number.NaN,
+    nextPageId,
+  };
+}
+
+/**
+ * Give every page a board position (laying out any without stored coords in a
+ * left-to-right row) and drop story links that point at a missing page or the
+ * page itself. Runs once after migration so old books open cleanly on the board.
+ */
+function sanitizeBoard(pages: Page[]): Page[] {
+  const ids = new Set(pages.map((page) => page.id));
+  return pages.map((page, index) => {
+    const fallback = defaultBoardPosition(index);
+    const boardX = Number.isFinite(page.boardX) ? page.boardX : fallback.x;
+    const boardY = Number.isFinite(page.boardY) ? page.boardY : fallback.y;
+    const nextPageId =
+      page.nextPageId &&
+      page.nextPageId !== page.id &&
+      ids.has(page.nextPageId)
+        ? page.nextPageId
+        : null;
+    return { ...page, boardX, boardY, nextPageId };
+  });
+}
+
+function withActivePalette(
+  film: Film,
+  profile: PaletteProfile,
+  palettes = film.palettes,
+): Film {
+  const nextPalettes = palettes.some((item) => item.id === profile.id)
+    ? palettes.map((item) => (item.id === profile.id ? profile : item))
+    : [...palettes, profile];
+  const ordered = ensurePaletteProfiles(nextPalettes);
+  return {
+    ...film,
+    palettes: ordered,
+    activePaletteId: profile.id,
+    palette: profile.swatches,
+    paletteName: isDefaultPaletteId(profile.id) ? undefined : profile.name,
+  };
+}
+
+function activeProfile(film: Film): PaletteProfile {
+  return (
+    film.palettes.find((item) => item.id === film.activePaletteId) ??
+    film.palettes.find((item) => isDefaultPaletteId(item.id)) ??
+    defaultPaletteProfile()
+  );
+}
+
+function pickColorForProfile(profile: PaletteProfile): string {
+  if (profile.lastColor && profile.swatches.includes(profile.lastColor)) {
+    return profile.lastColor;
+  }
+  if (profile.swatches.includes(color)) {
+    return color;
+  }
+  return profile.swatches[0] ?? "#000000";
+}
+
+function rememberColorOnActive(hex: string) {
+  const film = memory;
+  const profile = activeProfile(film);
+  if (profile.lastColor === hex || !profile.swatches.includes(hex)) {
+    return;
+  }
+  memory = withActivePalette(film, { ...profile, lastColor: hex });
+  if (clientReady) {
+    persist(memory);
+  }
+}
+
+function migratePalettes(parsed: Partial<Film>): Pick<
+  Film,
+  "palette" | "paletteName" | "palettes" | "activePaletteId"
+> {
+  const storedPalette = normalizePalette(parsed.palette) ?? defaultPalette();
+  const storedName = normalizePaletteName(parsed.paletteName);
+  const rawProfiles = Array.isArray(parsed.palettes)
+    ? parsed.palettes
+        .map((item) => normalizePaletteProfile(item))
+        .filter((item): item is PaletteProfile => item !== null)
+    : [];
+
+  if (rawProfiles.length > 0) {
+    const palettes = ensurePaletteProfiles(rawProfiles);
+    const activeId =
+      typeof parsed.activePaletteId === "string" &&
+      palettes.some((item) => item.id === parsed.activePaletteId)
+        ? parsed.activePaletteId
+        : DEFAULT_PALETTE_ID;
+    const active =
+      palettes.find((item) => item.id === activeId) ?? palettes[0];
+    return {
+      palettes,
+      activePaletteId: active.id,
+      palette: active.swatches,
+      paletteName: isDefaultPaletteId(active.id) ? undefined : active.name,
+    };
+  }
+
+  const defaultProfile = defaultPaletteProfile();
+  if (!storedName) {
+    defaultProfile.swatches = storedPalette;
+    return {
+      palettes: [defaultProfile],
+      activePaletteId: DEFAULT_PALETTE_ID,
+      palette: storedPalette,
+      paletteName: undefined,
+    };
+  }
+
+  const theme: PaletteProfile = {
+    id: createId("palette"),
+    name: storedName,
+    swatches: storedPalette,
+  };
+  return {
+    palettes: [defaultProfile, theme],
+    activePaletteId: theme.id,
+    palette: storedPalette,
+    paletteName: storedName,
   };
 }
 
@@ -375,17 +602,17 @@ function normalizeFilm(
       break;
     }
   }
+  const palettes = migratePalettes(parsed);
   return {
     brief: parsed.brief ?? "",
-    pages: parsed.pages.map((page) =>
+    pages: sanitizeBoard(parsed.pages.map((page) =>
       migratePage(page, fallback, paperAsEmpty),
-    ),
+    )),
     activeIndex: Math.min(
       Math.max(0, parsed.activeIndex ?? 0),
       parsed.pages.length - 1,
     ),
-    palette: normalizePalette(parsed.palette) ?? defaultPalette(),
-    paletteName: normalizePaletteName(parsed.paletteName),
+    ...palettes,
     assets,
   };
 }
@@ -395,6 +622,13 @@ function readStored(): Film | null {
     const current = window.localStorage.getItem(STORAGE_KEY);
     if (current) {
       return normalizeFilm(JSON.parse(current) as Partial<Film>, false);
+    }
+    const compat =
+      COMPAT_KEYS.map((key) => window.localStorage.getItem(key)).find(
+        Boolean,
+      ) ?? null;
+    if (compat) {
+      return normalizeFilm(JSON.parse(compat) as Partial<Film>, false);
     }
     const legacy =
       LEGACY_KEYS.map((key) => window.localStorage.getItem(key)).find(Boolean) ??
@@ -433,7 +667,10 @@ function pushUndo() {
   if (!page) {
     return;
   }
-  undos.push(clonePixels(page.pixels));
+  undos.push({
+    pixels: clonePixels(page.pixels),
+    placements: clonePlacements(page.placements),
+  });
   if (undos.length > UNDO_LIMIT) {
     undos.shift();
   }
@@ -506,6 +743,9 @@ function applyDensity(film: Film, width: number): Film {
             height: size.height,
             pixels: resizePixels(item.pixels, from, size),
             texts: [],
+            placements: clonePlacements(item.placements).map((placement) =>
+              clampPlacementOrigin(placement, size),
+            ),
           }
         : item,
     ),
@@ -522,7 +762,9 @@ function patchTexts(page: Page, nextTexts: TextMark[], recordUndo = true) {
 }
 
 function patchActivePage(
-  patch: Partial<Pick<Page, "pixels" | "texts" | "width" | "height">>,
+  patch: Partial<
+    Pick<Page, "pixels" | "texts" | "width" | "height" | "placements">
+  >,
 ) {
   const film = memory;
   const page = activePage(film);
@@ -558,6 +800,7 @@ function subscribe(listener: () => void) {
       }
       clientReady = true;
       memory = readStored() ?? SEED;
+      color = pickColorForProfile(activeProfile(memory));
       emit();
     });
   }
@@ -577,6 +820,10 @@ function liveSize(): Size {
 function clearSelection() {
   selectedId = null;
   selectedKind = null;
+}
+
+function clearPlacementSelection() {
+  selectedPlacementId = null;
 }
 
 function dropFloating() {
@@ -650,6 +897,7 @@ function createApi(
   _currentSelectedId: string | null,
   _currentSelectedKind: MarkKind | null,
   _currentFloating: FloatingPixels | null,
+  _currentPlacementId: string | null,
 ): FilmApi {
   return {
     get film() {
@@ -676,6 +924,9 @@ function createApi(
     get brushSize() {
       return brushSize;
     },
+    get stageZoom() {
+      return stageZoom;
+    },
     get selectedAssetId() {
       return selectedAssetId;
     },
@@ -694,6 +945,9 @@ function createApi(
     get selectedKind() {
       return selectedKind;
     },
+    get selectedPlacementId() {
+      return selectedPlacementId;
+    },
     get active() {
       return activePage();
     },
@@ -710,17 +964,22 @@ function createApi(
           if (selectedKind !== "text") {
             clearSelection();
           }
+          clearPlacementSelection();
           selectedAssetId = null;
           break;
         case "shape":
           clearSelection();
+          clearPlacementSelection();
           selectedAssetId = null;
           break;
         case "move":
+          clearSelection();
+          break;
         case "pencil":
         case "eraser":
         case "fill":
           clearSelection();
+          clearPlacementSelection();
           break;
         default:
           return assertNever(next, "Unknown tool");
@@ -729,6 +988,7 @@ function createApi(
     },
     setColor: (next) => {
       color = hexColor(next, currentColor);
+      rememberColorOnActive(color);
       const page = activePage();
       if (page && selectedId && selectedKind === "text") {
         patchTexts(
@@ -780,6 +1040,29 @@ function createApi(
     },
     setBrushSize: (next) => {
       brushSize = normalizeBrushSize(next);
+      emit();
+    },
+    setStageZoom: (next) => {
+      const normalized = normalizeStageZoom(next);
+      if (normalized === stageZoom) {
+        return;
+      }
+      stageZoom = normalized;
+      emit();
+    },
+    stepStageZoom: (direction) => {
+      const next = stepStageZoomValue(stageZoom, direction);
+      if (next === stageZoom) {
+        return;
+      }
+      stageZoom = next;
+      emit();
+    },
+    resetStageZoom: () => {
+      if (stageZoom === DEFAULT_STAGE_ZOOM) {
+        return;
+      }
+      stageZoom = DEFAULT_STAGE_ZOOM;
       emit();
     },
     selectAsset: (id) => {
@@ -931,27 +1214,150 @@ function createApi(
         textSize = mark.size;
         color = mark.color;
         dropFloating();
+        clearPlacementSelection();
         emit();
         return true;
       }
       return false;
     },
+    selectPlacement: (id) => {
+      if (!id) {
+        clearPlacementSelection();
+        emit();
+        return true;
+      }
+      const page = activePage();
+      if (!page?.placements.some((placement) => placement.id === id)) {
+        return false;
+      }
+      selectedPlacementId = id;
+      clearSelection();
+      dropFloating();
+      emit();
+      return true;
+    },
+    movePlacement: (id, x, y, recordUndo = false) => {
+      const page = activePage();
+      if (!page) {
+        return false;
+      }
+      const current = page.placements.find((placement) => placement.id === id);
+      if (!current) {
+        return false;
+      }
+      const next = clampPlacementOrigin(
+        { ...current, x: Math.round(x), y: Math.round(y) },
+        liveSize(),
+      );
+      if (next.x === current.x && next.y === current.y) {
+        return false;
+      }
+      if (recordUndo) {
+        pushUndo();
+      }
+      selectedPlacementId = id;
+      patchActivePage({
+        placements: page.placements.map((placement) =>
+          placement.id === id ? next : placement,
+        ),
+      });
+      return true;
+    },
     setBrief: (brief) => {
       commit({ ...getSnapshot(), brief });
     },
     setPalette: (colors, name) => {
-      const next = normalizePalette(colors);
+      const current = getSnapshot();
+      const next = colors ? normalizePalette(colors) : null;
+      const label = normalizePaletteName(name);
+
       if (!next) {
-        return false;
+        if (!label) {
+          return false;
+        }
+        const match = findPaletteByName(current.palettes, label);
+        if (!match) {
+          return false;
+        }
+        color = pickColorForProfile(match);
+        commit(withActivePalette(current, match));
+        return true;
       }
+
+      let target: PaletteProfile;
+      if (label && !isReservedPaletteName(label)) {
+        const existing = findPaletteByName(current.palettes, label);
+        target = existing
+          ? { ...existing, name: label, swatches: next }
+          : {
+              id: createId("palette"),
+              name: label,
+              swatches: next,
+            };
+      } else {
+        const active = activeProfile(current);
+        if (!isDefaultPaletteId(active.id)) {
+          target = { ...active, swatches: next };
+        } else {
+          target = {
+            id: createId("palette"),
+            name: nextThemeName(current.palettes),
+            swatches: next,
+          };
+        }
+      }
+
       if (!next.includes(color)) {
         color = next[0];
       }
-      commit({
-        ...getSnapshot(),
-        palette: next,
-        paletteName: normalizePaletteName(name),
-      });
+      target = { ...target, lastColor: color };
+      commit(withActivePalette(current, target));
+      return true;
+    },
+    selectPalette: (id) => {
+      const current = getSnapshot();
+      const profile = current.palettes.find((item) => item.id === id);
+      if (!profile) {
+        return false;
+      }
+      color = pickColorForProfile(profile);
+      commit(withActivePalette(current, { ...profile, lastColor: color }));
+      return true;
+    },
+    addPaletteProfile: (name) => {
+      const current = getSnapshot();
+      const requested = normalizePaletteName(name);
+      const label = requested
+        ? usablePaletteName(requested, current.palettes)
+        : nextThemeName(current.palettes);
+      if (!label) {
+        return null;
+      }
+      const source = activeProfile(current);
+      const profile: PaletteProfile = {
+        id: createId("palette"),
+        name: label,
+        swatches: [...source.swatches],
+        lastColor: source.swatches.includes(color) ? color : source.swatches[0],
+      };
+      color = pickColorForProfile(profile);
+      commit(withActivePalette(current, profile));
+      return profile;
+    },
+    renamePalette: (id, name) => {
+      const current = getSnapshot();
+      const profile = current.palettes.find((item) => item.id === id);
+      if (!profile || isDefaultPaletteId(profile.id)) {
+        return false;
+      }
+      const label = usablePaletteName(name, current.palettes, profile.id);
+      if (!label) {
+        return false;
+      }
+      if (label === profile.name) {
+        return true;
+      }
+      commit(withActivePalette(current, { ...profile, name: label }));
       return true;
     },
     addSwatch: (value) => {
@@ -959,30 +1365,32 @@ function createApi(
       if (!hex) {
         return false;
       }
+      color = hex;
       const current = getSnapshot();
-      if (current.palette.includes(hex)) {
-        return true;
-      }
-      if (current.palette.length >= MAX_PALETTE) {
-        return false;
-      }
-      commit({
-        ...current,
-        palette: [...current.palette, hex],
-      });
+      const active = activeProfile(current);
+      const swatches = active.swatches.includes(hex)
+        ? active.swatches
+        : [...active.swatches, hex];
+      commit(
+        withActivePalette(current, {
+          ...active,
+          swatches,
+          lastColor: hex,
+        }),
+      );
       return true;
     },
     resetPalette: () => {
-      const next = defaultPalette();
-      if (!next.includes(color)) {
-        color = next[0];
-      }
       const current = getSnapshot();
-      commit({
-        ...current,
-        palette: next,
-        paletteName: undefined,
-      });
+      const restored: PaletteProfile = {
+        ...defaultPaletteProfile(),
+        lastColor: defaultPalette()[0],
+      };
+      color = pickColorForProfile(restored);
+      const palettes = current.palettes.map((item) =>
+        isDefaultPaletteId(item.id) ? restored : item,
+      );
+      commit(withActivePalette(current, restored, palettes));
     },
     setDensity: (width) => {
       dropFloating();
@@ -1007,7 +1415,29 @@ function createApi(
         };
         page.pixels = rasterizeTextRun(page.pixels, size, storyMark);
       }
-      const pages = [...current.pages, page];
+      let position = defaultBoardPosition(current.pages.length);
+      if (current.pages.length > 0) {
+        let bestRight = Number.NEGATIVE_INFINITY;
+        let bestY = 0;
+        for (const item of current.pages) {
+          const right = item.boardX + BOARD_NODE_WIDTH;
+          if (right > bestRight) {
+            bestRight = right;
+            bestY = item.boardY;
+          }
+        }
+        position = { x: bestRight + BOARD_NODE_GAP, y: bestY };
+      }
+      page.boardX = position.x;
+      page.boardY = position.y;
+      const order = readingOrder(current.pages);
+      const tail = order[order.length - 1];
+      const linked = tail
+        ? current.pages.map((item) =>
+            item.id === tail.id ? { ...item, nextPageId: page.id } : item,
+          )
+        : current.pages;
+      const pages = [...linked, page];
       undos.length = 0;
       dropFloating();
       commit({
@@ -1024,6 +1454,7 @@ function createApi(
       }
       undos.length = 0;
       clearSelection();
+      clearPlacementSelection();
       dropFloating();
       commit({ ...current, activeIndex: index });
       return true;
@@ -1037,13 +1468,62 @@ function createApi(
       ) {
         return false;
       }
-      const pages = current.pages.filter((_, i) => i !== index);
+      const removed = current.pages[index];
+      const pages = current.pages
+        .filter((_, i) => i !== index)
+        .map((item) =>
+          item.nextPageId === removed.id
+            ? { ...item, nextPageId: removed.nextPageId ?? null }
+            : item,
+        );
       undos.length = 0;
       dropFloating();
+      clearPlacementSelection();
       commit({
         ...current,
         pages,
         activeIndex: Math.min(current.activeIndex, pages.length - 1),
+      });
+      return true;
+    },
+    movePage: (id, x, y) => {
+      const current = getSnapshot();
+      const page = current.pages.find((item) => item.id === id);
+      if (!page) {
+        return false;
+      }
+      const nextX = Math.round(x);
+      const nextY = Math.round(y);
+      if (page.boardX === nextX && page.boardY === nextY) {
+        return true;
+      }
+      commit({
+        ...current,
+        pages: current.pages.map((item) =>
+          item.id === id ? { ...item, boardX: nextX, boardY: nextY } : item,
+        ),
+      });
+      return true;
+    },
+    linkPages: (fromId, toId) => {
+      const current = getSnapshot();
+      const from = current.pages.find((item) => item.id === fromId);
+      if (!from) {
+        return false;
+      }
+      if (toId !== null) {
+        if (toId === fromId || !current.pages.some((item) => item.id === toId)) {
+          return false;
+        }
+      }
+      if ((from.nextPageId ?? null) === toId) {
+        return true;
+      }
+      commit({
+        ...current,
+        pages: current.pages.map((item) =>
+          item.id === fromId ? { ...item, nextPageId: toId } : item,
+        ),
       });
       return true;
     },
@@ -1114,6 +1594,7 @@ function createApi(
       const under = stamp.pixels.map(() => EMPTY);
       floating = { ...stamp, under };
       selectedAssetId = null;
+      clearPlacementSelection();
       commit(blitStamp(hole, size, stamp));
       return true;
     },
@@ -1128,7 +1609,7 @@ function createApi(
         size,
       );
       if (next.x === floating.x && next.y === floating.y) {
-        return true;
+        return false;
       }
       if (recordUndo) {
         pushUndoFn();
@@ -1186,7 +1667,7 @@ function createApi(
         return null;
       }
       const stamp = extractStamp(
-        page.pixels,
+        compositedPagePixels(page, current.assets),
         size,
         box.x,
         box.y,
@@ -1233,9 +1714,25 @@ function createApi(
       if (selectedAssetId === id) {
         selectedAssetId = null;
       }
+      const page = activePage();
+      if (
+        selectedPlacementId &&
+        page?.placements.some(
+          (placement) =>
+            placement.id === selectedPlacementId && placement.assetId === id,
+        )
+      ) {
+        clearPlacementSelection();
+      }
       commit({
         ...current,
         assets: current.assets.filter((item) => item.id !== id),
+        pages: current.pages.map((item) => ({
+          ...item,
+          placements: (item.placements ?? []).filter(
+            (placement) => placement.assetId !== id,
+          ),
+        })),
       });
       return true;
     },
@@ -1327,6 +1824,10 @@ function createApi(
       if (!asset) {
         return null;
       }
+      const page = activePage();
+      if (!page) {
+        return null;
+      }
       let width = input.width;
       let height = input.height;
       if (input.scale != null && Number.isFinite(input.scale)) {
@@ -1334,8 +1835,37 @@ function createApi(
         width = Math.max(1, Math.round(asset.width * scale));
         height = Math.max(1, Math.round(asset.height * scale));
       }
+      if (![input.x, input.y, width ?? asset.width, height ?? asset.height].every(Number.isFinite)) {
+        return null;
+      }
+      if ((width ?? asset.width) <= 0 || (height ?? asset.height) <= 0) return null;
+      const ratio = Math.max((width ?? asset.width) / asset.width, (height ?? asset.height) / asset.height);
+      if (ratio <= 0 || asset.width * ratio > MAX_WIDTH || asset.height * ratio > MAX_WIDTH) {
+        return null;
+      }
       const stamp = stampFromAsset(asset, input.x, input.y, width, height);
-      return placeStamp(stamp, input.keepFloating ?? true);
+      const placed = clampStampOrigin(stamp, liveSize());
+      const placement: Placement = {
+        id: createId("place"),
+        assetId: asset.id,
+        x: placed.x,
+        y: placed.y,
+        width: placed.width,
+        height: placed.height,
+      };
+      dropFloating();
+      if (input.recordUndo ?? true) {
+        pushUndo();
+      }
+      patchActivePage({
+        placements: [...(page.placements ?? []), placement],
+      });
+      if (input.keepFloating ?? true) {
+        selectedPlacementId = placement.id;
+        clearSelection();
+        emit();
+      }
+      return placement;
     },
     setText: (id, body) => {
       const page = activePage();
@@ -1481,10 +2011,12 @@ function createApi(
       }
       const size = liveSize();
       dropFloating();
+      clearPlacementSelection();
       pushUndo();
       patchActivePage({
         pixels: emptyPixels(size.width, size.height),
         texts: [],
+        placements: [],
       });
     },
     drawScene: (prompt) => {
@@ -1512,7 +2044,11 @@ function createApi(
         return false;
       }
       dropFloating();
-      patchActive(previous);
+      clearPlacementSelection();
+      patchActivePage({
+        pixels: previous.pixels,
+        placements: previous.placements,
+      });
       return true;
     },
   };
@@ -1555,6 +2091,11 @@ export function FilmProvider({ children }: { children: ReactNode }) {
     () => brushSize,
     () => DEFAULT_BRUSH_SIZE as BrushSize,
   );
+  const currentStageZoom = useSyncExternalStore(
+    subscribe,
+    () => stageZoom,
+    () => DEFAULT_STAGE_ZOOM,
+  );
   const currentAssetId = useSyncExternalStore(
     subscribe,
     () => selectedAssetId,
@@ -1585,6 +2126,11 @@ export function FilmProvider({ children }: { children: ReactNode }) {
     () => floating,
     () => null,
   );
+  const currentPlacementId = useSyncExternalStore(
+    subscribe,
+    () => selectedPlacementId,
+    () => null,
+  );
   const api = useMemo(
     () =>
       createApi(
@@ -1600,9 +2146,11 @@ export function FilmProvider({ children }: { children: ReactNode }) {
         currentSelectedId,
         currentSelectedKind,
         currentFloating,
+        currentPlacementId,
       ),
     [
       currentBrushSize,
+      currentStageZoom,
       currentColor,
       currentFilled,
       currentFloating,
@@ -1610,6 +2158,7 @@ export function FilmProvider({ children }: { children: ReactNode }) {
       currentFrame,
       currentSelectedId,
       currentSelectedKind,
+      currentPlacementId,
       currentSize,
       currentAssetId,
       currentWorkshopDraft,
