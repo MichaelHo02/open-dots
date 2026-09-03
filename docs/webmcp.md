@@ -15,7 +15,7 @@ Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.
 | `get_asset_image` | `paint_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). UI-only controls (brush, workshop, tool picker, stage zoom) are not exposed.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). `add_asset` also accepts a compact direct bitmap (`bitmapPalette` + comma-separated `indexedRows`, with `.` for transparency). A Codex agent that generated an image file can use the existing visible **Import image** control; both routes create the same editable asset. UI-only drawing controls (brush, workshop, tool picker, stage zoom) are not exposed.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 

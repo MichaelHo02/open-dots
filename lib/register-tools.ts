@@ -65,6 +65,7 @@ import {
   type WebMCPTool,
 } from "./webmcp-polyfill";
 import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "./draw";
+import { indexedRowsToPixels } from "./image-asset-import";
 
 type ApiRef = { current: FilmApi };
 
@@ -376,6 +377,13 @@ function resolveAssetPixels(input: Record<string, unknown>): {
   const height = asInteger(input.height);
   const template = asString(input.template);
   const fill = asString(input.fill);
+
+  if (input.indexedRows !== undefined || input.bitmapPalette !== undefined) {
+    const bitmap = indexedRowsToPixels(input.indexedRows, input.bitmapPalette, MAX_ASSET_SIDE);
+    if (!bitmap) return null;
+    if ((width !== undefined && width !== bitmap.width) || (height !== undefined && height !== bitmap.height)) return null;
+    return bitmap;
+  }
 
   if (template === "empty") {
     if (width === undefined || height === undefined) {
@@ -963,7 +971,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "add_asset",
       description:
-        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with paint_asset. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). For a direct bitmap, pass bitmapPalette plus indexedRows: comma-separated zero-based palette indexes with \".\" for transparency; size is inferred. Otherwise start with template \"empty\" then paint, or pass hex rows, flat pixels, a solid fill, or a page rect. If Codex generated an image file, use the visible Import image control instead. Painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -985,6 +993,17 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             type: "array",
             items: { type: "string" },
             description: "Comma-separated #rrggbb per row (+ width + height)",
+          },
+          bitmapPalette: {
+            type: "array",
+            items: { type: "string", description: "#rrggbb" },
+            description: "Colors referenced by zero-based indexes in indexedRows",
+          },
+          indexedRows: {
+            type: "array",
+            maxItems: MAX_ASSET_SIDE,
+            items: { type: "string" },
+            description: "Direct bitmap rows such as \".,0,1,0,.\"; indexes reference bitmapPalette and . is transparent. Width and height are inferred.",
           },
           template: {
             type: "string",
@@ -1028,7 +1047,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             });
         if (!asset) {
           return toolError(
-            `Need a valid asset: pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect (x,y,width,height). pixels.length must equal width×height.`,
+            `Need a valid asset: bitmapPalette+indexedRows, pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect. Indexed rows use comma-separated zero-based palette indexes and \".\" for transparency; all rows must have equal width.`,
           );
         }
         const isEmptyTemplate =

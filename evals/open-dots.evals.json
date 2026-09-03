@@ -122,6 +122,26 @@
     ]
   },
   {
+    "name": "Create a sprite from a direct indexed bitmap",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Create this exact tiny pixel flower directly as a bitmap: transparent corners, dark outline, and a pink center."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "add_asset",
+        "arguments": {
+          "name": { "$any": true },
+          "bitmapPalette": { "$type": "array" },
+          "indexedRows": { "$type": "array" }
+        }
+      }
+    ]
+  },
+  {
     "name": "Draw an outline pass into a sprite",
     "messages": [
       {

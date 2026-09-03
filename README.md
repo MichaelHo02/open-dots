@@ -27,7 +27,7 @@ Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pi
 | `set_palette` | Create/select a named color profile (`name` + any number of #rrggbb swatches). Default is never overwritten; extra colors can be used inline in draw ops |
 | `add_page` | New page + optional pixel density (`width` 48–256, height follows 16:9) |
 | `select_page` / `remove_page` | Book navigation |
-| `add_asset` | Create sprite — template `empty`, hex `rows`, `fill`, or page-rect copy |
+| `add_asset` | Create sprite — indexed bitmap, template `empty`, hex `rows`, `fill`, or page-rect copy |
 | `paint_asset` | Bulk sprite ops — `rects`/`lines`/`fills` + ≤4,096 detail `pixels`/call; returns inline PNG |
 | `paint_page` | Page backgrounds/touch-ups — same `rects`/`lines`/`fills`/`pixels` ops; `color ""` erases |
 | `stamp_assets` / `remove_asset` | Overlay placements on the page (order = z-index, not baked into pixels); delete asset |

@@ -341,7 +341,7 @@ const TOOL_WORKFLOW = {
     { name: "add_page", when: "New page + optional width for pixel density" },
     { name: "select_page", when: "Switch active page by index" },
     { name: "remove_page", when: "Delete a page" },
-    { name: "add_asset", when: "Create sprite — template empty, rows, fill, or page copy" },
+    { name: "add_asset", when: "Create sprite — direct indexed bitmap, template empty, hex rows, fill, or page copy" },
     { name: "paint_asset", when: "Bulk sprite ops: rects/lines/fills/pixels, returns PNG" },
     { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
     { name: "stamp_assets", when: "Add movable overlay placements (array order = z-index; not baked into pixels)" },
@@ -349,7 +349,7 @@ const TOOL_WORKFLOW = {
     { name: "place_text", when: "Rasterize story words onto the page" },
   ],
   notes:
-    "Pass colors inline on each draw op. Choose page density with add_page width. There is no undo — erase by painting color \"\" then repaint, using the returned PNG. For decorations use rects/lines/fills or stamp assets.",
+    "Choose the shortest asset path: Codex-generated file → visible Import image control; exact small bitmap → add_asset bitmapPalette+indexedRows; iterative drawing → add_asset empty then paint_asset. Indexed rows use comma-separated zero-based palette indexes and . for transparency. All paths create the same editable asset. Compare the returned or requested PNG before stamping.",
 };
 
 const ANTI_PATTERNS = {
@@ -357,7 +357,7 @@ const ANTI_PATTERNS = {
   never: [
     "Shipping a sparse 'decorated wall' — a few big flat objects on empty canvas. Fill the frame with many assets.",
     "One flat tone per object. Always add a shadow tier; add highlights where lit.",
-    "One-shotting a complex sprite or whole scene in a single call.",
+    "One-shotting a complex sprite or whole scene without inspecting and correcting the returned PNG.",
     "Painting entire pages with paint_page (or a giant pixels array) instead of overlay stamp_assets.",
     "One huge asset covering the page instead of many small overlay stamps.",
     "Maximizing unique hexes or chasing thousands of page colors. Each sprite uses a 4–12 tone ramp; scene colorCount can be high after composing many assets — that is expected, not a goal to inflate.",
