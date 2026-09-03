@@ -15,7 +15,7 @@
     "ai_usage": "",
     "codex_usage": ""
   },
-  "current_stage": "prepare-submission",
+  "current_stage": "submit-project",
   "completed_stages": ["start-hackathon", "review", "resources"],
   "rules_acknowledged": true,
   "learning": {
@@ -25,6 +25,6 @@
     "plan_file": "",
     "checklist_file": ""
   },
-  "submission": { "draft_file": "devpost-submission.md", "status": "drafting" },
+  "submission": { "draft_file": "devpost-submission.md", "status": "needs-work" },
   "next_command": "prepare-submission"
 }
