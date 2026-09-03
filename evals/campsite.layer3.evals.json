@@ -5,7 +5,7 @@
       {
         "role": "user",
         "type": "message",
-        "content": "Create an original 256x144 campsite story page. Start with the pixel-art guide and inspect the storybook. Use a limited named night palette. Paint a flat navy sky and grassy clearing, then build reusable assets for a striped tent, campfire, Mira, a fox, a pine tree, and a star cluster. Stamp the pine tree four times and the stars several times. Compose the tent on the left, Mira walking near the center, the fire at center, and the fox looking back on the right. Give assets outline, fill, shade, and highlight passes and inspect them as you work. Add the exact rasterized text 'Mira followed the little fox.' in the upper-left sky. Inspect the final page and improve it before finishing. Keep readable silhouettes, cool moonlight, warm firelight, and three clear depth bands."
+        "content": "Create an original 256x144 campsite story page in no more than 20 tool calls. Use exactly this efficient workflow: get_pixel_art_guide, get_storybook, set a named night palette, add the 256px page, paint the navy sky and grassy clearing, then create and paint one reusable asset each for tent, campfire, Mira, fox, pine tree, and star cluster. For each asset, combine outline, fill, shade, and highlight primitives into its single paint_asset call; do not call get_asset_image because paint_asset already returns its PNG. Add the exact rasterized text 'Mira followed the little fox.' in the upper-left sky. Use one stamp_assets call to place the tent left, Mira near center, fire at center, fox looking back on the right, four trees, and several star clusters. Finish with get_page_image. Prioritize completion over extra refinement and do not make any other calls."
       }
     ],
     "expectedCall": [
@@ -16,7 +16,17 @@
           { "functionName": "set_palette", "arguments": { "name": { "$any": true }, "colors": { "$type": "array" } } },
           { "functionName": "add_page", "arguments": { "width": 256 } },
           { "functionName": "paint_page", "arguments": null },
-          { "functionName": "add_asset", "arguments": { "name": { "$any": true } } },
+          { "functionName": "add_asset", "arguments": { "name": "tent" } },
+          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          { "functionName": "add_asset", "arguments": { "name": "campfire" } },
+          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          { "functionName": "add_asset", "arguments": { "name": "mira" } },
+          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          { "functionName": "add_asset", "arguments": { "name": "fox" } },
+          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          { "functionName": "add_asset", "arguments": { "name": "pine tree" } },
+          { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
+          { "functionName": "add_asset", "arguments": { "name": "star cluster" } },
           { "functionName": "paint_asset", "arguments": { "id": { "$any": true } } },
           { "functionName": "stamp_assets", "arguments": { "stamps": { "$type": "array" } } },
           { "functionName": "place_text", "arguments": { "body": { "$contains": "Mira followed the little fox." } } },

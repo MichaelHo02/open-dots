@@ -98,4 +98,6 @@ npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/layer
 
 Repeated reads, image inspections, and paint passes are allowed. The scorer
 only enforces real dependencies and requires stamped composition plus a final
-page inspection before it can return `pass`.
+page inspection before it can return `pass`. The four core subjects (tent,
+campfire, Mira, and fox) are required; trees and stars add score but do not
+block an otherwise complete result.

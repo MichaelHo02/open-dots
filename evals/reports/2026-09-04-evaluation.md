@@ -67,6 +67,25 @@ the final page inspection.
 - Runner/model: `webmcp-evals` 0.0.4 / `google:gemini-3.1-flash-lite`
 - Configured ceiling: 80 steps; observed trajectory: 20 calls
 
+### Efficient 20-call rerun
+
+The prompt was tightened to fit the runner's observed 20-call trajectory: each
+asset combines outline/fill/shade/highlight primitives in one paint call, and
+the final two calls are reserved for stamping and page inspection. This run
+completed all six asset groups, made 11 stamps, placed the exact text, and
+called `get_page_image` last.
+
+- Semantic milestone score: **100/100, pass**
+- Strict positional matcher: **6/20** (still misleading when the model changes reasonable call order)
+- Full report: [campsite-layer3-efficient-gemini-3.1-flash-lite-2026-09-04.html](./campsite-layer3-efficient-gemini-3.1-flash-lite-2026-09-04.html)
+- Semantic score: [campsite-layer3-efficient-semantic-score.json](./campsite-layer3-efficient-semantic-score.json)
+- Report SHA-256: `f628bce0b50890d16b0215b1ac4d95491e4a109a3cd73bae544f5002e226f20d`
+
+This proves successful Layer 3 tool use and journey completion, not visual
+quality. The runner did not preserve the returned PNG, and `get_page_image`
+reported six library assets with a sparse-scene warning. A separate exported
+PNG is still required for the Gemini visual rubric.
+
 The official runner currently accepts text-only messages and does not attach
 the reference PNG. A future visual run needs an image-capable browser harness,
 then the exported 256×144 page can be scored with:

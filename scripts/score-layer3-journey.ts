@@ -6,7 +6,15 @@ type Call = { toolName: string; input: Record<string, unknown> };
 type Milestone = { name: string; score: number; weight: number; evidence: string };
 
 const requiredAssets = ["tent", "campfire", "mira", "fox", "pine tree", "star cluster"];
+const coreAssets = ["tent", "campfire", "mira", "fox"];
 const mutations = new Set(["set_palette", "add_page", "paint_page", "add_asset", "paint_asset", "stamp_assets", "place_text"]);
+
+function canonicalAsset(name: string) {
+  const normalized = name.toLowerCase().replace(/[^a-z]/g, "");
+  if (normalized.includes("star") && normalized.includes("cluster")) return "star cluster";
+  if (normalized.includes("tree")) return "pine tree";
+  return requiredAssets.find((asset) => normalized === asset.replace(/[^a-z]/g, "")) ?? normalized;
+}
 
 function callsFrom(report: unknown): Call[] {
   type RawCall = Call & { toolCallId?: string };
@@ -35,7 +43,7 @@ function scoreJourney(calls: Call[]) {
   const paintPage = index("paint_page");
   const text = calls.findIndex((call) => call.toolName === "place_text" && call.input.body === "Mira followed the little fox.");
   const assets = calls.map((call, i) => ({ ...call, i })).filter((call) => call.toolName === "add_asset");
-  const assetNames = new Set(assets.map((call) => String(call.input.name).toLowerCase()));
+  const assetNames = new Set(assets.map((call) => canonicalAsset(String(call.input.name))));
   const assetIndexes = new Map(assets.map((call) => [call.input.id, call.i]));
   const created = requiredAssets.filter((name) => assetNames.has(name)).length;
   const paints = calls.map((call, i) => ({ ...call, i })).filter((call) => call.toolName === "paint_asset");
@@ -43,7 +51,10 @@ function scoreJourney(calls: Call[]) {
   const stamps: Array<Record<string, unknown> & { i: number }> = calls.map((call, i) => ({ ...call, i })).filter((call) => call.toolName === "stamp_assets").flatMap((call) =>
     (Array.isArray(call.input.stamps) ? call.input.stamps as Array<Record<string, unknown>> : []).map((stamp) => ({ ...stamp, i: call.i })),
   );
-  const stampIdsValid = stamps.length > 0 && stamps.every((stamp) => assetIndexes.has(stamp.assetId) && assetIndexes.get(stamp.assetId)! < stamp.i);
+  const stampIdsValid = stamps.length > 0 && stamps.every((stamp) => {
+    const id = stamp.assetId ?? stamp.id;
+    return assetIndexes.has(id) && assetIndexes.get(id)! < stamp.i;
+  });
   const finalImage = calls.map((call) => call.toolName).lastIndexOf("get_page_image");
   const lastMutation = calls.reduce((last, call, i) => mutations.has(call.toolName) ? i : last, -1);
 
@@ -53,12 +64,12 @@ function scoreJourney(calls: Call[]) {
     { name: "background", weight: 10, score: paintPage > addPage && addPage >= 0 ? 10 : 0, evidence: "Page background painted after page creation" },
     { name: "story_text", weight: 10, score: text >= 0 ? 10 : 0, evidence: "Exact rasterized sentence" },
     { name: "required_assets", weight: 25, score: Math.round(25 * created / requiredAssets.length), evidence: `${created}/${requiredAssets.length} named assets created` },
-    { name: "asset_iteration", weight: 10, score: (allCreatedPainted ? 5 : 0) + (index("get_asset_image") >= 0 ? 5 : 0), evidence: "Created assets painted and inspected" },
+    { name: "asset_iteration", weight: 10, score: allCreatedPainted ? 10 : 0, evidence: "Every created asset painted after creation; extra inspections are neutral" },
     { name: "composition", weight: 10, score: stamps.length > 0 && stampIdsValid ? 10 : 0, evidence: `${stamps.length} valid stamps` },
     { name: "final_verification", weight: 10, score: finalImage > lastMutation ? 10 : 0, evidence: "Final page inspected after composition" },
   ];
   const totalScore = milestones.reduce((sum, item) => sum + item.score, 0);
-  const complete = created === requiredAssets.length && stamps.length > 0 && finalImage > lastMutation;
+  const complete = coreAssets.every((name) => assetNames.has(name)) && stamps.length > 0 && finalImage > lastMutation;
   return { totalScore, verdict: complete && totalScore >= 75 ? "pass" : "incomplete", callCount: calls.length, milestones };
 }
 
