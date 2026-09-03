@@ -4,27 +4,27 @@ Open Dots
 
 ## One-line Summary
 
-An agent-native pixel-art picture-book canvas where children’s story ideas become shared creations: people compose directly, while an in-browser agent uses WebMCP tools to build, inspect, and refine scenes alongside them.
+An agent-native pixel-art storybook where people draw, arrange, and present multiple illustrated pages while an in-browser agent helps create and refine the art.
 
 ## Problem
 
-Picture-book creation tools tend to force a choice between manual drawing and opaque AI generation. A child or storyteller can describe a rich scene, but an agent usually has to guess through a visual interface or generate a single flat image that is difficult to revise, reuse, or understand.
+Picture-book creation tools tend to force a choice between manual drawing and opaque AI generation. A child or storyteller can describe a rich scene, but an agent usually has to guess through a visual interface or generate a single flat image that is difficult to revise, reuse, or carry forward into the next page of a story.
 
 ## Solution
 
-Open Dots gives the human a tactile pixel-book editor and gives an in-browser agent a small, structured WebMCP surface. The person can draw, write pixel text, place shapes, organize pages, and present the book. The agent can read the book state, create reusable sprites, paint them in deliberate passes, stamp them into layered scenes, and inspect PNG results before the next pass.
+Open Dots gives the human a tactile pixel-storybook editor and gives an in-browser agent a small, structured WebMCP surface. The person draws a sequence of illustrated pages, writes pixel text, places shapes, organizes the story, and presents it page by page. The agent can read the storybook state, create reusable sprites, paint them in deliberate passes, stamp them into layered scenes, and inspect PNG results before the next pass.
 
-The result is a collaborative editing loop rather than a prompt-to-image handoff: a person directs the story and art direction; the agent performs precise, inspectable canvas work through `document.modelContext`.
+The result is a collaborative storymaking loop rather than a prompt-to-image handoff: a person directs the narrative and art direction; the agent performs precise, inspectable canvas work through `document.modelContext`.
 
 ## Why This Matters
 
-Open Dots makes creative software more accessible without taking authorship away from the person making the book. Structured tools let an agent work with the same durable primitives that make revision meaningful—pages, palettes, assets, layers, placements, and pixels—so a creator can keep shaping the result instead of accepting a black-box image.
+Open Dots makes story creation more accessible without taking authorship away from the person making the book. Structured tools let an agent work with the same durable primitives that make revision meaningful—pages, palettes, assets, layers, placements, and pixels—so a creator can keep shaping the narrative instead of accepting a black-box image.
 
 ## How We Used AI
 
 WebMCP is the product capability, not an add-on. An in-browser agent discovers 15 Open Dots tools through `document.modelContext`, then follows a visual creation workflow: load the pixel-art guide, set a named palette, create and refine small assets, compare inline PNG feedback, stamp assets back-to-front, and inspect the composed page.
 
-The tools make the agent’s actions structured and recoverable. Read tools expose the film, asset images, and page images; write tools create pages, assets, palettes, pixels, text, and placements. Mutating asset operations return inline PNG feedback and guidance for the required next comparison pass, helping agents correct work rather than drawing blindly.
+The tools make the agent’s actions structured and recoverable. Read tools expose the storybook, asset images, and page images; write tools create pages, assets, palettes, pixels, text, and placements. Mutating asset operations return inline PNG feedback and guidance for the required next comparison pass, helping agents correct work rather than drawing blindly.
 
 ## How We Used Codex
 
@@ -32,7 +32,7 @@ Codex was used to implement and iterate on the editor, WebMCP registration layer
 
 ## Key Features
 
-- A light-mode pixel picture-book editor with multiple landscape pages and Present mode.
+- A light-mode pixel storybook editor with multiple illustrated landscape pages and Present mode.
 - Human tools for drawing, erasing, fill, pixel text, shapes, selections, layers, and reusable assets.
 - A persistent asset library and movable, layered stamps so agents can compose dense scenes from small reusable sprites.
 - Named palette profiles and bulk pixel operations for deliberate outline, fill, shade, and highlight passes.
@@ -43,7 +43,7 @@ Codex was used to implement and iterate on the editor, WebMCP registration layer
 
 ## Architecture
 
-Open Dots is a Next.js and React web application. Film state, pages, layers, palettes, assets, and placements are modeled in the client-side film store and persist in local storage.
+Open Dots is a Next.js and React web application. Storybook state, pages, layers, palettes, assets, and placements are modeled in the client-side store and persist in local storage.
 
 `WebMCPBridge` registers the app-wide tool surface through `document.modelContext`. A small compatibility layer provides a spec-shaped API when native WebMCP is unavailable for local inspection. Tool definitions validate inputs, return structured errors, attach read-only/write annotations, and produce text plus PNG image results where visual comparison matters.
 
@@ -55,7 +55,7 @@ Public demo: https://pixel-film-studio.vercel.app
 2. Start with a blank page and ask the agent to create a picture-book scene in Open Dots.
 3. Confirm the agent calls `get_pixel_art_guide`, waits for `get_film.webmcp.ready`, defines a palette, creates small assets, refines them using returned PNG feedback, and stamps them into a page.
 4. In the human UI, add/select a page, paint or add text, inspect layers, and open Present mode.
-5. Reload once, then ask the agent to re-fetch tools and call `get_film`; film data should remain available while the agent refreshes its tool snapshot.
+5. Reload once, then ask the agent to re-fetch tools and call `get_film`; storybook data should remain available while the agent refreshes its tool snapshot.
 
 Local checks:
 
@@ -82,19 +82,19 @@ TODO — record and upload a public YouTube video under three minutes. The video
 
 Suggested 2:30 outline:
 
-1. 0:00–0:20 — The creative problem: text-only prompting makes a picture book hard to edit together.
-2. 0:20–0:45 — Show the human editor: page, pixel text, assets, layers, and Present mode.
-3. 0:45–1:45 — In the WebMCP-enabled browser, ask an agent to create a scene. Show tool discovery, palette selection, a small asset, returned PNG feedback, and stamping/composition.
-4. 1:45–2:10 — Show the human refining the same book and Present mode reading it.
-5. 2:10–2:30 — Explain why structured tools make the agent a collaborative editor rather than an unreliable UI clicker.
+1. 0:00–0:20 — The creative problem: text-only prompting makes a storybook hard to author and revise together.
+2. 0:20–0:45 — Show the human editor: illustrated pages, pixel text, assets, layers, page order, and Present mode.
+3. 0:45–1:45 — In the WebMCP-enabled browser, ask an agent to create a scene for one story page. Show tool discovery, palette selection, a small asset, returned PNG feedback, and stamping/composition.
+4. 1:45–2:10 — Add or select the next page, then show the human refining the storybook and reading it in Present mode.
+5. 2:10–2:30 — Explain why structured tools make the agent a collaborative storybook editor rather than an unreliable UI clicker.
 
 ## Screenshot Shot List
 
-1. The Open Dots editor with a complete, layered pixel-art page and asset library visible.
+1. The Open Dots editor with a complete, layered pixel-art story page and asset library visible.
 2. An agent tool result returning the inline PNG comparison after an asset pass.
-3. A composed page showing multiple stamped assets and the page-image inspection output.
+3. A composed story page showing multiple stamped assets and the page-image inspection output.
 4. The layers/inspector view demonstrating that the human can adjust the agent-created composition.
-5. Present mode showing the finished picture-book page.
+5. Present mode showing the finished multi-page picture book.
 
 ## Submission Readiness Notes
 
@@ -104,7 +104,7 @@ Devpost currently contains an in-progress pre-draft project named “Untitled”
 
 ## Known Limitations
 
-- Film data is stored in browser local storage; it is not a multi-user cloud collaboration system.
+- Storybook data is stored in browser local storage; it is not a multi-user cloud collaboration system.
 - A browser refresh invalidates an agent’s previously discovered WebMCP tool handles; the agent must re-fetch tools and wait for readiness.
 - The project’s deterministic WebMCP checks are complete, while a final live model/browser evaluation against the deployed site remains to be run and recorded.
 
