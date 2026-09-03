@@ -326,10 +326,10 @@ const QUALITY_CHECK = {
 };
 
 const TOOL_WORKFLOW = {
-  title: "Tool cheat sheet (14 agent tools)",
+  title: "Tool cheat sheet (12 agent tools)",
   startHere: "Call get_pixel_art_guide at session start (topic: full or workflow).",
   afterRefresh:
-    "A page refresh unloads document.modelContext. Re-fetch live tools; call get_storybook and wait until webmcp.ready before mutating. Storybook data persists in localStorage — get_storybook recovers asset ids.",
+    "Leaving the editor or refreshing unregisters its document.modelContext tools. Re-fetch live tools after returning; call get_storybook and wait until webmcp.ready before mutating. Storybook data persists in localStorage — get_storybook recovers asset ids.",
   read: [
     { name: "get_pixel_art_guide", when: "Session start — art taste + workflow" },
     { name: "get_storybook", when: "Pages + overlay placements, palettes + activePaletteId, asset ids, editor state, webmcp.ready" },
@@ -340,12 +340,10 @@ const TOOL_WORKFLOW = {
     { name: "set_palette", when: "Create/select a named theme profile (Default is never overwritten)" },
     { name: "add_page", when: "New page + optional width for pixel density" },
     { name: "select_page", when: "Switch active page by index" },
-    { name: "remove_page", when: "Delete a page" },
     { name: "add_asset", when: "Create sprite — direct indexed bitmap, template empty, hex rows, fill, or page copy" },
     { name: "paint_asset", when: "Bulk sprite ops: rects/lines/fills/pixels, returns PNG" },
     { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
     { name: "stamp_assets", when: "Add movable overlay placements (array order = z-index; not baked into pixels)" },
-    { name: "remove_asset", when: "Trim the library" },
     { name: "place_text", when: "Rasterize story words onto the page" },
   ],
   notes:

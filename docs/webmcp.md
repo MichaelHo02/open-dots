@@ -6,12 +6,12 @@ Open Dots is a [WebMCP Challenge](https://webmcp.devpost.com/) app: agents paint
 
 **WebMCP** exposes site-defined tools to an in-browser agent (ChatGPT’s browser, Chrome with `chrome://flags/#enable-webmcp-testing`, Cursor, etc.). The agent discovers tools via `document.modelContext.getTools()`, calls them via `executeTool`, and receives structured results.
 
-Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.modelContext`:
+Open Dots registers **12 agent-focused tools** (4 read / 8 write) on `document.modelContext` while the editor route is mounted:
 
 | Read | Write |
 | --- | --- |
-| `get_pixel_art_guide` | `set_palette`, `add_page`, `select_page`, `remove_page`, `place_text` |
-| `get_storybook` | `add_asset`, `paint_asset`, `stamp_assets`, `remove_asset` |
+| `get_pixel_art_guide` | `set_palette`, `add_page`, `select_page`, `place_text` |
+| `get_storybook` | `add_asset`, `paint_asset`, `stamp_assets` |
 | `get_asset_image` | `paint_page` |
 | `get_page_image` | |
 
@@ -19,35 +19,21 @@ The surface is intentionally minimal — inspired by [pixel-art-cli](https://git
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
+Deleting pages and assets is intentionally UI-only because those irreversible actions require confirmation outside agent control.
+
 ## Why we do not use `use-webmcp-tool`
 
-Chrome ships [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool) (`useWebMCP`), a React hook that registers a tool on mount and **unregisters on unmount** via an `AbortSignal` passed to `registerTool`. We evaluated it and skipped it for three reasons:
+Chrome ships [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool) (`useWebMCP`), a React hook that registers one tool for a component lifetime. Open Dots already has one bridge that registers the complete tool set, shares one live editor API ref, batches polyfill notifications, and normalizes results and errors. Adding a hook per tool would duplicate that existing lifecycle.
 
-### 1. Mount/unmount abort vs page-lifetime registration
+`WebMCPBridge` owns an `AbortController` for the editor route. Every `registerTool` call receives its signal, and the bridge aborts it on unmount. This removes the tools during Next.js client-side navigation to the gallery and avoids stale editor actions. A later editor mount registers a fresh tool set.
 
-Open Dots tools must live for the **entire document lifetime** — from first paint until refresh or navigation. Storybook state persists in `localStorage`; agents may hold a tool snapshot across many turns. Unmount-driven unregister would drop tools whenever React remounts the bridge (Strict Mode double-mount, route transitions, conditional rendering), invalidating the host’s cached tool list mid-session.
-
-`WebMCPBridge` deliberately does **not** pass an abort signal. Its cleanup only cancels the pending `requestAnimationFrame` bootstrap, not registration:
-
-```26:28:components/WebMCPBridge.tsx
-      // Page-lifetime registration: do not abort on React unmount (Strict Mode /
-      // Fast Refresh). Aborting unregisters tools and invalidates the host's
-      // snapshot. Tools last until this document unloads (refresh/navigation).
-```
-
-### 2. HMR / Strict Mode snapshot invalidation
-
-React Strict Mode and Fast Refresh remount components. Hook-based registration fires `toolchange` on every mount/unmount cycle. Hosts that snapshot tools at discovery time treat each `toolchange` as “invalidate and re-fetch” — noisy at best, broken at worst if an in-flight `add_asset` used a stale snapshot.
-
-Our polyfill and `registerFilmTools` handle HMR differently:
+The bridge still keeps registration stable within one mount:
 
 - **Re-register same name:** update `description`, `inputSchema`, `annotations`, and `execute` **in place** with no `toolchange` (polyfill `registerTool` when the name already exists).
-- **Window singleton `__openDotsWebmcp`:** survives HMR remounts; `registerFilmTools` detects prior registration and refreshes handler closures instead of re-emitting a full batch.
+- **Window singleton `__openDotsWebmcp`:** keeps the active controller and registration metadata together.
 - **Silent batch + single flush:** initial registration uses `{ silent: true }` on each `registerTool`, then one `flushToolChanges()` — one `toolchange` for the whole set.
 
-### 3. We already normalize results and errors
-
-`useWebMCP` wraps execute to normalize return values. We do the same explicitly:
+Result normalization also already exists:
 
 - **`toolResult` / `toolError`** (`lib/tool-result.ts`) — validation failures return `{ isError: true, content: [...] }`; successes return `{ content: [{ type: "text", ... }] }` (plus optional PNG blocks via `toolResultWithImage`).
 - **`withSafeExecute`** (`lib/register-tools.ts`) — unexpected throws become structured `toolError` results instead of rejected promises the model cannot reason about.
@@ -62,7 +48,7 @@ FilmApp
         ├── syncWebmcpApiRef(apiRef)     — every render; stable sharedApiRef
         └── registerFilmTools(apiRef)    — once per document load (deferred 2× rAF)
               ├── ensureWebMCPPolyfill()
-              ├── buildFilmTools()       — 14 tools, withToolAnnotations + withSafeExecute
+              ├── buildFilmTools()       — 12 tools, withToolAnnotations + withSafeExecute
               ├── register get_storybook first — agents can poll readiness immediately
               ├── register rest (silent)
               └── flushToolChanges()     — one toolchange
@@ -70,7 +56,7 @@ FilmApp
 
 **`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` storybook state is stable before agents call `get_storybook`. A small badge shows `live tool count` when live.
 
-**`window.__openDotsWebmcp`** stores `{ apiRef, generation, native, count }`. `generation` is stable for the document load (`performance.timeOrigin`); it changes only on refresh/navigation. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest editor API without re-registering tool names.
+**`window.__openDotsWebmcp`** stores `{ apiRef, controller, generation, native, count }`. `generation` is stable for one editor registration lifetime. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest editor API without re-registering tool names.
 
 **`withToolAnnotations`** defaults missing `readOnlyHint` to `false` (write). Cursor and other hosts classify tools from this field; omitting it hides mutating tools.
 
@@ -102,7 +88,7 @@ Aligned with [Chrome’s WebMCP docs](https://developer.chrome.com/docs/ai/webmc
 | **JSON Schema** | Each tool has `inputSchema: { type: "object", properties, required, enum, maxItems }` |
 | **Intent-rich descriptions** | Each tool says what it does, when to use it, and key constraints (coords, erase via `color ""`, PNG feedback) — no repo file paths |
 | **Graceful errors** | `toolError()` for validation; `withSafeExecute` backstop for runtime throws |
-| **Stable registration** | Page-lifetime tools; HMR updates closures in place; batched `toolchange` |
+| **Route-scoped registration** | One shared `AbortSignal`; editor unmount removes all tools; initial registration batches `toolchange` |
 | **Vision loop** | Mutating asset tools return inline PNG + `passHint` / `nextRequired`; `get_page_image` composites overlay stamps and returns `sceneHint` (few placements, huge stamps, full-page paint, noisy colorCount) |
 | **Evals** | Chrome-format suite + deterministic CI runner (see below) |
 
@@ -138,7 +124,7 @@ The hook is a good fit when a tool’s **scope matches a component’s lifetime*
 - A wizard step that registers `confirm_step_2` until the user advances
 - A ephemeral panel whose tools should disappear when the panel unmounts
 
-For Open Dots, the agent API is **application-global**: the same 14 tools should remain discoverable for the whole editing session, across React remounts and HMR. Page-lifetime registration via `WebMCPBridge` + `registerFilmTools` matches that model; `use-webmcp-tool` does not.
+For Open Dots, one route-level `WebMCPBridge` is smaller and clearer than 12 individual hook calls. The important behavior is the same: register on editor mount and unregister with an `AbortSignal` on unmount.
 
 ## Related files
 

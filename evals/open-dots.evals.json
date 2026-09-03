@@ -238,38 +238,6 @@
     ]
   },
   {
-    "name": "Remove the second page",
-    "messages": [
-      {
-        "role": "user",
-        "type": "message",
-        "content": "Delete page 2 (index 1) — we don't need it."
-      }
-    ],
-    "expectedCall": [
-      {
-        "functionName": "remove_page",
-        "arguments": { "index": 1 }
-      }
-    ]
-  },
-  {
-    "name": "Remove an asset from the library",
-    "messages": [
-      {
-        "role": "user",
-        "type": "message",
-        "content": "Take the old floor tile out of the asset library."
-      }
-    ],
-    "expectedCall": [
-      {
-        "functionName": "remove_asset",
-        "arguments": { "id": { "$any": true } }
-      }
-    ]
-  },
-  {
     "name": "End-to-end: inspect, theme, build, place, and verify a moon",
     "messages": [
       {

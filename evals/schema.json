@@ -84,22 +84,6 @@
       }
     },
     {
-      "name": "remove_page",
-      "description": "Delete a page by 0-based index. The book must keep at least one page. Returns the updated book summary.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "index": {
-            "type": "integer",
-            "description": "0-based page index to delete"
-          }
-        },
-        "required": [
-          "index"
-        ]
-      }
-    },
-    {
       "name": "place_text",
       "description": "Rasterize words into the selected layer at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
       "inputSchema": {
@@ -426,22 +410,6 @@
         },
         "required": [
           "stamps"
-        ]
-      }
-    },
-    {
-      "name": "remove_asset",
-      "description": "Remove a sprite from the library by id. Overlay placements that referenced it are dropped; pixels already baked into page.pixels stay. Call get_storybook for valid ids.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "Asset id from get_storybook"
-          }
-        },
-        "required": [
-          "id"
         ]
       }
     },
