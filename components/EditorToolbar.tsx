@@ -126,27 +126,19 @@ export function EditorToolbar({ onPresent, inspectorOpen, onToggleInspector }: E
         })}
       </nav>
       <div className="top-actions">
-        <Link className="toolbar-button toolbar-labelled" href="/gallery">
-          <Images size={17} aria-hidden="true" />
-          <span>Gallery</span>
-        </Link>
-        <ProjectControls />
-        <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
+        <ProjectControls>
+          <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
           <button type="button" onClick={() => api.copySelection()}><Copy size={14} />Copy<kbd>⌘C</kbd></button>
           <button type="button" onClick={() => api.cutSelection()}><Scissors size={14} />Cut<kbd>⌘X</kbd></button>
           <button type="button" onClick={() => api.pasteSelection()}><ClipboardPaste size={14} />Paste<kbd>⌘V</kbd></button>
           <button type="button" onClick={() => api.duplicateSelection()}><CopyPlus size={14} />Duplicate<kbd>⌘D</kbd></button>
           <button type="button" onClick={() => api.deleteSelection()}><Trash2 size={14} />Delete selection<kbd>⌫</kbd></button>
-        </div></details>
-        <ToolbarButton
-          disabled={!api.canUndo}
-          label="Undo"
-          description="Undo the last change"
-          onClick={() => api.undo()}
-        >
-          <ChromeIcon name="undo" />
-        </ToolbarButton>
-        <ToolbarButton label="Redo" description="Redo (Ctrl/Cmd+Shift+Z)" disabled={!api.canRedo} onClick={() => api.redo()}><ChromeIcon name="redo" /></ToolbarButton>
+          </div></details>
+          <Link className="toolbar-button toolbar-labelled" href="/gallery">
+            <Images size={17} aria-hidden="true" />
+            <span>Gallery</span>
+          </Link>
+        </ProjectControls>
         <ToolbarButton
           label="Canvas settings"
           description={`${inspectorOpen ? "Hide" : "Show"} canvas settings`}

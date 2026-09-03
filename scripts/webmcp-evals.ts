@@ -268,7 +268,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     ["remove_page", {}],
     ["place_text", {}],
     ["add_asset", {}],
-    ["draw_asset_pixels", {}],
+    ["paint_asset", {}],
     ["get_asset_image", {}],
     ["stamp_assets", {}],
     ["remove_asset", {}],

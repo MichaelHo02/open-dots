@@ -63,7 +63,7 @@ const COMPOSITION_GRAMMAR = {
 const PALETTE_GUIDE = {
   title: "Palette taste",
   sidebarVsDraw:
-    "set_palette creates or updates a named color profile and selects it (pass name + colors). The built-in Default profile is never overwritten. No swatch-count cap. draw_asset_pixels, draw_pixels, and asset rows may use additional #rrggbb colors freely — use as many as the design needs.",
+    "set_palette creates or updates a named color profile and selects it (pass name + colors). The built-in Default profile is never overwritten. No swatch-count cap. paint_asset, paint_page, and asset rows may use additional #rrggbb colors freely — use as many as the design needs.",
   themeFirst:
     "Call set_palette with a name (e.g. Bedtime) and as many #rrggbb swatches as the design needs BEFORE drawing. Extra colors can also be used inline in draw ops. Omit name to update the current non-Default theme or to create Theme N. Pass name without colors to select an existing profile. After refresh, get_storybook lists palettes + activePaletteId.",
   materialRamps:
@@ -218,7 +218,7 @@ const CHARACTER_QUALITY = {
 const PRIMITIVES = {
   title: "Primitives — prefer bulk ops over per-pixel",
   note:
-    "draw_asset_pixels and draw_pixels each accept rects, lines, fills, and pixels in ONE call. This is the advantage over one-pixel-at-a-time tools: a single rect fills any block server-side (no per-pixel cap). Reserve the pixels array for fine detail.",
+    "paint_asset and paint_page each accept rects, lines, fills, and pixels in ONE call. This is the advantage over one-pixel-at-a-time tools: a single rect fills any block server-side (no per-pixel cap). Reserve the pixels array for fine detail.",
   ops: [
     "rects: [{x,y,width,height,color}] — solid blocks. Floors, walls, furniture bodies, shading bands. color \"\" erases the block.",
     "lines: [{x0,y0,x1,y1,color}] — straight edges. Silhouettes, seams, table/counter edges.",
@@ -234,11 +234,11 @@ const PRIMITIVES = {
 const FEEDBACK_LOOP = {
   title: "Draw → look → fix (mandatory vision loop)",
   rule:
-    "Every draw_asset_pixels and add_asset (with pixels) returns an inline PNG plus passHint and nextRequired. Compare it to your reference BEFORE the next pass. Never draw blind.",
+    "Every paint_asset and add_asset (with pixels) returns an inline PNG plus passHint and nextRequired. Compare it to your reference BEFORE the next pass. Never draw blind.",
   steps: [
     "After each mutation, read passHint and nextRequired in the JSON.",
     "Inspect the attached PNG (get_asset_image scale 4–8 to pixel-peep).",
-    "Fix mistakes with another draw_asset_pixels call (color \"\" erases) — each returns a fresh PNG.",
+    "Fix mistakes with another paint_asset call (color \"\" erases) — each returns a fresh PNG.",
     "Only stamp_assets once the sprite PNG matches your intent. Stamps are movable overlays (not baked into page.pixels); transparent pixels do not punch holes. Repeat the same asset (plants ×4).",
     "After stamping, call get_page_image (region crop, scale 2–4) and read sceneHint — if it flags few placements, huge stamps, full-page paint, or noisy colorCount, add overlays or 4–12 tone ramps (do not maximize unique hexes).",
   ],
@@ -283,11 +283,11 @@ const QUALITY_LOOP = {
     "2. Study the reference: list distinct objects. Aim for 12–30+ small assets.",
     "3. set_palette — named theme (name + as many #rrggbb swatches as the design needs, with base/shadow/highlight tiers); Default stays intact. Extra colors can also be used inline in draw ops.",
     "4. add_page with a width that fits scene density (160–224 for rich rooms).",
-    "5. Per asset: add_asset template \"empty\" → draw_asset_pixels passes (outline → fill → shade → highlight), comparing the PNG each pass.",
+    "5. Per asset: add_asset template \"empty\" → paint_asset passes (outline → fill → shade → highlight), comparing the PNG each pass.",
     "6. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
     "7. stamp_assets back-to-front as movable overlays (floor tiles → emblem/shadows → furniture → plants/characters). Repeat stamps (plants ×4). Transparent pixels do not punch holes.",
     "8. get_page_image (full, then region crops) — compare to reference, read sceneHint, iterate until the frame is full and layered.",
-    "9. draw_pixels only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene or maximize unique hexes.",
+    "9. paint_page only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene or maximize unique hexes.",
   ],
 };
 
@@ -326,7 +326,7 @@ const QUALITY_CHECK = {
 };
 
 const TOOL_WORKFLOW = {
-  title: "Tool cheat sheet (15 agent tools)",
+  title: "Tool cheat sheet (14 agent tools)",
   startHere: "Call get_pixel_art_guide at session start (topic: full or workflow).",
   afterRefresh:
     "A page refresh unloads document.modelContext. Re-fetch live tools; call get_storybook and wait until webmcp.ready before mutating. Storybook data persists in localStorage — get_storybook recovers asset ids.",
@@ -342,12 +342,11 @@ const TOOL_WORKFLOW = {
     { name: "select_page", when: "Switch active page by index" },
     { name: "remove_page", when: "Delete a page" },
     { name: "add_asset", when: "Create sprite — template empty, rows, fill, or page copy" },
-    { name: "draw_asset_pixels", when: "Bulk sprite ops: rects/lines/fills/pixels, returns PNG" },
-    { name: "draw_pixels", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
+    { name: "paint_asset", when: "Bulk sprite ops: rects/lines/fills/pixels, returns PNG" },
+    { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
     { name: "stamp_assets", when: "Add movable overlay placements (array order = z-index; not baked into pixels)" },
     { name: "remove_asset", when: "Trim the library" },
     { name: "place_text", when: "Rasterize story words onto the page" },
-    { name: "clear_page", when: "Blank the active page" },
   ],
   notes:
     "Pass colors inline on each draw op. Choose page density with add_page width. There is no undo — erase by painting color \"\" then repaint, using the returned PNG. For decorations use rects/lines/fills or stamp assets.",
@@ -359,7 +358,7 @@ const ANTI_PATTERNS = {
     "Shipping a sparse 'decorated wall' — a few big flat objects on empty canvas. Fill the frame with many assets.",
     "One flat tone per object. Always add a shadow tier; add highlights where lit.",
     "One-shotting a complex sprite or whole scene in a single call.",
-    "Painting entire pages with draw_pixels (or a giant pixels array) instead of overlay stamp_assets.",
+    "Painting entire pages with paint_page (or a giant pixels array) instead of overlay stamp_assets.",
     "One huge asset covering the page instead of many small overlay stamps.",
     "Maximizing unique hexes or chasing thousands of page colors. Each sprite uses a 4–12 tone ramp; scene colorCount can be high after composing many assets — that is expected, not a goal to inflate.",
     "Skipping the inline PNG compare between passes (drawing blind).",
@@ -430,7 +429,7 @@ export function buildPixelArtGuide(topic: PixelArtGuideTopic = "full") {
 
   if (topic === "full") {
     guide.examplePrompt =
-      "set_palette name+tiered swatches (Default stays) → add_page width 192 → per asset: add_asset empty → draw_asset_pixels outline (lines) → fill (fills) → shade (rects) → highlight (pixels), comparing the PNG each pass → stamp_assets overlays back-to-front (floor tiles → emblem/shadows → furniture → plants ×4 → characters) → get_page_image region compare, read sceneHint, iterate until the frame is full and layered.";
+      "set_palette name+tiered swatches (Default stays) → add_page width 192 → per asset: add_asset empty → paint_asset outline (lines) → fill (fills) → shade (rects) → highlight (pixels), comparing the PNG each pass → stamp_assets overlays back-to-front (floor tiles → emblem/shadows → furniture → plants ×4 → characters) → get_page_image region compare, read sceneHint, iterate until the frame is full and layered.";
   }
 
   return guide;

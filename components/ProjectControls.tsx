@@ -33,7 +33,7 @@ export function saveProject(film: Film) {
   download(new Blob([JSON.stringify(film)], { type: "application/json" }), "open-dots.json");
 }
 
-export function ProjectControls() {
+export function ProjectControls({ children }: { children?: React.ReactNode }) {
   const api = useFilm();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -42,10 +42,6 @@ export function ProjectControls() {
   const [title, setTitle] = useState("");
   const [sharing, setSharing] = useState(false);
   return <>
-    <button className="toolbar-button toolbar-labelled share-story-button" type="button" onClick={() => { setError(""); shareDialog.current?.showModal(); }}>
-      <Share2 size={16} aria-hidden="true" />
-      <span>Share your story</span>
-    </button>
     <details name="editor-menu" className="project-menu">
       <summary title="Project files">File</summary>
       <div className="project-menu-items">
@@ -77,6 +73,11 @@ export function ProjectControls() {
       {error && <p role="alert">{error}</p>}
       </div>
     </details>
+    {children}
+    <button className="toolbar-button toolbar-labelled share-story-button" type="button" onClick={() => { setError(""); shareDialog.current?.showModal(); }}>
+      <Share2 size={16} aria-hidden="true" />
+      <span>Share your story</span>
+    </button>
     <dialog ref={shareDialog} className="share-dialog" onCancel={() => setError("")}>
       <form className="share-dialog-form" onSubmit={async event => {
         event.preventDefault();

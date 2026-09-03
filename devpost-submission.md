@@ -26,7 +26,7 @@ Open Dots makes family story creation more accessible without taking authorship 
 
 ## How We Used AI
 
-WebMCP is the product capability, not an add-on. Open Dots treats its 15 tools as an agent-quality harness, not a thin UI automation layer. An in-browser agent discovers them through `document.modelContext`, then follows a deliberate pixel-art workflow: load the pixel-art guide, set a named palette, create small assets, refine them in outline/fill/shade/highlight passes, compare inline PNG feedback, stamp assets back-to-front, and inspect the composed page.
+WebMCP is the product capability, not an add-on. Open Dots treats its 14 tools as an agent-quality harness, not a thin UI automation layer. An in-browser agent discovers them through `document.modelContext`, then follows a deliberate pixel-art workflow: load the pixel-art guide, set a named palette, create small assets, refine them in outline/fill/shade/highlight passes, compare inline PNG feedback, stamp assets back-to-front, and inspect the composed page.
 
 This harness exists because an unconstrained agent is poor at pixel art: it may paint whole pages flatly, make oversized props, skip shading, or continue without looking at what it just made. Open Dots gives it the constraints and feedback that a careful pixel artist uses: reusable small sprites, palette tiers, bulk drawing primitives, inline visual inspection, and scene-quality hints. Mutating asset operations return inline PNG feedback and the required next comparison pass, preventing blind multi-step drawing.
 
@@ -42,7 +42,7 @@ Codex was used to implement and iterate on the editor, WebMCP registration layer
 - Human tools for drawing, erasing, fill, pixel text, shapes, selections, layers, and reusable assets.
 - A persistent asset library and movable, layered stamps so agents can compose dense scenes from small reusable sprites.
 - Named palette profiles and bulk pixel operations for deliberate outline, fill, shade, and highlight passes.
-- 15 WebMCP tools that form an agent-quality harness: typed JSON schemas, intent-focused descriptions, `readOnlyHint` annotations, pixel-art workflow guidance, and visual quality feedback.
+- 14 WebMCP tools that form an agent-quality harness: typed JSON schemas, intent-focused descriptions, `readOnlyHint` annotations, pixel-art workflow guidance, and visual quality feedback.
 - Page-lifetime WebMCP registration that stays stable across React remounts and HMR, avoiding stale agent tool snapshots.
 - Inline PNG feedback plus page/asset inspection tools and scene-quality hints for a draw–look–fix loop instead of blind image generation.
 - Deterministic WebMCP tool/eval checks, including schema, validation, error handling, tool coverage, and quality-oriented agent workflow checks.
@@ -104,7 +104,7 @@ Suggested 2:30 outline:
 
 ## Submission Readiness Notes
 
-The live demo URL, public GitHub repository, and MIT license are present. The repository documents 15 WebMCP tools and includes a deterministic WebMCP evaluation command. Local/browser verification is documented, but the final public video and final screenshots still need to be captured.
+The live demo URL, public GitHub repository, and MIT license are present. The repository documents 14 WebMCP tools and includes a deterministic WebMCP evaluation command. Local/browser verification is documented, but the final public video and final screenshots still need to be captured.
 
 Devpost currently contains an in-progress pre-draft project named “Untitled” for this challenge. Before final review, update it with the title, tagline, full description, technology list, links, and video URL from this draft.
 

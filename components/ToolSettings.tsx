@@ -3,7 +3,6 @@
 import { useFilm } from "@/lib/film-store";
 import { MAX_BRUSH_SIZE, MAX_TEXT_SIZE, MIN_BRUSH_SIZE, MIN_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel } from "@/lib/types";
 import { FrameSample } from "./BubbleFrame";
-import { TextSizePreview } from "./TextSizePreview";
 import { AppTooltipTrigger } from "./AppTooltip";
 
 export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChange }: {
@@ -13,7 +12,7 @@ export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChang
   onGridChange: (value: boolean) => void;
 }) {
   const api = useFilm();
-  const { tool, brushSize, textSize, textFont, color, frame, shapeFilled } = api;
+  const { tool, brushSize, textSize, frame, shapeFilled } = api;
   return <section className="sidebar-section tool-settings" aria-label="Tool settings">
     <p className="sidebar-label">Tool settings</p>
     {tool === "pencil" || tool === "eraser" ? <div className="tool-setting-row">
@@ -36,7 +35,6 @@ export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChang
         <input type="number" className="stepper-input" min={MIN_TEXT_SIZE} max={MAX_TEXT_SIZE} step={1} value={textSize} aria-label="Text size scale" onChange={event => api.setTextSize(Number(event.target.value))} />
         <AppTooltipTrigger label="Increase text size"><button type="button" className="stepper-btn icon-tooltip" aria-label="Increase text size" disabled={textSize >= MAX_TEXT_SIZE} onClick={() => api.setTextSize(textSize + 1)}>+</button></AppTooltipTrigger>
       </div>
-      <TextSizePreview textSize={textSize} textFont={textFont} color={color} />
     </div> : null}
     {tool === "shape" ? <div className="tool-option-block">
       <p className="sidebar-label">Shape</p><p className="sidebar-help">{frameHint(frame)}</p>

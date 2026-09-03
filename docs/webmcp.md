@@ -6,16 +6,16 @@ Open Dots is a [WebMCP Challenge](https://webmcp.devpost.com/) app: agents paint
 
 **WebMCP** exposes site-defined tools to an in-browser agent (ChatGPT’s browser, Chrome with `chrome://flags/#enable-webmcp-testing`, Cursor, etc.). The agent discovers tools via `document.modelContext.getTools()`, calls them via `executeTool`, and receives structured results.
 
-Open Dots registers **15 agent-focused tools** (4 read / 11 write) on `document.modelContext`:
+Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.modelContext`:
 
 | Read | Write |
 | --- | --- |
 | `get_pixel_art_guide` | `set_palette`, `add_page`, `select_page`, `remove_page`, `place_text` |
-| `get_storybook` | `add_asset`, `draw_asset_pixels`, `stamp_assets`, `remove_asset` |
-| `get_asset_image` | `draw_pixels`, `clear_page` |
+| `get_storybook` | `add_asset`, `paint_asset`, `stamp_assets`, `remove_asset` |
+| `get_asset_image` | `paint_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `draw_asset_pixels` and `draw_pixels` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). UI-only controls (brush, workshop, tool picker, stage zoom) are not exposed.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). UI-only controls (brush, workshop, tool picker, stage zoom) are not exposed.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
@@ -62,13 +62,13 @@ FilmApp
         ├── syncWebmcpApiRef(apiRef)     — every render; stable sharedApiRef
         └── registerFilmTools(apiRef)    — once per document load (deferred 2× rAF)
               ├── ensureWebMCPPolyfill()
-              ├── buildFilmTools()       — 15 tools, withToolAnnotations + withSafeExecute
+              ├── buildFilmTools()       — 14 tools, withToolAnnotations + withSafeExecute
               ├── register get_storybook first — agents can poll readiness immediately
               ├── register rest (silent)
               └── flushToolChanges()     — one toolchange
 ```
 
-**`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` storybook state is stable before agents call `get_storybook`. A small badge shows `WebMCP · 15` when live.
+**`WebMCPBridge`** (`components/WebMCPBridge.tsx`) mounts once in the app tree. Registration is deferred until after hydration (double `requestAnimationFrame`) so `localStorage` storybook state is stable before agents call `get_storybook`. A small badge shows `live tool count` when live.
 
 **`window.__openDotsWebmcp`** stores `{ apiRef, generation, native, count }`. `generation` is stable for the document load (`performance.timeOrigin`); it changes only on refresh/navigation. `syncWebmcpApiRef` keeps `sharedApiRef.current` pointing at the latest editor API without re-registering tool names.
 
@@ -86,7 +86,7 @@ Storybook data (pages, assets, named color profiles) **persists** in `localStora
 2. **Poll `get_storybook`** until `webmcp.ready === true` (and `webmcp.phase === "ready"`).
 3. **Note `webmcp.generation`** — if it changes, treat prior tool handles as stale.
 4. **Call `get_storybook`** again to recover asset ids, page indices, and `agentChecklist`.
-5. Then mutate (`add_asset`, `draw_asset_pixels`, `stamp_assets`, …).
+5. Then mutate (`add_asset`, `paint_asset`, `stamp_assets`, …).
 
 `get_storybook` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
 
@@ -138,7 +138,7 @@ The hook is a good fit when a tool’s **scope matches a component’s lifetime*
 - A wizard step that registers `confirm_step_2` until the user advances
 - A ephemeral panel whose tools should disappear when the panel unmounts
 
-For Open Dots, the agent API is **application-global**: the same 15 tools should remain discoverable for the whole editing session, across React remounts and HMR. Page-lifetime registration via `WebMCPBridge` + `registerFilmTools` matches that model; `use-webmcp-tool` does not.
+For Open Dots, the agent API is **application-global**: the same 14 tools should remain discoverable for the whole editing session, across React remounts and HMR. Page-lifetime registration via `WebMCPBridge` + `registerFilmTools` matches that model; `use-webmcp-tool` does not.
 
 ## Related files
 

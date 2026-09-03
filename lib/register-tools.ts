@@ -325,7 +325,7 @@ const FILL_OPS_SCHEMA = {
 
 function drawPixelsLimitError(count: number) {
   const cells = DEFAULT_WIDTH * DEFAULT_HEIGHT;
-  return `At most ${MAX_DRAW_PIXELS} pixels per draw_pixels call (got ${count}). For sprites or scenes, use add_asset with pixels or rows (each side ≤${MAX_ASSET_SIDE}) then stamp_assets. A default ${DEFAULT_WIDTH}×${DEFAULT_HEIGHT} page has ${cells.toLocaleString()} cells — page-wide painting is intentionally impractical.`;
+  return `At most ${MAX_DRAW_PIXELS} pixels per paint_page call (got ${count}). For sprites or scenes, use add_asset with pixels or rows (each side ≤${MAX_ASSET_SIDE}) then stamp_assets. A default ${DEFAULT_WIDTH}×${DEFAULT_HEIGHT} page has ${cells.toLocaleString()} cells — page-wide painting is intentionally impractical.`;
 }
 
 type StampInput = {
@@ -875,14 +875,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               : pixelsToRows(asset.pixels, asset.width, asset.height),
           verified: true,
           nextRequired:
-            "Compare the PNG to your reference. Fix with draw_asset_pixels (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
+            "Compare the PNG to your reference. Fix with paint_asset (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
           hint: "Compare the attached PNG at native scale (use scale 4–8 to peep). Text fallback: rows in the response.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
     {
-      name: "draw_asset_pixels",
+      name: "paint_asset",
       description:
         `Paint into an existing asset. Coords are asset-relative (0,0 is top-left). Mix rects (filled blocks), lines (edges), fills (flood), and pixels (fine detail, ≤${MAX_DRAW_PIXELS}/call); ops apply rects → lines → fills → pixels. One rect fills any block with no per-pixel cap; color \"\" erases. Work in passes (outline → fill → shade → highlight); each call returns a PNG — compare before the next pass.`,
       inputSchema: {
@@ -963,7 +963,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "add_asset",
       description:
-        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with draw_asset_pixels. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Start with template \"empty\" plus width and height (e.g. 32×32), then paint with paint_asset. Also accepts comma-separated rows, a flat pixels array, a solid fill, or a copy of a page rect (x, y, width, height). Painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1177,7 +1177,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       },
     },
     {
-      name: "draw_pixels",
+      name: "paint_page",
       description:
         `Paint into the selected layer of the active page for flat backgrounds and touch-ups. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); ops apply rects → lines → fills → pixels. color \"\" erases; a full-page rect with \"\" clears the selected layer. For characters and props, build assets then stamp_assets. Optional offsetX/offsetY tiles a motif across the page.`,
       inputSchema: {
@@ -1246,7 +1246,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_page_image",
       description:
-        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page draw_pixels, or noisy colorCount). Call after every few stamps, not only at the end.",
+        "Rasterize a page to PNG so you can compare it to a reference (composites overlay stamps over page.pixels). Omit x, y, width, height for the full page; pass all four to crop a region. Returns coverage, colorCount, placementCount, and sceneHint (few placements, huge stamps, full-page painting, or noisy colorCount). Call after every few stamps, not only at the end.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
@@ -1388,24 +1388,6 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
-    {
-      name: "clear_page",
-      description:
-        "Erase the selected layer of the active page, including its painted text and overlay placements. Other layers remain unchanged. If the asset workshop is open, clears the workshop draft instead.",
-      inputSchema: { type: "object", properties: {} },
-      execute: async () => {
-        apiRef.current.clearPage();
-        return toolResult({
-          cleared: true,
-          workshopOpen: apiRef.current.workshopOpen,
-          empty: apiRef.current.workshopOpen
-            ? undefined
-            : apiRef.current.active
-              ? isEmptyPage(apiRef.current.active)
-              : true,
-        });
-      },
-    },
   ];
   return tools.map((tool) => withToolAnnotations(withSafeExecute(tool)));
 }
@@ -1427,7 +1409,7 @@ function withSafeExecute(tool: WebMCPTool): WebMCPTool {
     execute: async (input: Record<string, unknown>) => {
       try {
         const api = sharedApiRef.current;
-        if (["draw_pixels", "stamp_assets", "place_text", "clear_page"].includes(tool.name) && api?.active && !api.workshopOpen) {
+        if (["paint_page", "stamp_assets", "place_text"].includes(tool.name) && api?.active && !api.workshopOpen) {
           const layer = activePageLayer(api.active);
           if (layer.locked || !layer.visible) return toolError(`Layer "${layer.name}" is ${layer.locked ? "locked" : "hidden"}. Select an editable layer in the editor first.`);
         }

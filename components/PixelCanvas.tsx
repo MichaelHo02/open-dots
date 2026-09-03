@@ -27,6 +27,8 @@ import {
   isPaintedPixel,
   type PixelStamp,
 } from "@/lib/types";
+import { measureText, rasterizeTextRun } from "@/lib/pixel-font";
+import { emptyPixels } from "@/lib/types";
 import { constrainDiagonal, strokePoints, symmetricPoints, type Symmetry } from "@/lib/stroke";
 
 type Gesture =
@@ -106,6 +108,8 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
     selectMark,
     selectedId,
     brushSize,
+    textFont,
+    textSize,
     workshopOpen,
   } = useFilm();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -115,6 +119,7 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
   const [brushPixel, setBrushPixel] = useState<{ x: number; y: number } | null>(
     null,
   );
+  const [textPixel, setTextPixel] = useState<{ x: number; y: number } | null>(null);
   const [preview, setPreview] = useState<Gesture | null>(null);
   const [overSelection, setOverSelection] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -161,6 +166,15 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
     canvas.height = height;
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, width, height);
+    if (!preview && textPixel && tool === "text") {
+      const sample = "Aa";
+      const size = measureText(sample, textFont, textSize);
+      const pixels = rasterizeTextRun(emptyPixels(size.width, size.height), size, {
+        x: 0, y: 0, body: sample, color, font: textFont, size: textSize,
+      });
+      paintStamp(ctx, { ...size, x: textPixel.x, y: textPixel.y, pixels });
+      return;
+    }
     if (!preview) {
       return;
     }
@@ -225,7 +239,7 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
       default:
         return assertNever(preview, "Unknown preview");
     }
-  }, [brushSize, color, frame, height, preview, selectedAsset, shapeFilled, symmetry, width]);
+  }, [brushSize, color, frame, height, preview, selectedAsset, shapeFilled, symmetry, textFont, textPixel, textSize, tool, width]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -493,6 +507,7 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
       }
       onPointerLeave={() => {
         setBrushPixel(null);
+        setTextPixel(null);
         setOverSelection(false);
         if (!gesture.current) setPreview(null);
       }}
@@ -549,6 +564,7 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
         onPointerMove={(event) => {
           if (!editable) return;
           const at = pixelFromEvent(event);
+          setTextPixel(tool === "text" && !activeText ? at : null);
           if (
             (tool === "move" || tool === "shape" || selectedAsset) &&
             (floating || selectedPlacement)
@@ -625,6 +641,7 @@ export function PixelCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
           setPreview(null);
           setDragging(false);
           setBrushPixel(null);
+          setTextPixel(null);
         }}
       />
       <canvas

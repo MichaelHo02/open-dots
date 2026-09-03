@@ -14,9 +14,9 @@ You land on a blank landscape page. Draw the scene, place words with **Text** an
 - **An agent** uses `document.modelContext` tools. For complex art, build small **assets** (`add_asset`) and **stamp** them (`stamp_assets`); avoid painting entire pages pixel-by-pixel.
 - **Present** reads the book full-screen. Arrow keys or the sides of the page turn slides.
 
-## WebMCP tools (15)
+## WebMCP tools (14)
 
-Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) — its whole surface is `set_pixel`/`fill_rect`/`line`/`clear` + export/undo, plus a mandatory look-at-the-PNG loop. Open Dots matches that minimalism and adds book features (pages, reusable assets, stamp) and a bulk-ops advantage: `draw_asset_pixels`/`draw_pixels` take **rects/lines/fills/pixels** in one call, so a single rect fills any block server-side (no per-pixel cap) and `color ""` erases. UI-only controls (brush, workshop, tool picker, color swatch, undo button) are not exposed — agents draw directly and verify with the returned image.
+Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) — its whole surface is `set_pixel`/`fill_rect`/`line`/`clear` + export/undo, plus a mandatory look-at-the-PNG loop. Open Dots matches that minimalism and adds book features (pages, reusable assets, stamp) and a bulk-ops advantage: `paint_asset`/`paint_page` take **rects/lines/fills/pixels** in one call, so a single rect fills any block server-side (no per-pixel cap) and `color ""` erases. UI-only controls (brush, workshop, tool picker, color swatch, undo button) are not exposed — agents draw directly and verify with the returned image.
 
 | Tool | What it does |
 | --- | --- |
@@ -28,13 +28,48 @@ Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pi
 | `add_page` | New page + optional pixel density (`width` 48–256, height follows 16:9) |
 | `select_page` / `remove_page` | Book navigation |
 | `add_asset` | Create sprite — template `empty`, hex `rows`, `fill`, or page-rect copy |
-| `draw_asset_pixels` | Bulk sprite ops — `rects`/`lines`/`fills` + ≤4,096 detail `pixels`/call; returns inline PNG |
-| `draw_pixels` | Page backgrounds/touch-ups — same `rects`/`lines`/`fills`/`pixels` ops; `color ""` erases |
+| `paint_asset` | Bulk sprite ops — `rects`/`lines`/`fills` + ≤4,096 detail `pixels`/call; returns inline PNG |
+| `paint_page` | Page backgrounds/touch-ups — same `rects`/`lines`/`fills`/`pixels` ops; `color ""` erases |
 | `stamp_assets` / `remove_asset` | Overlay placements on the page (order = z-index, not baked into pixels); delete asset |
-| `clear_page` | Blank the active page |
 | `place_text` | Rasterize words into page pixels |
 
 Pass colors inline on each draw op. Choose page density with `add_page` `width`. Erase by painting `color ""`, then repaint using the returned PNG. Decorations use `rects`/`lines`/`fills` or stamped assets — not a story form or caption box.
+
+### Agent creation journey
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Agent
+    participant OpenDots as Open Dots
+
+    User->>Agent: Describe a story page
+    Agent->>OpenDots: get_storybook()
+    OpenDots-->>Agent: Current pages, assets, palette, readiness
+    Agent->>OpenDots: get_pixel_art_guide(workflow)
+    Agent->>OpenDots: set_palette(name, colors)
+    opt A new page is needed
+        Agent->>OpenDots: add_page(width)
+    end
+    Agent->>OpenDots: paint_page(rects/fills)
+    loop Each reusable character or prop
+        Agent->>OpenDots: add_asset(template: empty)
+        loop Outline, fill, shade, highlight
+            Agent->>OpenDots: paint_asset(...)
+            OpenDots-->>Agent: Updated asset PNG + nextRequired
+        end
+        Agent->>OpenDots: get_asset_image(id)
+        OpenDots-->>Agent: Inspection PNG
+    end
+    Agent->>OpenDots: stamp_assets(back-to-front)
+    Agent->>OpenDots: get_page_image()
+    OpenDots-->>Agent: Composed PNG + sceneHint
+    alt sceneHint reports a recoverable issue
+        Agent->>OpenDots: Add/fix assets, paint, or placements
+        Agent->>OpenDots: get_page_image()
+    end
+    Agent-->>User: Story page is ready to review
+```
 
 ## Run
 
