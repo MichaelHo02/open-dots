@@ -1444,7 +1444,6 @@ input {
   gap: 8px;
 }
 .page-action-icon { position: relative; width: 36px; height: 36px; padding: 0; justify-content: center; }
-.strip-actions .icon-tooltip::after { top: auto; right: 0; bottom: calc(100% + 7px); left: auto; transform: none; }
 
 .thumb {
   position: relative;
@@ -1880,23 +1879,9 @@ input {
 .toolbar-labelled { width: auto; gap: 7px; padding: 0 10px; font-size: 12px; font-weight: 520; text-decoration: none; white-space: nowrap; }
 .share-story-button { padding-inline: 12px; background: var(--brand-accent); color: white; }
 .share-story-button:hover { background: color-mix(in srgb, var(--brand-accent) 88%, black); }
-.toolbar-tooltip {
-  display: none; position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%);
-  padding: 7px 10px; border-radius: 5px; background: var(--ink); color: var(--canvas);
-  font-size: 12px; font-weight: 450; white-space: nowrap; pointer-events: none; z-index: 20;
-}
-.toolbar-button:hover .toolbar-tooltip, .toolbar-button:focus-visible .toolbar-tooltip { display: block; }
-.icon-tooltip { position: relative; }
-.icon-tooltip::after {
-  content: attr(aria-label); display: none; position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%);
-  padding: 6px 8px; border-radius: 4px; background: var(--ink); color: var(--canvas);
-  font-size: 11px; font-weight: 450; line-height: 1; white-space: nowrap; pointer-events: none; z-index: 40;
-}
-.icon-tooltip:hover::after, .icon-tooltip:focus-visible::after { display: block; }
 .webmcp-status-dot {
   margin: 0 2px 0 8px; flex: 0 0 auto; cursor: help;
 }
-.webmcp-status-dot::after { right: 0; left: auto; transform: none; }
 .webmcp-status-dot:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
 .workspace { position: relative; }
 .workspace-zoom {

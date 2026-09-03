@@ -1,7 +1,7 @@
 "use client";
 
 import { ProjectControls } from "./ProjectControls";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { ClipboardPaste, Copy, CopyPlus, Images, Scissors, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useFilm } from "@/lib/film-store";
@@ -71,7 +71,6 @@ function ToolbarButton({
   disabled?: boolean;
   onClick: () => void;
 }) {
-  const tooltipId = useId();
   return (
     <button
       type="button"
@@ -79,13 +78,10 @@ function ToolbarButton({
       aria-label={label}
       aria-pressed={active}
       disabled={disabled}
-      aria-describedby={tooltipId}
+      title={description}
       onClick={onClick}
     >
       {children}
-      <span id={tooltipId} className="toolbar-tooltip" role="tooltip">
-        {description}
-      </span>
     </button>
   );
 }

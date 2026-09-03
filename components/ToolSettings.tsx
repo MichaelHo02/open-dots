@@ -17,9 +17,9 @@ export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChang
     <p className="sidebar-label">Tool settings</p>
     {tool === "pencil" || tool === "eraser" ? <div className="tool-setting-row">
       <span>Brush size</span><div className="compact-stepper" role="group" aria-label="Brush size">
-        <button type="button" className="icon-tooltip" aria-label="Decrease brush size" disabled={brushSize <= MIN_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize - 1)}>−</button>
+        <button type="button" className="icon-tooltip" aria-label="Decrease brush size" title="Decrease brush size" disabled={brushSize <= MIN_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize - 1)}>−</button>
         <span className="size">{brushSizeLabel(brushSize)}</span>
-        <button type="button" className="icon-tooltip" aria-label="Increase brush size" disabled={brushSize >= MAX_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize + 1)}>+</button>
+        <button type="button" className="icon-tooltip" aria-label="Increase brush size" title="Increase brush size" disabled={brushSize >= MAX_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize + 1)}>+</button>
       </div>
     </div> : null}
     <div className="drawing-options">
@@ -31,9 +31,9 @@ export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChang
     {tool === "text" ? <div className="tool-option-block">
       <p className="sidebar-label">Text size</p>
       <div className="number-stepper" role="group" aria-label="Text size scale">
-        <button type="button" className="stepper-btn icon-tooltip" aria-label="Decrease text size" disabled={textSize <= MIN_TEXT_SIZE} onClick={() => api.setTextSize(textSize - 1)}>−</button>
+        <button type="button" className="stepper-btn icon-tooltip" aria-label="Decrease text size" title="Decrease text size" disabled={textSize <= MIN_TEXT_SIZE} onClick={() => api.setTextSize(textSize - 1)}>−</button>
         <input type="number" className="stepper-input" min={MIN_TEXT_SIZE} max={MAX_TEXT_SIZE} step={1} value={textSize} aria-label="Text size scale" onChange={event => api.setTextSize(Number(event.target.value))} />
-        <button type="button" className="stepper-btn icon-tooltip" aria-label="Increase text size" disabled={textSize >= MAX_TEXT_SIZE} onClick={() => api.setTextSize(textSize + 1)}>+</button>
+        <button type="button" className="stepper-btn icon-tooltip" aria-label="Increase text size" title="Increase text size" disabled={textSize >= MAX_TEXT_SIZE} onClick={() => api.setTextSize(textSize + 1)}>+</button>
       </div>
       <TextSizePreview textSize={textSize} textFont={textFont} color={color} />
     </div> : null}

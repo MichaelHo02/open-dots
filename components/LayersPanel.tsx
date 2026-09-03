@@ -10,7 +10,7 @@ function thumbnailPage(page: Page, layer: PageLayer): Page {
 }
 
 function IconButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" className="layers-icon-button icon-tooltip" aria-label={label} disabled={disabled} onClick={onClick}>{children}</button>;
+  return <button type="button" className="layers-icon-button icon-tooltip" aria-label={label} title={label} disabled={disabled} onClick={onClick}>{children}</button>;
 }
 
 function LayerRow({ page, layer, index, layers }: { page: Page; layer: PageLayer; index: number; layers: PageLayer[] }) {

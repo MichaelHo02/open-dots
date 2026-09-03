@@ -140,7 +140,7 @@ export function PaletteProfileControls({
             </option>
           ))}
         </select>
-        {custom ? <button type="button" className="palette-profile-edit icon-tooltip" aria-label="Rename color profile" aria-expanded={renaming} onClick={() => { setCreating(false); setRenaming(value => !value); }}><ChromeIcon name="draw" /></button> : null}
+        {custom ? <button type="button" className="palette-profile-edit icon-tooltip" aria-label="Rename color profile" title="Rename color profile" aria-expanded={renaming} onClick={() => { setCreating(false); setRenaming(value => !value); }}><ChromeIcon name="draw" /></button> : null}
         <button
           ref={triggerRef}
           type="button"

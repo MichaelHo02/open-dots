@@ -18,7 +18,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
     <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <div className="inspector-heading">
         <div><p className="sidebar-label">{workshopOpen ? "Asset" : `Page ${number}`}</p><h2>{workshopOpen ? "Workshop settings" : "Canvas settings"}</h2></div>
-        <button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
+        <button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" title="Close canvas settings" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
       </div>
             {!workshopOpen ? (
               <><LayersPanel /><SelectionControls /></>
@@ -29,9 +29,9 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
                   <option value="scale">Scale art</option><option value="canvas">Canvas bounds</option>
                 </select></label>
                 <div className="compact-stepper" role="group" aria-label="Page density">
-                  <button type="button" className="icon-tooltip" aria-label="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.resizeCanvas(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16), resizeMode)}>−</button>
+                  <button type="button" className="icon-tooltip" aria-label="Decrease density" title="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.resizeCanvas(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16), resizeMode)}>−</button>
                   <span className="size">{density?.width ?? DEFAULT_WIDTH}×{density?.height ?? DEFAULT_HEIGHT}</span>
-                  <button type="button" className="icon-tooltip" aria-label="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button>
+                  <button type="button" className="icon-tooltip" aria-label="Increase density" title="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button>
                 </div>
               </section>
             ) : null}

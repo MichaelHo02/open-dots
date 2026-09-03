@@ -134,6 +134,7 @@ export function FilmApp() {
                       type="button"
                       className="asset-edit icon-tooltip"
                       aria-label={`Edit ${asset.name}`}
+                      title={`Edit ${asset.name}`}
                       onClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
                       <ChromeIcon name="draw" size={14} />
@@ -142,6 +143,7 @@ export function FilmApp() {
                       type="button"
                       className="asset-remove icon-tooltip"
                       aria-label={`Remove ${asset.name}`}
+                      title={`Remove ${asset.name}`}
                       onClick={() => {
                         if (window.confirm(`Remove “${asset.name}” from the library and every page? This cannot be undone.`)) api.removeAsset(asset.id);
                       }}
@@ -238,10 +240,10 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
-              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => {
+              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" title="Delete page" disabled={film.pages.length <= 1} onClick={() => {
                 if (window.confirm(`Delete page ${film.activeIndex + 1}? This cannot be undone.`)) api.removePage(film.activeIndex);
               }}><Trash2 size={16} aria-hidden="true" /></button>
-              <button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button>
+              <button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" title="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button>
             </div>
           </nav>}
         </div>

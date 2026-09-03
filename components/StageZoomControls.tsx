@@ -20,6 +20,7 @@ export function StageZoomControls() {
         type="button"
         className="pill ghost zoom-btn icon-tooltip"
         aria-label="Zoom out"
+        title="Zoom out"
         disabled={atMin}
         onClick={() => stepStageZoom(-1)}
       >
@@ -30,6 +31,7 @@ export function StageZoomControls() {
         type="button"
         className="pill ghost zoom-btn icon-tooltip"
         aria-label="Zoom in"
+        title="Zoom in"
         disabled={atMax}
         onClick={() => stepStageZoom(1)}
       >
