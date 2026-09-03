@@ -2010,8 +2010,11 @@ input {
 .shortcut-dialog dl > div { padding: 8px 0; border-top: 1px solid var(--hairline-soft); font-size: 12px; }
 .shortcut-dialog dd { margin: 0; }
 .shortcut-dialog kbd { padding: 2px 6px; border: 1px solid var(--hairline); border-radius: 4px; background: var(--surface-soft); font: inherit; }
-.workshop-frames { display: flex; align-items: center; gap: 6px; }
-.workshop-frames select { padding: 7px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--canvas); font-size: 11px; }
+.workshop-strip { flex-shrink: 0; }
+.page-workspace[data-workshop="true"] .workspace-zoom { bottom: 96px; }
+.workshop-frame-thumb { cursor: pointer; }
+.workshop-frame-thumb:active { cursor: pointer; }
+.workshop-frame-thumb canvas { width: auto; height: 56px; max-width: 88px; aspect-ratio: auto; }
 .toolbar-button:disabled { opacity: .35; cursor: default; }
 .drawing-options { display: grid; gap: 10px; font-size: 12px; }
 .drawing-options label { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: 8px; }

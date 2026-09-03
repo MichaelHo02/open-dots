@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { WorkshopCanvas } from "./WorkshopCanvas";
+import { AssetThumb } from "./PagePreview";
 import { useFilm } from "@/lib/film-store";
 import { ASSET_SIZE_PRESETS, MAX_ASSET_NAME, MAX_ASSETS } from "@/lib/types";
 import { CopyPlus, Trash2 } from "lucide-react";
@@ -86,11 +87,6 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
             </div>
           </div>
           <div className="workshop-chrome-actions">
-            <div className="workshop-frames" aria-label="Animation frames">
-              <button type="button" className="pill" onClick={removeWorkshopFrame} disabled={workshopDraft.frames.length <= 1} aria-label="Delete animation frame"><Trash2 size={14} /></button>
-              <select aria-label="Animation frame" value={workshopDraft.frameIndex} onChange={event => selectWorkshopFrame(Number(event.target.value))}>{workshopDraft.frames.map((_, index) => <option key={index} value={index}>Frame {index + 1}</option>)}</select>
-              <button type="button" className="pill" onClick={addWorkshopFrame}><CopyPlus size={14} />Add frame</button>
-            </div>
             <button
               type="button"
               className="pill workshop-back"
@@ -117,6 +113,48 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
       <div className="workshop-canvas-wrap">
         <WorkshopCanvas symmetry={symmetry} />
       </div>
+      <nav className="strip workshop-strip" aria-label="Animation frames">
+        <div className="strip-thumbs">
+          {workshopDraft.frames.map((pixels, index) => (
+            <button
+              key={index}
+              type="button"
+              className="thumb workshop-frame-thumb"
+              data-active={index === workshopDraft.frameIndex}
+              aria-label={`Frame ${index + 1}`}
+              aria-current={index === workshopDraft.frameIndex ? "true" : undefined}
+              onClick={() => selectWorkshopFrame(index)}
+            >
+              <AssetThumb asset={{
+                id: `workshop-frame-${index}`,
+                name: `Frame ${index + 1}`,
+                width: workshopDraft.width,
+                height: workshopDraft.height,
+                pixels,
+              }} />
+              <span className="page-index">{index + 1}</span>
+            </button>
+          ))}
+        </div>
+        <div className="strip-actions">
+          <span className="page-count">{workshopDraft.frameIndex + 1} / {workshopDraft.frames.length}</span>
+          <button
+            type="button"
+            className="pill danger-subtle page-action-icon"
+            onClick={removeWorkshopFrame}
+            disabled={workshopDraft.frames.length <= 1}
+            aria-label="Delete animation frame"
+            title="Delete frame"
+          ><Trash2 size={16} aria-hidden="true" /></button>
+          <button
+            type="button"
+            className="pill ghost page-action-icon"
+            onClick={addWorkshopFrame}
+            aria-label="Add animation frame"
+            title="Add frame"
+          ><CopyPlus size={16} aria-hidden="true" /></button>
+        </div>
+      </nav>
     </div>
   );
 }
