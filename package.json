@@ -8,10 +8,12 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:gallery": "node --import tsx scripts/gallery-check.ts",
     "test:webmcp": "tsx scripts/webmcp-evals.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@vercel/blob": "^2.8.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.38.0",

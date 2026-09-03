@@ -2,7 +2,8 @@
 
 import { ProjectControls } from "./ProjectControls";
 import { useEffect, useId, useRef } from "react";
-import { ClipboardPaste, Copy, CopyPlus, Scissors, Trash2 } from "lucide-react";
+import { ClipboardPaste, Copy, CopyPlus, Images, Scissors, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useFilm } from "@/lib/film-store";
 import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
 import { ChromeIcon, toolIconName } from "./ChromeIcons";
@@ -127,6 +128,10 @@ export function EditorToolbar({ onPresent }: EditorToolbarProps) {
         })}
       </nav>
       <div className="top-actions">
+        <Link className="toolbar-button" href="/gallery" aria-label="Gallery">
+          <Images size={17} aria-hidden="true" />
+          <span className="toolbar-tooltip" role="tooltip">Browse shared stories</span>
+        </Link>
         <ProjectControls />
         <details name="editor-menu" className="project-menu"><summary title="Selection actions">Edit</summary><div className="project-menu-items">
           <button type="button" onClick={() => api.copySelection()}><Copy size={14} />Copy<kbd>⌘C</kbd></button>
