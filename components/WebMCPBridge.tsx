@@ -7,6 +7,7 @@ import {
   syncWebmcpApiRef,
 } from "@/lib/register-tools";
 import { useFilm } from "@/lib/film-store";
+import { Dotm3x3_15 } from "@/components/ui/dotm-3x3-15";
 
 export function WebMCPBridge() {
   const api = useFilm();
@@ -62,5 +63,6 @@ export function WebMCPBridge() {
   }, []);
 
   const label = status === "live" ? `WebMCP · ${count} tools` : status === "error" ? "WebMCP unavailable" : "WebMCP starting";
-  return <span className={`webmcp-status-dot icon-tooltip ${status}`} role="status" tabIndex={0} aria-label={label} />;
+  const color = status === "live" ? "#1ea64a" : status === "error" ? "var(--accent-magenta)" : "var(--hairline)";
+  return <Dotm3x3_15 className="webmcp-status-dot icon-tooltip" size={15} dotSize={2} speed={0.35} color={color} ariaLabel={label} />;
 }

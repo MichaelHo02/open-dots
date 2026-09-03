@@ -594,6 +594,8 @@ input {
   border-color: var(--ink);
   background: var(--canvas);
 }
+.color-add:disabled { opacity: .4; cursor: default; }
+.color-add:disabled:hover { border-color: var(--hairline); background: var(--surface-soft); }
 
 .color-add:focus-visible,
 .color-add[aria-expanded="true"] {
@@ -714,45 +716,6 @@ input {
   overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--hairline) transparent;
-}
-
-.asset-new-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 120px;
-  padding: 20px 16px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-soft);
-  color: var(--ink);
-  cursor: pointer;
-  font: inherit;
-  transition:
-    border-color 0.15s ease,
-    background 0.15s ease;
-}
-
-.asset-new-card:hover {
-  border-color: var(--ink);
-  background: var(--canvas);
-}
-
-.asset-new-card:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
-}
-
-.asset-new-card .chrome-icon {
-  opacity: 0.72;
-}
-
-.asset-new-card-label {
-  font-size: 14px;
-  font-weight: 480;
 }
 
 .workspace {
@@ -1887,11 +1850,8 @@ input {
 }
 .icon-tooltip:hover::after, .icon-tooltip:focus-visible::after { display: block; }
 .webmcp-status-dot {
-  width: 9px; height: 9px; margin: 0 4px 0 8px; flex: 0 0 auto;
-  border-radius: 50%; background: var(--hairline); cursor: help;
+  margin: 0 2px 0 8px; flex: 0 0 auto; cursor: help;
 }
-.webmcp-status-dot.live { background: #1ea64a; }
-.webmcp-status-dot.error { background: var(--accent-magenta); }
 .webmcp-status-dot::after { right: 0; left: auto; transform: none; }
 .webmcp-status-dot:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 3px; }
 .workspace { position: relative; }

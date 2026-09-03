@@ -102,25 +102,15 @@ export function FilmApp() {
             <div className="sidebar-assets-head">
               <p className="sidebar-label">Assets</p>
               <span className="asset-count">{film.assets.length}/{MAX_ASSETS}</span>
-              <button
-                type="button"
-                className="layers-new icon-tooltip"
-                disabled={film.assets.length >= MAX_ASSETS}
-                aria-label={film.assets.length >= MAX_ASSETS ? "Asset library full — remove an asset to create another" : "New asset"}
-                onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
-              ><ChromeIcon name="plus" size={14} />New</button>
             </div>
-            {!film.assets.length && !workshopOpen ? (
-              <button
-                type="button"
-                className="asset-new-card"
-                onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
-                aria-label="New asset"
-              >
-                <ChromeIcon name="page" size={28} />
-                <span className="asset-new-card-label">New asset</span>
-              </button>
-            ) : film.assets.length > 0 ? (
+            <button
+              type="button"
+              className="color-add"
+              disabled={film.assets.length >= MAX_ASSETS}
+              aria-label={film.assets.length >= MAX_ASSETS ? "Asset library full — remove an asset to create another" : "New asset"}
+              onClick={() => { api.openWorkshop(); setInspectorOpen(true); }}
+            ><ChromeIcon name="plus" />New asset</button>
+            {film.assets.length > 0 ? (
               <ul className="asset-list">
                 {film.assets.map((asset) => (
                   <li key={asset.id}>
