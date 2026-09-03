@@ -1998,10 +1998,6 @@ input {
 .project-menu-items p { padding: 8px; }
 .project-save-state { margin: 0; color: #737373; font-size: 11px; }
 .project-confirm[data-confirm] { justify-content: flex-start; }
-.reference-panel { display: grid; gap: 8px; }
-.reference-panel img { display: block; width: 100%; max-height: 150px; object-fit: contain; border: 1px solid var(--hairline); background: var(--surface-soft); }
-.reference-panel span { overflow: hidden; color: #737373; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.reference-panel .sidebar-assets-head button { display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
 .shortcut-dialog { width: min(420px, calc(100vw - 32px)); margin: auto; padding: 20px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--canvas); }
 .shortcut-dialog::backdrop { background: #0005; }
 .shortcut-heading, .shortcut-dialog dl > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
