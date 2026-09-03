@@ -1519,8 +1519,19 @@ input {
   position: fixed;
   inset: 0;
   z-index: 50;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
   display: grid;
   place-items: center;
+  background: #111;
+}
+
+.present::backdrop {
   background: #111;
 }
 
@@ -1899,9 +1910,13 @@ input {
 
 @media (max-width: 600px) {
   .studio { position: relative; }
-  .sidebar { width: 124px; padding: 12px 8px; }
+  .sidebar { width: 160px; padding: 12px 8px; }
   .editor-toolbar .brand { flex: 1; }
   .editor-toolbar .tool-list { order: 3; flex-basis: 100%; justify-content: center; }
+  .palette-profile-row { flex-wrap: wrap; }
+  .palette-profile-select { flex: 1 0 100%; }
+  .drawing-options label:has(select) { flex-direction: column; align-items: stretch; }
+  .drawing-options label:has(select) select { width: 100%; max-width: none; }
   .canvas-inspector { position: absolute; right: 0; top: 0; bottom: 70px; z-index: 8; width: 224px; box-shadow: -4px 0 12px #0000000a; }
   .workspace-zoom { right: 8px; bottom: 8px; }
 }
@@ -1932,7 +1947,11 @@ input {
 .compact-stepper .size { min-width: 42px; text-align: center; font-size: 11px; letter-spacing: 0; }
 
 .project-menu { position: relative; font-size: 12px; }
-.project-menu summary { cursor: pointer; padding: 8px; border-radius: 4px; }
+.project-menu summary { display: inline-flex; align-items: center; cursor: pointer; padding: 8px; border-radius: 4px; list-style: none; }
+.project-menu summary::-webkit-details-marker { display: none; }
+.project-menu summary::marker { content: ""; }
+.project-menu summary:hover, .project-menu[open] > summary { background: var(--surface-soft); }
+.project-menu summary:focus-visible, .project-menu-items button:focus-visible { outline: 2px solid var(--brand-accent); outline-offset: 2px; }
 .project-menu-items { position: absolute; right: 0; top: 100%; width: 220px; background: var(--canvas); border: 1px solid var(--hairline); padding: 6px; box-shadow: 0 4px 18px #0002; z-index: 30; }
 .project-menu-items button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .project-menu-items button kbd { margin-left: auto; color: var(--muted); font: inherit; }
@@ -1944,3 +1963,7 @@ input {
 .drawing-options select, .access-density select { max-width: 120px; padding: 5px; border: 1px solid var(--hairline); background: var(--canvas); border-radius: 4px; font-size: 11px; }
 .workshop-stage[data-show-grid="false"] .stage-board::after { display: none; }
 @media (max-width: 1100px) { .editor-toolbar { gap: 8px; flex-wrap: wrap; } .editor-toolbar .tool-list { gap: 1px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pixel-selection { animation: none; }
+}

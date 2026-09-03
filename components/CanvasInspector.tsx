@@ -18,7 +18,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
     <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <div className="inspector-heading">
         <div><p className="sidebar-label">{workshopOpen ? "Asset" : `Page ${number}`}</p><h2>{workshopOpen ? "Workshop settings" : "Canvas settings"}</h2></div>
-        <button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" onClick={onClose}><X size={16} aria-hidden="true" /></button>
+        <button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
       </div>
             {!workshopOpen ? (
               <><LayersPanel /><SelectionControls /></>

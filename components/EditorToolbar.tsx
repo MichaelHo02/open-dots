@@ -11,7 +11,6 @@ import { WebMCPBridge } from "./WebMCPBridge";
 
 export type EditorToolbarProps = {
   onPresent: () => void;
-  onToolSelect?: () => void;
 };
 
 function toolLabel(tool: DrawTool): string {
@@ -90,7 +89,7 @@ function ToolbarButton({
   );
 }
 
-export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
+export function EditorToolbar({ onPresent }: EditorToolbarProps) {
   const api = useFilm();
   const toolbar = useRef<HTMLElement>(null);
 
@@ -120,10 +119,7 @@ export function EditorToolbar({ onPresent, onToolSelect }: EditorToolbarProps) {
               label={label}
               description={toolDescription(item)}
               active={!api.selectedAssetId && api.tool === item}
-              onClick={() => {
-                api.setTool(item);
-                onToolSelect?.();
-              }}
+              onClick={() => api.setTool(item)}
             >
               <ChromeIcon name={toolIconName(item)} />
             </ToolbarButton>

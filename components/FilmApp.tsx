@@ -53,7 +53,7 @@ export function FilmApp() {
       data-present={presenting}
       data-workshop={workshopOpen ? "true" : undefined}
     >
-      <EditorToolbar onPresent={openPresent} onToolSelect={() => setInspectorOpen(true)} />
+      <EditorToolbar onPresent={openPresent} />
 
       <div className="studio">
         <aside className="sidebar screen-only">
@@ -140,9 +140,11 @@ export function FilmApp() {
                       type="button"
                       className="asset-remove icon-tooltip"
                       aria-label={`Remove ${asset.name}`}
-                      onClick={() => api.removeAsset(asset.id)}
+                      onClick={() => {
+                        if (window.confirm(`Remove “${asset.name}” from the library and every page? This cannot be undone.`)) api.removeAsset(asset.id);
+                      }}
                     >
-                      ×
+                      <Trash2 size={14} aria-hidden="true" />
                     </button>
                   </li>
                 ))}
@@ -206,7 +208,9 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
-              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => api.removePage(film.activeIndex)}><Trash2 size={16} aria-hidden="true" /></button>
+              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => {
+                if (window.confirm(`Delete page ${film.activeIndex + 1}? This cannot be undone.`)) api.removePage(film.activeIndex);
+              }}><Trash2 size={16} aria-hidden="true" /></button>
               <button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button>
             </div>
           </nav>}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { PagePreview } from "./PagePreview";
 import type { Asset, Page } from "@/lib/types";
 
@@ -17,8 +17,16 @@ export function PresentMode({
   onClose: () => void;
   onSelect: (index: number) => void;
 }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const last = pages.length - 1;
   const page = pages[index];
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -45,8 +53,8 @@ export function PresentMode({
   }
 
   return (
-    <div className="present" role="dialog" aria-label="Read the book">
-      <button type="button" className="pill ghost present-done" onClick={onClose}>
+    <dialog ref={dialogRef} className="present" aria-label="Read the book" onCancel={(event) => { event.preventDefault(); onClose(); }}>
+      <button type="button" className="pill ghost present-done" autoFocus onClick={onClose}>
         Done
       </button>
       <button
@@ -69,6 +77,6 @@ export function PresentMode({
       <p className="present-folio">
         {index + 1} / {pages.length}
       </p>
-    </div>
+    </dialog>
   );
 }
