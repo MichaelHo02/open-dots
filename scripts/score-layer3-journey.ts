@@ -16,7 +16,7 @@ const mutations = new Set(["set_palette", "add_page", "paint_page", "add_asset",
 
 function canonicalAsset(name: string) {
   const normalized = name.toLowerCase().replace(/[^a-z]/g, "");
-  if (normalized.includes("star") && normalized.includes("cluster")) return "star cluster";
+  if (normalized.includes("star")) return "star cluster";
   if (normalized.includes("tree")) return "pine tree";
   return requiredAssets.find((asset) => normalized === asset.replace(/[^a-z]/g, "")) ?? normalized;
 }
