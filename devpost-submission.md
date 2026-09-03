@@ -80,7 +80,7 @@ https://pixel-film-studio.vercel.app
 
 ## Public Repository Link
 
-https://github.com/MichaelHo02/pixel-film-studio
+https://github.com/MichaelHo02/open-dots
 
 ## Demo Video
 
@@ -122,7 +122,7 @@ Devpost currently contains an in-progress pre-draft project named “Untitled”
 - If Existing, explain what you updated during the submission period: N/A if App Status is New; otherwise document the WebMCP extension with dated commits.
 - Live URL: https://pixel-film-studio.vercel.app
 - Testing Instructions: use the section above; add credentials only if the live site later requires them.
-- Public Code Repo: https://github.com/MichaelHo02/pixel-film-studio
+- Public Code Repo: https://github.com/MichaelHo02/open-dots
 - Which agent(s) or client(s) did you test your WebMCP tools with?: Codex in-app browser (browser verification documented 2026-09-03). Add ChatGPT in-app browser and/or Chrome only after testing them.
 - Which AI tools have you leveraged while working on this project?: Codex for implementation, debugging, iterative UI work, verification, and documentation. Confirm any additional tools before adding them.
 - Describe the level of learning you/your team derived from the project: TODO (suggested: Significant, if accurate).

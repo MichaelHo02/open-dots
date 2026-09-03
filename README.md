@@ -1,4 +1,4 @@
-# Pixel Book
+# Open Dots
 
 A picture-book canvas. Draw each page, place words and shapes on the art, then present the story — or ask an agent to paint through WebMCP.
 
