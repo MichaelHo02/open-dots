@@ -54,7 +54,15 @@ valid visual score. The CLI's strict ordered matcher shows **7/20 steps**
 because useful intermediate inspection and repeated paint calls are counted as
 unexpected after the first matched paint step.
 
+The milestone scorer gives the trajectory **68/100, incomplete**. It allows
+repeated reads, inspections, and paint passes, while checking only meaningful
+dependencies and outcomes. The run earned full credit for safe startup,
+palette/page setup, background, exact story text, and asset iteration. It lost
+points for creating only 3/6 required assets, making no stamps, and skipping
+the final page inspection.
+
 - Full report: [campsite-layer3-gemini-3.1-flash-lite-2026-09-04.html](./campsite-layer3-gemini-3.1-flash-lite-2026-09-04.html)
+- Semantic score: [campsite-layer3-semantic-score.json](./campsite-layer3-semantic-score.json)
 - Report SHA-256: `15656340e2a4222822b052f3e762af3c8bbb45402c50e3ca94d423cd1cb1b6c9`
 - Runner/model: `webmcp-evals` 0.0.4 / `google:gemini-3.1-flash-lite`
 - Configured ceiling: 80 steps; observed trajectory: 20 calls

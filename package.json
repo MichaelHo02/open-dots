@@ -11,7 +11,8 @@
     "test:gallery": "node --import tsx scripts/gallery-check.ts",
     "test:image-import": "node --import tsx scripts/image-asset-import-check.ts",
     "test:webmcp": "tsx scripts/webmcp-evals.ts",
-    "eval:story-page": "node --env-file=evals/.env --import tsx scripts/score-story-page.ts"
+    "eval:story-page": "node --env-file=evals/.env --import tsx scripts/score-story-page.ts",
+    "eval:layer3-score": "node --import tsx scripts/score-layer3-journey.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

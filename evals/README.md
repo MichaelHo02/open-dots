@@ -89,3 +89,13 @@ text-only and its JSON report does not preserve WebMCP PNG result blocks.
 
 Selected, reviewable evidence is committed under `reports/`; bulky disposable
 runner output remains under the ignored root `/.evals/` directory.
+
+Score a browser report by required milestones instead of exact call order:
+
+```bash
+npm run eval:layer3-score -- .evals/run/report.json --output evals/reports/layer3-score.json
+```
+
+Repeated reads, image inspections, and paint passes are allowed. The scorer
+only enforces real dependencies and requires stamped composition plus a final
+page inspection before it can return `pass`.
