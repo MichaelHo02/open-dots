@@ -1961,19 +1961,6 @@ input {
   line-height: 16px;
   pointer-events: none;
 }
-.page-drag-handle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 24px;
-  height: 20px;
-  display: grid;
-  place-items: center;
-  border-radius: 9999px;
-  background: color-mix(in srgb, var(--canvas) 88%, transparent);
-  color: var(--ink);
-  pointer-events: none;
-}
 .page-count { text-align: center; color: #737373; font-size: 12px; }
 @media (max-width: 600px) { .canvas-inspector { bottom: 130px; } .strip { padding: 8px; gap: 8px; } }
 

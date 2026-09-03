@@ -16,7 +16,7 @@ import { StageZoomControls } from "./StageZoomControls";
 import { ToolSettings } from "./ToolSettings";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
-import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 export function FilmApp() {
   const api = useFilm();
@@ -234,7 +234,6 @@ export function FilmApp() {
               >
                 <PagePreview page={page} assets={film.assets} />
                 <span className="page-index">{index + 1}</span>
-                <span className="page-drag-handle" title="Drag to reorder" aria-hidden="true"><GripVertical size={14} /></span>
               </button>)}
             </div>
             <div className="strip-actions">
