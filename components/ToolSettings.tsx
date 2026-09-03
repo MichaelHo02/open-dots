@@ -4,6 +4,7 @@ import { useFilm } from "@/lib/film-store";
 import { MAX_BRUSH_SIZE, MAX_TEXT_SIZE, MIN_BRUSH_SIZE, MIN_TEXT_SIZE, TEXT_FRAMES, brushSizeLabel, frameHint, frameLabel } from "@/lib/types";
 import { FrameSample } from "./BubbleFrame";
 import { AppTooltipTrigger } from "./AppTooltip";
+import { ChevronDown } from "lucide-react";
 
 export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChange }: {
   symmetry: "none" | "x" | "y" | "both";
@@ -13,8 +14,9 @@ export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChang
 }) {
   const api = useFilm();
   const { tool, brushSize, textSize, frame, shapeFilled } = api;
-  return <section className="sidebar-section tool-settings" aria-label="Tool settings">
-    <p className="sidebar-label">Tool settings</p>
+  return <details className="sidebar-section tool-settings sidebar-collapsible" open>
+    <summary><span className="sidebar-label">Tool settings</span><ChevronDown size={14} aria-hidden="true" /></summary>
+    <div className="sidebar-section-body">
     {tool === "pencil" || tool === "eraser" ? <div className="tool-setting-row">
       <span>Brush size</span><div className="compact-stepper" role="group" aria-label="Brush size">
         <AppTooltipTrigger label="Decrease brush size"><button type="button" className="icon-tooltip" aria-label="Decrease brush size" disabled={brushSize <= MIN_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize - 1)}>−</button></AppTooltipTrigger>
@@ -41,5 +43,6 @@ export function ToolSettings({ symmetry, onSymmetryChange, showGrid, onGridChang
       <div className="frame-grid">{TEXT_FRAMES.map(item => <button key={item} type="button" className="frame-card" data-active={frame === item} aria-label={frameLabel(item)} onClick={() => api.setFrame(item)}><FrameSample frame={item} />{frameLabel(item)}</button>)}</div>
       <div className="choice-row"><button type="button" className="pill" data-active={shapeFilled} onClick={() => api.setShapeFilled(true)}>Fill</button><button type="button" className="pill" data-active={!shapeFilled} onClick={() => api.setShapeFilled(false)}>Stroke</button></div>
     </div> : null}
-  </section>;
+    </div>
+  </details>;
 }
