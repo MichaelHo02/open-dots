@@ -880,6 +880,15 @@ input {
   overflow: visible;
 }
 
+.pill.danger-subtle {
+  border-color: #fecdca;
+  background: #fef3f2;
+  color: #b42318;
+}
+.pill.danger-subtle:hover:not(:disabled) { border-color: #fda29b; background: #fee4e2; }
+.pill.danger-subtle:focus-visible { outline-color: #d92d20; }
+.pill.danger-subtle:disabled { opacity: .4; }
+
 .pill[data-active="true"],
 .pill.primary {
   background: var(--primary);
