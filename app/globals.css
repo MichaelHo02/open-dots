@@ -1986,3 +1986,10 @@ input {
 @media (max-width: 600px) { .canvas-inspector { bottom: 130px; } .strip { padding: 8px; gap: 8px; } }
 
 .stage-board[data-locked="true"] .stage { cursor: not-allowed; }
+
+.canvas-inspector .access-density, .canvas-inspector .access-brush { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.compact-stepper { display: inline-flex; align-items: center; gap: 4px; }
+.compact-stepper button { width: 26px; height: 28px; border: 0; border-radius: 4px; background: var(--surface-soft); cursor: pointer; }
+.compact-stepper button:disabled { opacity: .35; cursor: default; }
+.compact-stepper button:focus-visible { outline: 2px solid var(--brand-accent); }
+.compact-stepper .size { min-width: 42px; text-align: center; font-size: 11px; letter-spacing: 0; }

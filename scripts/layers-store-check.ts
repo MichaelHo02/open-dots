@@ -119,3 +119,23 @@ assert.equal(page().pixels[4 * page().width + 7], "",
   "undo after a layer switch must restore the pre-move snapshot without anchoring moved pixels");
 
 console.log("PASS: layer isolation, edit guards, flatten undo metadata, stamp clear, floating selection preservation");
+
+const removable = store.addLayer();
+assert.ok(removable);
+store.drawPixels([{ x: 4, y: 4, color: "#123456" }]);
+const beforeDelete = JSON.stringify(page());
+assert.equal(store.removeLayer("missing"), false);
+assert.equal(store.removeLayer(removable.id), true);
+assert.notEqual(page().activeLayerId, removable.id);
+assert.equal(store.undo(), true);
+assert.equal(JSON.stringify(page()), beforeDelete, "Undo restores layer content, order and selection");
+store.updateLayer(removable.id, { locked: true });
+assert.equal(store.removeLayer(removable.id), false, "Locked layers cannot be deleted");
+store.updateLayer(removable.id, { locked: false });
+while ((page().layers?.length ?? 1) > 1) {
+  const candidate = page().layers![0];
+  store.updateLayer(candidate.id, { locked: false });
+  assert.equal(store.removeLayer(candidate.id), true);
+}
+assert.equal(store.removeLayer(page().activeLayerId!), false, "Keep at least one layer");
+console.log("PASS: layer deletion, undo, missing ID, lock and final-layer protection");

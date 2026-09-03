@@ -80,3 +80,12 @@ The node --import form avoids the tsx CLI's sandbox-blocked IPC socket.
 Final production build: `npx next build --webpack` passed. Targeted ESLint had
 zero errors and eight pre-existing warnings. TypeScript passed. Additional
 store regressions confirmed lifted/moved pixel selections survive layer changes.
+
+## Layer deletion and compact controls — 2026-09-03
+
+Selected-layer trash button deletes an unlocked layer; last layer is protected.
+Undo restores content, order and selection. Actual-store regression covers those
+cases and invalid IDs. Density/brush/zoom now use minus, value, plus (Fit retained).
+Browser verified delete/Undo on a temporary layer, density minimum disabling and
+48×27 → 64×36, brush 1×1 → 2×2, zoom 100% → 125%. Removed the temporary test page
+and reset brush/zoom. TypeScript, targeted lint and regression checks passed.

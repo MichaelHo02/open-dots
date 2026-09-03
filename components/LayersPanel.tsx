@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, Lock, Unlock, ChevronDown, ChevronUp } from "lucide-react";
+import { Trash2, Eye, EyeOff, Lock, Unlock, ChevronDown, ChevronUp } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
 import { activePageLayer, pageLayers, type PageLayer } from "@/lib/types";
 
@@ -103,6 +103,11 @@ function LayerRow({
             onClick={() => api.moveLayer(layer.id, 1)}
           >
             <ChevronUp size={14} aria-hidden="true" />
+          </button>
+          <button type="button" className="layers-icon-button"
+            aria-label={`Delete layer ${layer.name}`} title={layer.locked ? "Unlock layer to delete" : "Delete layer"}
+            disabled={count <= 1 || layer.locked} onClick={() => api.removeLayer(layer.id)}>
+            <Trash2 size={14} aria-hidden="true" />
           </button>
           <button
             type="button"

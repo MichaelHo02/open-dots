@@ -1427,6 +1427,18 @@ function createApi(
       commitLayers(page, [...layers, layer], layer.id);
       return layer;
     },
+    removeLayer: (id) => {
+      const page = activePage();
+      if (!page) return false;
+      const layers = pageLayers(page);
+      const index = layers.findIndex(layer => layer.id === id);
+      if (layers.length <= 1 || index < 0 || layers[index].locked) return false;
+      const remaining = layers.filter(layer => layer.id !== id);
+      const selected = activePageLayer(page).id;
+      pushUndo();
+      commitLayers(page, remaining, selected === id ? remaining[Math.max(0, index - 1)].id : selected);
+      return true;
+    },
     selectLayer: (id) => {
       const page = activePage();
       if (!page || !pageLayers(page).some((layer) => layer.id === id)) return false;

@@ -11,6 +11,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
   const api = useFilm();
   const { film, active, tool, brushSize, textSize, textFont, color, frame, shapeFilled, workshopOpen } = api;
   const density = active ?? film.pages[0];
+  const densityLocked = !!active && (activePageLayer(active).locked || !activePageLayer(active).visible);
   const number = film.activeIndex + 1;
   return (
     <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
@@ -24,43 +25,21 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
             {!workshopOpen ? (
               <section className="access-group access-density" aria-label="Density">
                 <p className="sidebar-label">Density</p>
-                <label className="scale-field panel-scale">
-                  <input
-                    type="range"
-                    min={MIN_WIDTH}
-                    max={MAX_WIDTH}
-                    step={16}
-                    value={density?.width ?? DEFAULT_WIDTH}
-                    aria-label="Pixels across this page"
-                    disabled={!!active && (activePageLayer(active).locked || !activePageLayer(active).visible)}
-                    onChange={(event) =>
-                      api.setDensity(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <span className="size">
-                  {density?.width ?? DEFAULT_WIDTH}×
-                  {density?.height ?? DEFAULT_HEIGHT}
-                </span>
+                <div className="compact-stepper" role="group" aria-label="Page density">
+                  <button type="button" aria-label="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.setDensity(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16))}>−</button>
+                  <span className="size">{density?.width ?? DEFAULT_WIDTH}×{density?.height ?? DEFAULT_HEIGHT}</span>
+                  <button type="button" aria-label="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.setDensity(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16))}>+</button>
+                </div>
               </section>
             ) : null}
             {tool === "pencil" || tool === "eraser" ? (
               <section className="access-group access-brush" aria-label="Brush size">
                 <p className="sidebar-label">Brush size</p>
-                <label className="scale-field panel-scale">
-                  <input
-                    type="range"
-                    min={MIN_BRUSH_SIZE}
-                    max={MAX_BRUSH_SIZE}
-                    step={1}
-                    value={brushSize}
-                    aria-label="Brush size"
-                    onChange={(event) =>
-                      api.setBrushSize(Number(event.target.value))
-                    }
-                  />
-                </label>
-                <span className="size">{brushSizeLabel(brushSize)}</span>
+                <div className="compact-stepper" role="group" aria-label="Brush size">
+                  <button type="button" aria-label="Decrease brush size" disabled={brushSize <= MIN_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize - 1)}>−</button>
+                  <span className="size">{brushSizeLabel(brushSize)}</span>
+                  <button type="button" aria-label="Increase brush size" disabled={brushSize >= MAX_BRUSH_SIZE} onClick={() => api.setBrushSize(brushSize + 1)}>+</button>
+                </div>
               </section>
             ) : null}
           {tool === "text" ? (

@@ -266,6 +266,7 @@ export interface FilmApi {
   addSwatch: (color: string) => boolean;
   resetPalette: () => void;
   addLayer: () => PageLayer | null;
+  removeLayer: (id: string) => boolean;
   selectLayer: (id: string) => boolean;
   updateLayer: (id: string, patch: { name?: string; visible?: boolean; locked?: boolean }) => boolean;
   moveLayer: (id: string, direction: -1 | 1) => boolean;
