@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { ChromeIcon } from "./ChromeIcons";
+import { AppTooltipTrigger } from "./AppTooltip";
 import {
   MAX_PALETTE_NAME,
   isDefaultPaletteId,
@@ -140,7 +141,7 @@ export function PaletteProfileControls({
             </option>
           ))}
         </select>
-        {custom ? <button type="button" className="palette-profile-edit icon-tooltip" aria-label="Rename color profile" title="Rename color profile" aria-expanded={renaming} onClick={() => { setCreating(false); setRenaming(value => !value); }}><ChromeIcon name="draw" /></button> : null}
+        {custom ? <AppTooltipTrigger label="Rename color profile"><button type="button" className="palette-profile-edit icon-tooltip" aria-label="Rename color profile" aria-expanded={renaming} onClick={() => { setCreating(false); setRenaming(value => !value); }}><ChromeIcon name="draw" /></button></AppTooltipTrigger> : null}
         <button
           ref={triggerRef}
           type="button"

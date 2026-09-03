@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
 import { activePageLayer, DEFAULT_WIDTH, DEFAULT_HEIGHT, MIN_WIDTH, MAX_WIDTH } from "@/lib/types";
 import { LayersPanel } from "./LayersPanel";
+import { AppTooltipTrigger } from "./AppTooltip";
 
 export function CanvasInspector({ onClose }: { onClose: () => void }) {
   const [resizeMode, setResizeMode] = useState<"scale" | "canvas">("scale");
@@ -18,7 +19,7 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
     <aside className="canvas-inspector screen-only" aria-label="Canvas settings" onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}>
       <div className="inspector-heading">
         <div><p className="sidebar-label">{workshopOpen ? "Asset" : `Page ${number}`}</p><h2>{workshopOpen ? "Workshop settings" : "Canvas settings"}</h2></div>
-        <button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" title="Close canvas settings" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button>
+        <AppTooltipTrigger label="Close canvas settings"><button type="button" className="inspector-close icon-tooltip" aria-label="Close canvas settings" autoFocus onClick={onClose}><X size={16} aria-hidden="true" /></button></AppTooltipTrigger>
       </div>
             {!workshopOpen ? (
               <><LayersPanel /><SelectionControls /></>
@@ -29,9 +30,9 @@ export function CanvasInspector({ onClose }: { onClose: () => void }) {
                   <option value="scale">Scale art</option><option value="canvas">Canvas bounds</option>
                 </select></label>
                 <div className="compact-stepper" role="group" aria-label="Page density">
-                  <button type="button" className="icon-tooltip" aria-label="Decrease density" title="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.resizeCanvas(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16), resizeMode)}>−</button>
+                  <AppTooltipTrigger label="Decrease density"><button type="button" className="icon-tooltip" aria-label="Decrease density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) <= MIN_WIDTH} onClick={() => api.resizeCanvas(Math.max(MIN_WIDTH, (density?.width ?? DEFAULT_WIDTH) - 16), resizeMode)}>−</button></AppTooltipTrigger>
                   <span className="size">{density?.width ?? DEFAULT_WIDTH}×{density?.height ?? DEFAULT_HEIGHT}</span>
-                  <button type="button" className="icon-tooltip" aria-label="Increase density" title="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button>
+                  <AppTooltipTrigger label="Increase density"><button type="button" className="icon-tooltip" aria-label="Increase density" disabled={densityLocked || (density?.width ?? DEFAULT_WIDTH) >= MAX_WIDTH} onClick={() => api.resizeCanvas(Math.min(MAX_WIDTH, (density?.width ?? DEFAULT_WIDTH) + 16), resizeMode)}>+</button></AppTooltipTrigger>
                 </div>
               </section>
             ) : null}

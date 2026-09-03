@@ -14,6 +14,7 @@ import { PageStage } from "./PageStage";
 import { PresentMode } from "./PresentMode";
 import { StageZoomControls } from "./StageZoomControls";
 import { ToolSettings } from "./ToolSettings";
+import { AppTooltip, AppTooltipTrigger } from "./AppTooltip";
 import { useEditorShortcuts } from "./useEditorShortcuts";
 import { useStageZoomShortcuts } from "./useStageZoomShortcuts";
 import { Plus, Trash2 } from "lucide-react";
@@ -130,26 +131,24 @@ export function FilmApp() {
                         {asset.width}×{asset.height}
                       </span>
                     </button>
-                    <button
+                    <AppTooltipTrigger label={`Edit ${asset.name}`}><button
                       type="button"
                       className="asset-edit icon-tooltip"
                       aria-label={`Edit ${asset.name}`}
-                      title={`Edit ${asset.name}`}
                       onClick={() => { api.openWorkshop(asset.id); setInspectorOpen(true); }}
                     >
                       <ChromeIcon name="draw" size={14} />
-                    </button>
-                    <button
+                    </button></AppTooltipTrigger>
+                    <AppTooltipTrigger label={`Remove ${asset.name}`}><button
                       type="button"
                       className="asset-remove icon-tooltip"
                       aria-label={`Remove ${asset.name}`}
-                      title={`Remove ${asset.name}`}
                       onClick={() => {
                         if (window.confirm(`Remove “${asset.name}” from the library and every page? This cannot be undone.`)) api.removeAsset(asset.id);
                       }}
                     >
                       <Trash2 size={14} aria-hidden="true" />
-                    </button>
+                    </button></AppTooltipTrigger>
                   </li>
                 ))}
               </ul>
@@ -240,10 +239,10 @@ export function FilmApp() {
             </div>
             <div className="strip-actions">
               <span className="page-count">{film.activeIndex + 1} / {film.pages.length}</span>
-              <button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" title="Delete page" disabled={film.pages.length <= 1} onClick={() => {
+              <AppTooltipTrigger label="Delete page"><button type="button" className="pill danger-subtle page-action-icon icon-tooltip" aria-label="Delete page" disabled={film.pages.length <= 1} onClick={() => {
                 if (window.confirm(`Delete page ${film.activeIndex + 1}? This cannot be undone.`)) api.removePage(film.activeIndex);
-              }}><Trash2 size={16} aria-hidden="true" /></button>
-              <button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" title="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button>
+              }}><Trash2 size={16} aria-hidden="true" /></button></AppTooltipTrigger>
+              <AppTooltipTrigger label="New page"><button type="button" className="pill ghost page-action-icon icon-tooltip" aria-label="New page" onClick={() => { api.addPage(); api.resetStageZoom(); setInspectorOpen(true); }}><Plus size={17} aria-hidden="true" /></button></AppTooltipTrigger>
             </div>
           </nav>}
         </div>
@@ -259,6 +258,7 @@ export function FilmApp() {
           onSelect={(next) => setPresentIndex(next)}
         />
       ) : null}
+      <AppTooltip />
     </div>
   );
 }

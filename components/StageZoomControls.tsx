@@ -2,6 +2,7 @@
 
 import { Minus, Plus } from "lucide-react";
 import { useFilm } from "@/lib/film-store";
+import { AppTooltipTrigger } from "./AppTooltip";
 import {
   MAX_STAGE_ZOOM,
   MIN_STAGE_ZOOM,
@@ -16,27 +17,25 @@ export function StageZoomControls() {
 
   return (
     <div className="zoom-controls">
-      <button
+      <AppTooltipTrigger label="Zoom out"><button
         type="button"
         className="pill ghost zoom-btn icon-tooltip"
         aria-label="Zoom out"
-        title="Zoom out"
         disabled={atMin}
         onClick={() => stepStageZoom(-1)}
       >
         <Minus size={14} aria-hidden="true" />
-      </button>
+      </button></AppTooltipTrigger>
       <span className="size zoom-label">{stageZoomLabel(stageZoom)}</span>
-      <button
+      <AppTooltipTrigger label="Zoom in"><button
         type="button"
         className="pill ghost zoom-btn icon-tooltip"
         aria-label="Zoom in"
-        title="Zoom in"
         disabled={atMax}
         onClick={() => stepStageZoom(1)}
       >
         <Plus size={14} aria-hidden="true" />
-      </button>
+      </button></AppTooltipTrigger>
       <button
         type="button"
         className="pill"

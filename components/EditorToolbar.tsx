@@ -9,6 +9,7 @@ import { DRAW_TOOLS, assertNever, type DrawTool } from "@/lib/types";
 import { ChromeIcon, toolIconName } from "./ChromeIcons";
 import { OpenDotsLogo, OpenDotsWordmark } from "./OpenDotsLogo";
 import { WebMCPBridge } from "./WebMCPBridge";
+import { AppTooltipTrigger } from "./AppTooltip";
 
 export type EditorToolbarProps = {
   onPresent: () => void;
@@ -72,17 +73,16 @@ function ToolbarButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <AppTooltipTrigger label={description}><button
       type="button"
       className="toolbar-button"
       aria-label={label}
       aria-pressed={active}
       disabled={disabled}
-      title={description}
       onClick={onClick}
     >
       {children}
-    </button>
+    </button></AppTooltipTrigger>
   );
 }
 

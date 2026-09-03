@@ -8,6 +8,7 @@ import {
 } from "@/lib/register-tools";
 import { useFilm } from "@/lib/film-store";
 import { Dotm3x3_15 } from "@/components/ui/dotm-3x3-15";
+import { AppTooltipTrigger } from "./AppTooltip";
 
 export function WebMCPBridge() {
   const api = useFilm();
@@ -64,5 +65,5 @@ export function WebMCPBridge() {
 
   const label = status === "live" ? `WebMCP · ${count} tools` : status === "error" ? "WebMCP unavailable" : "WebMCP starting";
   const color = status === "live" ? "#1ea64a" : status === "error" ? "var(--accent-magenta)" : "var(--hairline)";
-  return <span className="webmcp-status-dot" title={label}><Dotm3x3_15 size={16} dotSize={3} cellPadding={3.5} speed={0.35} color={color} ariaLabel={label} /></span>;
+  return <AppTooltipTrigger label={label}><span className="webmcp-status-dot"><Dotm3x3_15 size={16} dotSize={3} cellPadding={3.5} speed={0.35} color={color} ariaLabel={label} /></span></AppTooltipTrigger>;
 }

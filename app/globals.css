@@ -1879,6 +1879,19 @@ input {
 .toolbar-labelled { width: auto; gap: 7px; padding: 0 10px; font-size: 12px; font-weight: 520; text-decoration: none; white-space: nowrap; }
 .share-story-button { padding-inline: 12px; background: var(--brand-accent); color: white; }
 .share-story-button:hover { background: color-mix(in srgb, var(--brand-accent) 88%, black); }
+.app-tooltip-positioner { z-index: 1000; pointer-events: none; }
+.app-tooltip-popup {
+  max-width: min(240px, var(--available-width));
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--canvas);
+  font-size: 11px;
+  font-weight: 450;
+  line-height: 1.2;
+  text-wrap: balance;
+  box-shadow: 0 4px 16px #0002;
+}
 .webmcp-status-dot {
   margin: 0 2px 0 8px; flex: 0 0 auto; cursor: help;
 }

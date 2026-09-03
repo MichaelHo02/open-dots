@@ -4,13 +4,14 @@ import { ChevronDown, ChevronUp, Copy, Eye, EyeOff, Layers2, Lock, Merge, Plus, 
 import { useFilm } from "@/lib/film-store";
 import { activePageLayer, pageLayers, type Page, type PageLayer } from "@/lib/types";
 import { AssetThumb, PagePreview } from "./PagePreview";
+import { AppTooltipTrigger } from "./AppTooltip";
 
 function thumbnailPage(page: Page, layer: PageLayer): Page {
   return { id: layer.id, width: page.width, height: page.height, pixels: layer.pixels, placements: layer.placements, texts: layer.texts, boardX: 0, boardY: 0 };
 }
 
 function IconButton({ label, disabled, onClick, children }: { label: string; disabled?: boolean; onClick: () => void; children: React.ReactNode }) {
-  return <button type="button" className="layers-icon-button icon-tooltip" aria-label={label} title={label} disabled={disabled} onClick={onClick}>{children}</button>;
+  return <AppTooltipTrigger label={label}><button type="button" className="layers-icon-button icon-tooltip" aria-label={label} disabled={disabled} onClick={onClick}>{children}</button></AppTooltipTrigger>;
 }
 
 function LayerRow({ page, layer, index, layers }: { page: Page; layer: PageLayer; index: number; layers: PageLayer[] }) {
