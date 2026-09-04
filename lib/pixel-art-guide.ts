@@ -237,6 +237,7 @@ const PRIMITIVES = {
   note:
     "paint_asset and paint_page each accept rects, lines, fills, and pixels in ONE call. This is the advantage over one-pixel-at-a-time tools: a single rect fills any block server-side (no per-pixel cap). Reserve the pixels array for fine detail.",
   ops: [
+    "paint_asset translateRegion: {x,y,width,height,dx,dy} moves painted pixels in one bounded region on a copied animation frame; follow with cleanup pixels and inspect the frame.",
     "rects: [{x,y,width,height,color}] — solid blocks. Floors, walls, furniture bodies, shading bands. color \"\" erases the block.",
     "paint_asset mirror: left-right, top-bottom, or both — duplicate the supplied operations across the asset axes for fast symmetric drafts.",
     "paint_asset repeat: {columns,rows,stepX,stepY} — repeat supplied operations as a deterministic grid for patterns; refine the rasterized result by hand afterward.",
@@ -258,7 +259,7 @@ const FEEDBACK_LOOP = {
     "After each mutation, read passHint and nextRequired in the JSON.",
     "Inspect the attached PNG (get_asset_image scale 4–8 to pixel-peep).",
     "Fix mistakes with another paint_asset call (color \"\" erases) — each returns a fresh PNG.",
-    "Only stamp_assets once the sprite PNG matches your intent. Stamps are movable overlays (not baked into page.pixels); transparent pixels do not punch holes. Repeat the same asset (plants ×4).",
+    "Only stamp_assets once the sprite PNG matches your intent. Stamps are movable overlays (not baked into page.pixels); transparent pixels do not punch holes. After get_page_image, pass a returned placementId back to stamp_assets to correct position or scale instead of adding a duplicate.",
     "After stamping, call get_page_image for the full scene and important region crops. Treat colorCount and placementCount as evidence only; judge silhouettes, empty space, overlap, material ramps, and lighting in the PNG itself.",
   ],
 };
@@ -303,11 +304,13 @@ const QUALITY_LOOP = {
     "3. Create multiple named palettes for material/asset families. They are reusable working profiles, not hard-bound to assets; prefer cohesive ramps over raw color count.",
     "4. When image generation is available, use it for complex organic characters or props and import each clean PNG with the visible Import image control; use WebMCP primitives for tiles, corrections, and deliberate pixel cleanup.",
     "5. add_page with a width that fits scene density (160–224 for rich rooms).",
-    "6. Per hand-drawn asset: add_asset template \"empty\" → paint_asset passes (outline → fill → shade → reflected light → highlight), comparing the PNG each pass.",
-    "7. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
-    "8. stamp_assets back-to-front as movable overlays (floor tiles → emblem/shadows → furniture → plants/characters). Repeat stamps (plants ×4). Transparent pixels do not punch holes.",
-    "9. get_page_image (full, then region crops) — compare to reference, read sceneHint, iterate until the frame is full and layered.",
-    "10. paint_page only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene.",
+    "6. Choose the asset route: generate/import expressive organic characters, hair, fur, or fabric; use paint_asset for geometric props, tiles, cleanup, and small frame deltas. Do not force rectangle-first construction onto anatomy.",
+    "7. Per hand-drawn asset: add_asset template \"empty\" → monochrome cluster sketch → inspect pose/expression/perspective → paint_asset passes (outline → fill → shade → reflected light → highlight), comparing the PNG each pass.",
+    "8. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
+    "9. stamp_assets back-to-front as movable overlays (floor tiles → emblem/shadows → furniture → plants/characters). Inspect get_page_image, then update existing placements with placementId until overlap and focal hierarchy pass.",
+    "10. Animate only the focal asset: append a copied frame with frameIndex, use translateRegion for a bounded 1–2px blink/breath/limb shift plus cleanup pixels, inspect every frame, then judge the loop in Present mode.",
+    "11. get_page_image (full, then region crops) — compare to reference, read sceneHint, iterate until the frame is full and layered.",
+    "12. paint_page only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene.",
   ],
 };
 
@@ -361,15 +364,15 @@ const TOOL_WORKFLOW = {
     { name: "add_page", when: "New page + optional width for pixel density" },
     { name: "select_page", when: "Switch active page by index" },
     { name: "add_asset", when: "Create sprite — direct indexed bitmap, template empty, hex rows, fill, or page copy" },
-    { name: "paint_asset", when: "Declared outline/fill/shadow/highlight/cleanup pass; returns a new revision PNG" },
+    { name: "paint_asset", when: "Declared drawing pass or bounded copied-frame translateRegion animation; returns a new revision PNG" },
     { name: "review_asset", when: "Record revise/approved vision observations for the inspected asset revision" },
     { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
-    { name: "stamp_assets", when: "Add movable overlay placements (array order = z-index; not baked into pixels)" },
+    { name: "stamp_assets", when: "Add placements, or pass placementId to reposition/resize after page inspection" },
     { name: "place_text", when: "Rasterize story words onto the page" },
     { name: "review_page", when: "Record revise/approved vision observations for the inspected full page" },
   ],
   notes:
-    "Choose the shortest asset path: ImageGen reference → visible Import image control → cleanup, exact small bitmap → add_asset bitmapPalette+indexedRows, or add_asset empty → declared paint_asset passes. Inspect with get_asset_image and approve with review_asset before stamping. Erase with color \"\" and repaint.",
+    "Choose the shortest asset path: expressive organic subject → ImageGen reference → visible Import image control → cleanup; geometric prop/tile → add_asset empty → cluster sketch and declared paint_asset passes; exact small bitmap → add_asset bitmapPalette+indexedRows. Inspect and approve before stamping. After composition inspection, correct existing placementIds rather than layering duplicates.",
 };
 
 const ANTI_PATTERNS = {

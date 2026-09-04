@@ -17,6 +17,7 @@ import {
   type FilmApi,
   type Page,
   type Asset,
+  type Placement,
   type Size,
 } from "./types";
 import {
@@ -450,6 +451,7 @@ function drawPixelsLimitError(count: number) {
 
 type StampInput = {
   id: string;
+  placementId?: string;
   x: number;
   y: number;
   scale?: number;
@@ -477,6 +479,7 @@ function parseStampList(
     }
     stamps.push({
       id,
+      placementId: asString(row.placementId),
       x,
       y,
       scale: asNumber(row.scale),
@@ -485,6 +488,66 @@ function parseStampList(
     });
   }
   return stamps;
+}
+
+type TranslateRegion = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  dx: number;
+  dy: number;
+};
+
+function parseTranslateRegion(value: unknown, size: Size): TranslateRegion | string | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") return "translateRegion must be an object";
+  const input = value as Record<string, unknown>;
+  const x = asInteger(input.x);
+  const y = asInteger(input.y);
+  const width = asInteger(input.width);
+  const height = asInteger(input.height);
+  const dx = asInteger(input.dx);
+  const dy = asInteger(input.dy);
+  if ([x, y, width, height, dx, dy].some((item) => item === undefined)) {
+    return "translateRegion requires integer x, y, width, height, dx, and dy";
+  }
+  const region = { x: x!, y: y!, width: width!, height: height!, dx: dx!, dy: dy! };
+  if (region.width < 1 || region.height < 1 || region.width * region.height > MAX_DRAW_PIXELS) {
+    return `translateRegion area must be between 1 and ${MAX_DRAW_PIXELS} pixels`;
+  }
+  if (region.dx === 0 && region.dy === 0) return "translateRegion dx or dy must be non-zero";
+  if (Math.abs(region.dx) > 16 || Math.abs(region.dy) > 16) {
+    return "translateRegion dx and dy must each be between -16 and 16";
+  }
+  if (
+    region.x < 0 || region.y < 0 ||
+    region.x + region.width > size.width || region.y + region.height > size.height ||
+    region.x + region.dx < 0 || region.y + region.dy < 0 ||
+    region.x + region.dx + region.width > size.width ||
+    region.y + region.dy + region.height > size.height
+  ) {
+    return "translateRegion source and destination must stay inside the asset";
+  }
+  return region;
+}
+
+function translatePaintedRegion(base: string[], size: Size, region?: TranslateRegion): string[] {
+  if (!region) return base;
+  const next = base.slice();
+  const painted: Array<{ x: number; y: number; color: string }> = [];
+  for (let y = region.y; y < region.y + region.height; y += 1) {
+    for (let x = region.x; x < region.x + region.width; x += 1) {
+      const color = base[y * size.width + x] ?? "";
+      if (!color) continue;
+      painted.push({ x, y, color });
+      next[y * size.width + x] = "";
+    }
+  }
+  for (const pixel of painted) {
+    next[(pixel.y + region.dy) * size.width + pixel.x + region.dx] = pixel.color;
+  }
+  return next;
 }
 
 function resolveAssetPixels(input: Record<string, unknown>): {
@@ -1078,7 +1141,7 @@ export function buildFilmTools(): WebMCPTool[] {
     {
       name: "paint_asset",
       description:
-        `Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror or repeat the same operations for fast procedural drafts. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.`,
+        `Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror/repeat drafts or translate one painted region on a copied frame for animation. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1135,6 +1198,19 @@ export function buildFilmTools(): WebMCPTool[] {
             },
             required: ["columns", "rows", "stepX", "stepY"],
           },
+          translateRegion: {
+            type: "object",
+            description: "Move painted pixels in one bounded region on this frame; useful after appending a copied frame for a 1–2px blink, breath, limb, or hair motion.",
+            properties: {
+              x: { type: "integer" },
+              y: { type: "integer" },
+              width: { type: "integer", minimum: 1 },
+              height: { type: "integer", minimum: 1 },
+              dx: { type: "integer", minimum: -16, maximum: 16 },
+              dy: { type: "integer", minimum: -16, maximum: 16 },
+            },
+            required: ["x", "y", "width", "height", "dx", "dy"],
+          },
           offsetX: {
             type: "integer",
             description: "Added to every x (default 0) — use to tile regions",
@@ -1176,6 +1252,8 @@ export function buildFilmTools(): WebMCPTool[] {
         const repeat = parseRepeat(input.repeat);
         if (typeof repeat === "string") return toolError(repeat);
         const size: Size = { width: asset.width, height: asset.height };
+        const translateRegion = parseTranslateRegion(input.translateRegion, size);
+        if (typeof translateRegion === "string") return toolError(translateRegion);
         let ops = collectBufferOps(input, offsetX, offsetY);
         ops = repeatBufferOps(ops, repeat);
         ops = mirrorBufferOps(ops, size, mirror as MirrorMode | undefined);
@@ -1186,13 +1264,13 @@ export function buildFilmTools(): WebMCPTool[] {
         if (ops.dots.length > MAX_DRAW_PIXELS) {
           return toolError(`Algorithmic expansion creates ${ops.dots.length} detail pixels; maximum is ${MAX_DRAW_PIXELS}`);
         }
-        if (bufferOpCount(ops) === 0 && frameDuration === undefined) {
+        if (bufferOpCount(ops) === 0 && frameDuration === undefined && !translateRegion) {
           return toolError(
-            "Provide pixels, rects, lines, fills, or frameDuration. color \"\" erases.",
+            "Provide pixels, rects, lines, fills, translateRegion, or frameDuration. color \"\" erases.",
           );
         }
         const source = asset.frames?.[frameIndex] ?? asset.frames?.at(-1) ?? asset.pixels;
-        const next = applyBufferOps(source, size, ops);
+        const next = applyBufferOps(translatePaintedRegion(source, size, translateRegion), size, ops);
         const changed = diffToDots(source, next, asset.width);
         const painted = apiRef.current.drawAssetPixels(id, changed, frameIndex, frameDuration);
         const updated = apiRef.current.getAsset(id);
@@ -1208,7 +1286,9 @@ export function buildFilmTools(): WebMCPTool[] {
             frameIndex,
             frameCount: updated.frames?.length ?? 1,
             frameDuration: updated.frameDuration ?? 400,
-            ...((mirror || repeat) ? { algorithmic: { mirror: mirror ?? null, repeat: repeat ?? null } } : {}),
+            ...((mirror || repeat || translateRegion) ? {
+              algorithmic: { mirror: mirror ?? null, repeat: repeat ?? null, translateRegion: translateRegion ?? null },
+            } : {}),
           },
           { dots: changed, pass },
         );
@@ -1321,7 +1401,7 @@ export function buildFilmTools(): WebMCPTool[] {
     {
       name: "stamp_assets",
       description:
-        `Add movable overlay placements on the selected layer of the active page (max ${MAX_ASSETS} per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.`,
+        `Add or update movable overlay placements on the selected layer of the active page (max ${MAX_ASSETS} per call). Each item needs asset id, x, y; pass placementId from get_storybook/get_page_image to reposition or resize an existing stamp after visual review. Optional scale or width/height stays proportional. Array order for new stamps is back-to-front.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1332,6 +1412,7 @@ export function buildFilmTools(): WebMCPTool[] {
               type: "object",
               properties: {
                 id: { type: "string", description: "Asset id from add_asset or get_storybook" },
+                placementId: { type: "string", description: "Existing placement id to move/resize instead of adding a duplicate" },
                 x: { type: "integer", description: "Page column of the stamp top-left (0 = left)" },
                 y: { type: "integer", description: "Page row of the stamp top-left (0 = top)" },
                 scale: {
@@ -1343,7 +1424,7 @@ export function buildFilmTools(): WebMCPTool[] {
               },
               required: ["id", "x", "y"],
             },
-            description: "Stamps applied in array order (back-to-front)",
+            description: "New stamps apply in array order (back-to-front); placementId updates an existing stamp in place",
           },
         },
         required: ["stamps"],
@@ -1380,6 +1461,7 @@ export function buildFilmTools(): WebMCPTool[] {
           width: number;
           height: number;
         }> = [];
+        let updatedCount = 0;
         for (let index = 0; index < stamps.length; index += 1) {
           const stamp = stamps[index]!;
           if (!api.getAsset(stamp.id)) {
@@ -1387,16 +1469,43 @@ export function buildFilmTools(): WebMCPTool[] {
               `Stamp ${index}: asset not found "${stamp.id}". Call get_storybook for valid ids.`,
             );
           }
-          const result = api.stampAsset({
-            id: stamp.id,
-            x: stamp.x,
-            y: stamp.y,
-            scale: stamp.scale,
-            width: stamp.width,
-            height: stamp.height,
-            keepFloating: false,
-            recordUndo: index === 0,
-          });
+          let result: Placement | null = null;
+          if (stamp.placementId) {
+            const current = api.active.placements.find((placement) => placement.id === stamp.placementId);
+            if (!current || current.assetId !== stamp.id) {
+              return toolError(`Stamp ${index}: placement not found for asset \"${stamp.id}\": ${stamp.placementId}`);
+            }
+            const asset = api.getAsset(stamp.id)!;
+            if ((stamp.scale !== undefined && stamp.scale <= 0) ||
+                (stamp.width !== undefined && stamp.width < 1) ||
+                (stamp.height !== undefined && stamp.height < 1)) {
+              return toolError(`Stamp ${index}: scale and dimensions must be positive`);
+            }
+            const resizeScale = stamp.scale ?? (
+              stamp.width !== undefined || stamp.height !== undefined
+                ? Math.max((stamp.width ?? asset.width) / asset.width, (stamp.height ?? asset.height) / asset.height)
+                : undefined
+            );
+            const requestedWidth = resizeScale === undefined ? undefined : Math.round(asset.width * resizeScale);
+            const requestedHeight = resizeScale === undefined ? undefined : Math.round(asset.height * resizeScale);
+            api.movePlacement(stamp.placementId, stamp.x, stamp.y, index === 0);
+            if (requestedWidth !== undefined || requestedHeight !== undefined) {
+              api.resizePlacement(stamp.placementId, requestedWidth ?? current.width, requestedHeight ?? current.height);
+            }
+            result = api.active.placements.find((placement) => placement.id === stamp.placementId) ?? null;
+            updatedCount += 1;
+          } else {
+            result = api.stampAsset({
+              id: stamp.id,
+              x: stamp.x,
+              y: stamp.y,
+              scale: stamp.scale,
+              width: stamp.width,
+              height: stamp.height,
+              keepFloating: false,
+              recordUndo: index === 0,
+            });
+          }
           if (!result) {
             return toolError(
               `Stamp ${index}: failed to place "${stamp.id}" at (${stamp.x},${stamp.y}) — use positive dimensions with each scaled side at most 256 pixels`,
@@ -1415,10 +1524,12 @@ export function buildFilmTools(): WebMCPTool[] {
         }
         const response: Record<string, unknown> = {
           stamped: placed.length,
+          added: placed.length - updatedCount,
+          updated: updatedCount,
           stamps: placed,
         };
         markPageEdited(api.active.id);
-        response.nextRequired = "Call get_page_image, inspect the composition, then submit review_page for that revision.";
+        response.nextRequired = "Call get_page_image, inspect the composition, then pass placementId back to stamp_assets for any correction before review_page.";
         return toolResult(response);
       },
     },

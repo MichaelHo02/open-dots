@@ -186,7 +186,7 @@
     },
     {
       "name": "paint_asset",
-      "description": "Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror or repeat the same operations for fast procedural drafts. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.",
+      "description": "Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror/repeat drafts or translate one painted region on a copied frame for animation. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -373,6 +373,44 @@
               "stepY"
             ]
           },
+          "translateRegion": {
+            "type": "object",
+            "description": "Move painted pixels in one bounded region on this frame; useful after appending a copied frame for a 1–2px blink, breath, limb, or hair motion.",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "dx": {
+                "type": "integer",
+                "minimum": -16,
+                "maximum": 16
+              },
+              "dy": {
+                "type": "integer",
+                "minimum": -16,
+                "maximum": 16
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height",
+              "dx",
+              "dy"
+            ]
+          },
           "offsetX": {
             "type": "integer",
             "description": "Added to every x (default 0) — use to tile regions"
@@ -467,7 +505,7 @@
     },
     {
       "name": "stamp_assets",
-      "description": "Add movable overlay placements on the selected layer of the active page (max 100 per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.",
+      "description": "Add or update movable overlay placements on the selected layer of the active page (max 100 per call). Each item needs asset id, x, y; pass placementId from get_storybook/get_page_image to reposition or resize an existing stamp after visual review. Optional scale or width/height stays proportional. Array order for new stamps is back-to-front.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -480,6 +518,10 @@
                 "id": {
                   "type": "string",
                   "description": "Asset id from add_asset or get_storybook"
+                },
+                "placementId": {
+                  "type": "string",
+                  "description": "Existing placement id to move/resize instead of adding a duplicate"
                 },
                 "x": {
                   "type": "integer",
@@ -508,7 +550,7 @@
                 "y"
               ]
             },
-            "description": "Stamps applied in array order (back-to-front)"
+            "description": "New stamps apply in array order (back-to-front); placementId updates an existing stamp in place"
           }
         },
         "required": [

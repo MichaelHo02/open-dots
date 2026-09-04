@@ -15,7 +15,7 @@ Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.
 | `get_asset_image` | `paint_page`, `review_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features and bulk ops. `paint_asset` declares its visual pass and can mirror or repeat the supplied operations for fast procedural drafts without exposing arbitrary code execution. `get_asset_image` returns the current revision; `review_asset` records a concrete vision verdict for that revision. Only approved asset revisions can be stamped. Full pages follow the same `get_page_image` → `review_page` loop. Generated images can be imported as editable assets, then cleaned with hard-edged pixel passes.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features and bulk ops. `paint_asset` declares its visual pass, can mirror/repeat procedural drafts, and can translate one bounded painted region on a copied animation frame without exposing arbitrary code execution. `stamp_assets` adds placements or updates an existing `placementId`, so a vision-capable agent can correct position and proportional scale after inspecting the page instead of stacking duplicates. `get_asset_image` and `get_page_image` bind those mutations to revision-specific visual reviews. Generated organic assets can be imported, then cleaned and animated with hard-edged pixel passes.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
@@ -76,7 +76,7 @@ Storybook data (pages, assets, named color profiles) **persists** in `localStora
 
 `get_storybook` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
 
-Typical session start after tools are ready: `get_pixel_art_guide` and inspect its attached quality target → create cohesive material ramps → generate/import a clean PNG reference or draw explicit outline/fill/shadow/highlight/cleanup passes → `get_asset_image` → `review_asset` → stamp approved assets back-to-front → `get_page_image` → `review_page`.
+Typical session start after tools are ready: `get_pixel_art_guide` and inspect its attached quality target → route expressive organic subjects through ImageGen/import while using primitives for geometric assets → `get_asset_image` → `review_asset` → stamp approved assets back-to-front → `get_page_image` → correct existing `placementId`s → animate the focal asset with a copied frame plus bounded `translateRegion`/cleanup → inspect each frame and the Present loop → `review_page`.
 
 ## Chrome best practices we follow
 

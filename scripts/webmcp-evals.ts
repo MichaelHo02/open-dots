@@ -214,10 +214,10 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
   }
 
   const paintAssetProperties = getSchema(byName.get("paint_asset")!)?.properties ?? {};
-  if ("frameIndex" in paintAssetProperties && "frameDuration" in paintAssetProperties) {
+  if ("frameIndex" in paintAssetProperties && "frameDuration" in paintAssetProperties && "translateRegion" in paintAssetProperties) {
     pass("paint_asset exposes animation frame and timing controls");
   } else {
-    fail("paint_asset animation schema", "frameIndex and frameDuration are required");
+    fail("paint_asset animation schema", "frameIndex, frameDuration, and translateRegion are required");
   }
   if ("mirror" in paintAssetProperties && "repeat" in paintAssetProperties) {
     pass("paint_asset exposes declarative mirror and repeat controls");
@@ -269,6 +269,81 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     pass("paint_asset rejects oversized algorithmic repeats before mutation");
   } else {
     fail("paint_asset repeat validation", "invalid repeat mutated the asset or did not return isError");
+  }
+  proceduralAsset = {
+    id: "asset-region-translate-check",
+    name: "Region translate check",
+    width: 4,
+    height: 3,
+    pixels: ["", "", "", "", "", "#ffffff", "", "", "", "", "", ""],
+  };
+  drawn = [];
+  await proceduralTool?.execute({
+    id: proceduralAsset.id,
+    pass: "cleanup",
+    translateRegion: { x: 1, y: 1, width: 1, height: 1, dx: 1, dy: 0 },
+  });
+  if (drawn.some((dot) => dot.x === 1 && dot.y === 1 && dot.color === "") &&
+      drawn.some((dot) => dot.x === 2 && dot.y === 1 && dot.color === "#ffffff")) {
+    pass("paint_asset translates a bounded painted region deterministically");
+  } else {
+    fail("paint_asset translateRegion", `unexpected dots: ${JSON.stringify(drawn)}`);
+  }
+
+  const stampTool = byName.get("stamp_assets");
+  const stampProperties = getSchema(stampTool!)?.properties ?? {};
+  const stampItems = ((stampProperties.stamps as { items?: { properties?: Record<string, unknown> } })?.items?.properties) ?? {};
+  if ("placementId" in stampItems) {
+    pass("stamp_assets exposes placementId correction controls");
+  } else {
+    fail("stamp_assets placement update schema", "placementId is required");
+  }
+  const placedAsset: Asset = {
+    id: "asset-placement-update-check",
+    name: "Placement update check",
+    width: 4,
+    height: 4,
+    pixels: Array.from({ length: 16 }, () => "#ffffff"),
+  };
+  let placement = { id: "place-update-check", assetId: placedAsset.id, x: 0, y: 0, width: 4, height: 4 };
+  const active = {
+    id: "page-placement-update-check", width: 32, height: 18,
+    pixels: Array.from({ length: 576 }, () => ""), texts: [], placements: [placement], boardX: 0, boardY: 0,
+  };
+  markAssetEdited(placedAsset.id);
+  const placedRevision = markAssetInspected(placedAsset.id);
+  reviewAsset({ assetId: placedAsset.id, revision: placedRevision, verdict: "approved", observations: "Fixture is visible." });
+  const placementApi = {
+    active,
+    getAsset: (id: string) => id === placedAsset.id ? placedAsset : null,
+    movePlacement: (_id: string, x: number, y: number) => {
+      placement = { ...placement, x, y };
+      active.placements = [placement];
+      return true;
+    },
+    resizePlacement: (_id: string, width: number, height: number) => {
+      placement = { ...placement, width, height };
+      active.placements = [placement];
+      return true;
+    },
+  } as unknown as FilmApi;
+  syncWebmcpApiRef({ current: placementApi });
+  const placementResult = await stampTool?.execute({
+    stamps: [{ id: placedAsset.id, placementId: placement.id, x: 3, y: 2, scale: 2 }],
+  }) as ToolResult | undefined;
+  if (!placementResult?.isError && placement.x === 3 && placement.y === 2 && placement.width === 8 && placement.height === 8 && active.placements.length === 1) {
+    pass("stamp_assets updates an existing placement without adding a duplicate");
+  } else {
+    fail("stamp_assets placement update", `unexpected placement/result: ${JSON.stringify({ placement, placementResult })}`);
+  }
+  const beforeInvalidPlacement = { ...placement };
+  const invalidPlacementResult = await stampTool?.execute({
+    stamps: [{ id: placedAsset.id, placementId: placement.id, x: 3, y: 2, scale: 0 }],
+  }) as ToolResult | undefined;
+  if (invalidPlacementResult?.isError && JSON.stringify(placement) === JSON.stringify(beforeInvalidPlacement)) {
+    pass("stamp_assets rejects invalid placement updates before mutation");
+  } else {
+    fail("stamp_assets placement validation", "invalid scale mutated the placement or did not return isError");
   }
   const getAssetProperties = getSchema(byName.get("get_asset_image")!)?.properties ?? {};
   if ("frameIndex" in getAssetProperties) {
