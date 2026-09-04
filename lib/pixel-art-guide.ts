@@ -304,6 +304,7 @@ const QUALITY_LOOP = {
     "3. Create multiple named palettes for material/asset families. They are reusable working profiles, not hard-bound to assets; prefer cohesive ramps over raw color count.",
     "4. When image generation is available, use it for complex organic characters or props and import each clean PNG with the visible Import image control; use WebMCP primitives for tiles, corrections, and deliberate pixel cleanup.",
     "5. add_page with a width that fits scene density (160–224 for rich rooms).",
+    "5a. Add long titles at Text size 1 first and inspect them before stamping assets. If text clips, clear its pixels from the active Story layer with paint_page color \"\", then rerender smaller.",
     "6. Choose the asset route: generate/import expressive organic characters, hair, fur, or fabric; use paint_asset for geometric props, tiles, cleanup, and small frame deltas. Do not force rectangle-first construction onto anatomy.",
     "7. Per hand-drawn asset: add_asset template \"empty\" → monochrome cluster sketch → inspect pose/expression/perspective → paint_asset passes (outline → fill → shade → reflected light → highlight), comparing the PNG each pass.",
     "8. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
