@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { WorkshopCanvas } from "./WorkshopCanvas";
 import { useFilm } from "@/lib/film-store";
-import { ASSET_SIZE_PRESETS, MAX_ASSET_NAME, MAX_ASSETS } from "@/lib/types";
+import { MAX_ASSET_NAME, MAX_ASSETS } from "@/lib/types";
 import { CopyPlus, Trash2 } from "lucide-react";
 
 export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" | "y" | "both"; showGrid: boolean }) {
@@ -12,7 +12,6 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
     workshopDraft,
     closeWorkshop,
     setWorkshopName,
-    setWorkshopSize,
     addWorkshopFrame,
     removeWorkshopFrame,
     selectWorkshopFrame,
@@ -63,27 +62,6 @@ export function AssetWorkshop({ symmetry, showGrid }: { symmetry: "none" | "x" |
                 }
               }}
             />
-            <div className="workshop-size-group">
-              <span className="sidebar-label">Size</span>
-              <div
-                className="choice-row workshop-size-choices"
-                role="group"
-                aria-label="Canvas size"
-              >
-                {ASSET_SIZE_PRESETS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className="pill"
-                    data-active={workshopDraft.width === item}
-                    aria-label={`${item} by ${item} pixels`}
-                    onClick={() => setWorkshopSize(item)}
-                  >
-                    {item}×{item}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
           <div className="workshop-chrome-actions">
             <div className="workshop-frames" aria-label="Animation frames">

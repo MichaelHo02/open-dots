@@ -250,6 +250,7 @@ export function WorkshopCanvas({ symmetry = "none" }: { symmetry?: Symmetry }) {
         {
           "--grid-cols": String(width),
           "--grid-rows": String(height),
+          "--asset-aspect": String(width / height),
         } as CSSProperties
       }
       onPointerLeave={() => {

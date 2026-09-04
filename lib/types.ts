@@ -261,7 +261,8 @@ export interface FilmApi {
   openWorkshop: (assetId?: string) => boolean;
   closeWorkshop: (save?: boolean) => boolean;
   setWorkshopName: (name: string) => void;
-  setWorkshopSize: (size: number) => boolean;
+  setWorkshopSize: (width: number, height?: number) => boolean;
+  setWorkshopFrameDuration: (duration: number) => void;
   addWorkshopFrame: () => void;
   removeWorkshopFrame: () => void;
   selectWorkshopFrame: (index: number) => void;

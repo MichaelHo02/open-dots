@@ -990,11 +990,8 @@ input {
 
 .workshop-board {
   flex: 0 0 auto;
-  width: calc(min(100cqw, 100cqh) * var(--stage-zoom, 1));
-  height: calc(min(100cqw, 100cqh) * var(--stage-zoom, 1));
-  max-width: 100%;
-  max-height: 100%;
-  aspect-ratio: 1;
+  width: calc(min(100cqw, calc(100cqh * var(--asset-aspect, 1))) * var(--stage-zoom, 1));
+  aspect-ratio: var(--asset-aspect, 1);
   border: 1px solid var(--hairline);
   box-shadow:
     0 1px 0 color-mix(in srgb, var(--canvas) 80%, transparent),
@@ -1740,16 +1737,6 @@ input {
   min-width: 72px;
 }
 
-.workshop-size-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  padding-left: 12px;
-  border-left: 1px solid var(--hairline);
-}
-
 .workshop-size-choices .pill {
   min-width: 0;
   padding: 4px 8px 5px;
@@ -1858,12 +1845,6 @@ input {
 
   .workshop-chrome {
     padding: 8px 12px;
-  }
-
-  .workshop-size-group {
-    flex-basis: 100%;
-    padding-left: 0;
-    border-left: 0;
   }
 
   .workshop-back,
@@ -2008,6 +1989,16 @@ input {
 .shortcut-dialog kbd { padding: 2px 6px; border: 1px solid var(--hairline); border-radius: 4px; background: var(--surface-soft); font: inherit; }
 .workshop-frames { display: flex; align-items: center; gap: 6px; }
 .workshop-frames select { padding: 7px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--canvas); font-size: 11px; }
+.workshop-size-settings { display: grid; gap: 12px; }
+.workshop-size-fields { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 8px; }
+.workshop-size-fields label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
+.workshop-size-fields input { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--canvas); }
+.workshop-size-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.workshop-size-choices .pill { justify-content: center; }
+.workshop-speed-setting { display: grid; width: 100%; gap: 8px; padding-top: 12px; border-top: 1px solid var(--hairline); }
+.workshop-speed-setting > span { display: flex; align-items: center; justify-content: space-between; }
+.workshop-speed-setting output { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.workshop-speed-setting input { width: 100%; accent-color: var(--brand-accent); }
 .toolbar-button:disabled { opacity: .35; cursor: default; }
 .drawing-options { display: grid; gap: 10px; font-size: 12px; }
 .drawing-options label { display: grid; grid-template-columns: 18px 1fr; align-items: center; gap: 8px; }
