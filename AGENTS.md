@@ -8,6 +8,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## Hackathon Workflow
+
+- While the hackathon is active, use exactly one feature branch/worktree at a time. Finish and verify that branch, raise its PR, and merge it into `main` before starting another feature branch. Do not run parallel implementation branches.
+
 ## Learned User Preferences
 
 - Keep the landing UI as a blank canvas: no on-page story forms, hint copy, or page footnotes. Story is told to the agent in chat, not typed into the site.
