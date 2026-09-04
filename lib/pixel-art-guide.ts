@@ -8,6 +8,7 @@ export const PIXEL_ART_GUIDE_TOPICS = [
   "workflow",
   "shading",
   "composition",
+  "storybook-rpg",
   "tools",
   "full",
 ] as const;
@@ -28,7 +29,7 @@ const QUALITY_BAR = {
   reads: [
     "A rich scene FILLS the frame — little empty canvas. Sparse pages read as unfinished.",
     "It is built from MANY small assets (12–30+): floor/wall tiles, furniture, props, characters — not 4 big flat shapes.",
-    "Every material needs a planned ramp: outline, base, shadow, reflected light, highlight, and optional specular. Complex assets combine several ramps; across many assets, 100+ unique scene colors is normal when those colors describe real lighting and material detail.",
+    "Every material needs a planned ramp: outline, base, shadow, reflected light, highlight, and optional specular. Reuse related ramps so the scene feels cohesive instead of collecting unrelated colors.",
     "One consistent light direction across the whole scene (usually above and slightly left).",
     "Depth via five layers and overlap — not separate icons with equal gaps. A quiet central route keeps dense scenes readable.",
     "Tiling: repeated small tiles build floors/walls cheaply and cohesively; vary selected tile interiors so the grid is not identical everywhere.",
@@ -60,6 +61,22 @@ const COMPOSITION_GRAMMAR = {
     "Broadly balanced, not mirrored. Similar visual weights on both sides, but the objects differ. Repeated architecture establishes rhythm; unique characters and props break repetition.",
 };
 
+const STORYBOOK_RPG = {
+  title: "Cozy storybook RPG camera",
+  camera:
+    "Use an elevated three-quarter top-down view like a polished 16-bit handheld adventure: show the back wall plus a broad floor plane, and show the top and front faces of beds, tables, rugs, fences, and props. Avoid a flat side-on decorated wall.",
+  depth: [
+    "Reserve roughly the upper third for wall, sky, or distant scenery; the lower two-thirds carry the navigable floor or meadow plane.",
+    "Place distant objects higher and slightly smaller. Lower objects overlap their floor footprints and cast short down-right contact shadows.",
+    "Furniture needs a lit top plane, a mid-tone front plane, a dark side or underside, and a contact shadow.",
+    "Characters need irregular chibi silhouettes and separate ramps for hair, skin, clothing, and accessories.",
+  ],
+  palette:
+    "Use controlled material ramps rather than chasing a color count: usually 4–7 related tones per important material, with shared shadow hues tying the scene together. Reserve the brightest cream, cyan, gold, or pink for focal highlights.",
+  imageGeneration:
+    "When ImageGen is available, generate a clean scene or transparent sprite as a visual reference first. Import individual assets, inspect the quantized result, then use cleanup passes for hard edges, readable clusters, consistent outlines, and animation edits. Never accept a generated bitmap without visual cleanup.",
+};
+
 const PALETTE_GUIDE = {
   title: "Palette taste",
   sidebarVsDraw:
@@ -80,7 +97,7 @@ const PALETTE_GUIDE = {
   saturation:
     "Do not use every bright color at equal strength. Let cool gray-blue and pink occupy most of the image; reserve saturated cyan, coral, lime, violet, and gold for focal areas.",
   perSprite:
-    "A simple material may need 4–12 related tones; a character or detailed prop can combine several material ramps and use 12–32+ purposeful colors. Across 12–30 assets, 100+ unique scene colors is expected. More colors help only when they encode form, shadow, reflected light, or material differences.",
+    "Use roughly 4–7 related tones for an important material. Characters and detailed props combine several ramps, but every color must encode form, shadow, reflected light, or material difference.",
 };
 
 const PIXEL_SHAPE_LANGUAGE = {
@@ -281,7 +298,7 @@ const QUALITY_LOOP = {
   steps: [
     "1. get_pixel_art_guide (this) at session start.",
     "2. Study the reference: list distinct objects. Aim for 12–30+ small assets.",
-    "3. Create multiple named palettes for material/asset families. They are reusable working profiles, not hard-bound to assets; 100+ combined scene colors is normal when ramps carry real shading detail.",
+    "3. Create multiple named palettes for material/asset families. They are reusable working profiles, not hard-bound to assets; prefer cohesive ramps over raw color count.",
     "4. When image generation is available, use it for complex organic characters or props and import each clean PNG with the visible Import image control; use WebMCP primitives for tiles, corrections, and deliberate pixel cleanup.",
     "5. add_page with a width that fits scene density (160–224 for rich rooms).",
     "6. Per hand-drawn asset: add_asset template \"empty\" → paint_asset passes (outline → fill → shade → reflected light → highlight), comparing the PNG each pass.",
@@ -314,7 +331,7 @@ const QUALITY_CHECK = {
     "The frame reads as one place, not a catalog of sprites.",
     "Large, medium, and tiny shapes all appear.",
     "At least three depth layers overlap visibly.",
-    "Major materials have distinct ramps for shadow, reflected light, base, and highlight; a rich multi-asset scene may exceed 100 purposeful colors.",
+    "Major materials have distinct ramps for shadow, reflected light, base, and highlight, while related assets reuse shadow and light families.",
     "Highlights follow one lighting direction.",
     "Characters have contact shadows and readable silhouettes.",
     "Large surfaces contain structural detail without becoming noisy.",
@@ -327,7 +344,7 @@ const QUALITY_CHECK = {
 };
 
 const TOOL_WORKFLOW = {
-  title: "Tool cheat sheet (12 agent tools)",
+  title: "Tool cheat sheet (14 agent tools)",
   startHere: "Call get_pixel_art_guide at session start (topic: full or workflow).",
   afterRefresh:
     "Leaving the editor or refreshing unregisters its document.modelContext tools. Re-fetch live tools after returning; call get_storybook and wait until webmcp.ready before mutating. Storybook data persists in localStorage — get_storybook recovers asset ids.",
@@ -342,13 +359,15 @@ const TOOL_WORKFLOW = {
     { name: "add_page", when: "New page + optional width for pixel density" },
     { name: "select_page", when: "Switch active page by index" },
     { name: "add_asset", when: "Create sprite — direct indexed bitmap, template empty, hex rows, fill, or page copy" },
-    { name: "paint_asset", when: "Bulk sprite or animation-frame ops; frameIndex appends frames and frameDuration sets timing" },
+    { name: "paint_asset", when: "Declared outline/fill/shadow/highlight/cleanup pass; returns a new revision PNG" },
+    { name: "review_asset", when: "Record revise/approved vision observations for the inspected asset revision" },
     { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
     { name: "stamp_assets", when: "Add movable overlay placements (array order = z-index; not baked into pixels)" },
     { name: "place_text", when: "Rasterize story words onto the page" },
+    { name: "review_page", when: "Record revise/approved vision observations for the inspected full page" },
   ],
   notes:
-    "Choose the shortest asset path: Codex-generated file → visible Import image control; exact small bitmap → add_asset bitmapPalette+indexedRows; iterative drawing → add_asset empty then paint_asset. Profiles are reusable working sets, not hard-bound to assets. For animation, paint frame 0 then frameIndex 1, 2, and so on; get_asset_image inspects each frame. Compare PNGs before stamping; erase with color \"\" and repaint.",
+    "Choose the shortest asset path: ImageGen reference → visible Import image control → cleanup, exact small bitmap → add_asset bitmapPalette+indexedRows, or add_asset empty → declared paint_asset passes. Inspect with get_asset_image and approve with review_asset before stamping. Erase with color \"\" and repaint.",
 };
 
 const ANTI_PATTERNS = {
@@ -359,7 +378,7 @@ const ANTI_PATTERNS = {
     "One-shotting a complex sprite or whole scene without inspecting and correcting the returned PNG.",
     "Painting entire pages with paint_page (or a giant pixels array) instead of overlay stamp_assets.",
     "One huge asset covering the page instead of many small overlay stamps.",
-    "Adding colors without a lighting or material purpose. Many named profiles and 100+ scene colors are valid; random near-duplicates and one unique color per pixel are not shading.",
+    "Adding colors without a lighting or material purpose. Rich named profiles are valid; random near-duplicates and one unique color per pixel are not shading.",
     "Skipping the inline PNG compare between passes (drawing blind).",
     "Losing asset ids after a refresh — call get_storybook to recover them; wait for webmcp.ready before mutating.",
     "More than one light-source direction within a sprite.",
@@ -391,13 +410,17 @@ export function buildPixelArtGuide(topic: PixelArtGuideTopic = "full") {
     topic,
     qualityBar: QUALITY_BAR,
     feedbackLoop: FEEDBACK_LOOP,
-    hint: "Call early each session. Re-run with topic workflow | shading | composition | tools | full.",
+    hint: "Call early each session. Inspect the attached quality target, then use topic storybook-rpg | workflow | shading | composition | tools | full.",
   };
 
   if (topicIncludes(topic, "composition")) {
     guide.composition = COMPOSITION_GRAMMAR;
     guide.sceneAssembly = SCENE_ASSEMBLY;
     guide.qualityCheck = QUALITY_CHECK;
+  }
+
+  if (topic === "storybook-rpg" || topic === "full") {
+    guide.storybookRpg = STORYBOOK_RPG;
   }
 
   if (topicIncludes(topic, "shading")) {

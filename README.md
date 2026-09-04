@@ -14,13 +14,13 @@ You land on a blank landscape page. Draw the scene, place words with **Text** an
 - **An agent** uses `document.modelContext` tools. For complex art, build small **assets** (`add_asset`) and **stamp** them (`stamp_assets`); avoid painting entire pages pixel-by-pixel.
 - **Present** reads the book full-screen. Arrow keys or the sides of the page turn slides.
 
-## WebMCP tools (12)
+## WebMCP tools (14)
 
 Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) — its whole surface is `set_pixel`/`fill_rect`/`line`/`clear` + export/undo, plus a mandatory look-at-the-PNG loop. Open Dots matches that minimalism and adds book features (pages, reusable assets, stamp) and a bulk-ops advantage: `paint_asset`/`paint_page` take **rects/lines/fills/pixels** in one call, so a single rect fills any block server-side (no per-pixel cap) and `color ""` erases. UI-only controls (brush, workshop, tool picker, color swatch, undo button) are not exposed — agents draw directly and verify with the returned image.
 
 | Tool | What it does |
 | --- | --- |
-| `get_pixel_art_guide` | **Start here** — pixel-art playbook (composition, shading, palettes, draw-look-fix loop). Topics: workflow, shading, composition, tools, full |
+| `get_pixel_art_guide` | **Start here** — pixel-art playbook plus an attached storybook-RPG quality reference. Topics: storybook-rpg, workflow, shading, composition, tools, full |
 | `get_storybook` | Pages + overlay placements, palettes + `activePaletteId`, asset ids/names/sizes, editor state, `webmcp.ready` |
 | `get_asset_image` | Asset PNG + stats + rows for vision/text compare (scale 1–8) |
 | `get_page_image` | Page/region PNG + stats + `sceneHint` (few placements, huge stamps, full-page paint, noisy colorCount) |
@@ -28,10 +28,12 @@ Agent-focused tools inspired by [pixel-art-cli](https://github.com/vossenwout/pi
 | `add_page` | New page + optional pixel density (`width` 48–256, height follows 16:9) |
 | `select_page` | Select a page by index |
 | `add_asset` | Create sprite — indexed bitmap, template `empty`, hex `rows`, `fill`, or page-rect copy |
-| `paint_asset` | Bulk sprite ops — `rects`/`lines`/`fills` + ≤4,096 detail `pixels`/call; returns inline PNG |
+| `paint_asset` | Bulk sprite ops — requires an outline/fill/shadow/highlight/cleanup `pass`; returns inline PNG |
+| `review_asset` | Record a concrete revise/approved vision verdict for the inspected asset revision |
 | `paint_page` | Page backgrounds/touch-ups — same `rects`/`lines`/`fills`/`pixels` ops; `color ""` erases |
 | `stamp_assets` | Overlay placements on the page (order = z-index, not baked into pixels) |
-| `place_text` | Rasterize words into page pixels |
+| `place_text` | Rasterize words onto a dedicated topmost Story layer |
+| `review_page` | Record a concrete revise/approved vision verdict for the inspected page revision |
 
 Pass colors inline on each draw op. Choose page density with `add_page` `width`. Erase by painting `color ""`, then repaint using the returned PNG. Decorations use `rects`/`lines`/`fills` or stamped assets — not a story form or caption box.
 
@@ -61,7 +63,8 @@ sequenceDiagram
             OpenDots-->>Agent: Updated asset PNG + nextRequired
         end
         Agent->>OpenDots: get_asset_image(id)
-        OpenDots-->>Agent: Inspection PNG
+        OpenDots-->>Agent: Inspection PNG + revision
+        Agent->>OpenDots: review_asset(id, revision, verdict, observations)
     end
     Agent->>OpenDots: stamp_assets(back-to-front)
     Agent->>OpenDots: get_page_image()
@@ -70,6 +73,7 @@ sequenceDiagram
         Agent->>OpenDots: Add/fix assets, paint, or placements
         Agent->>OpenDots: get_page_image()
     end
+    Agent->>OpenDots: review_page(id, revision, verdict, observations)
     Agent-->>User: Story page is ready to review
 ```
 
@@ -96,7 +100,7 @@ Aligned with [Chrome's WebMCP docs](https://developer.chrome.com/docs/ai/webmcp)
 - **JSON Schema + intent-rich descriptions.** Each tool declares an `inputSchema` (`type: "object"`, typed properties, `required`, `enum`s) and a description that maps user intent to arguments — the primary lever against wrong-tool / wrong-arg failures.
 - **Graceful errors.** Validation problems return `toolError` (`isError: true`), and `withSafeExecute` (`lib/register-tools.ts`) wraps every `execute` so an unexpected throw surfaces as a structured `isError` result instead of a rejected call the model can't reason about.
 - **Registration lifecycle.** Tools are registered for the page's lifetime (not a component's) and refreshed in place under HMR, so React re-renders never invalidate a host's tool snapshot. Initial registration is batched with a single `toolchange` (`silent` + `flushToolChanges`).
-- **Vision loop.** Mutating asset tools auto-return an inline PNG plus `passHint`/`nextRequired`, enforcing compare-before-next-pass.
+- **Vision loop.** Inspection and approval are separate. Reviews are bound to an exact revision, edits invalidate approval, and unapproved assets cannot be stamped.
 
 We evaluated adopting [`use-webmcp-tool`](https://www.npmjs.com/package/use-webmcp-tool) (Chrome's `useWebMCP` hook) and **skipped it**: it ties tool registration to component mount/unmount and aborts on unmount, which conflicts with the deliberate page-lifetime + HMR-safe registration above. We already match its result-normalization behavior via `toolResult`/`toolError` + `withSafeExecute`.
 

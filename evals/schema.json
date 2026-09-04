@@ -2,7 +2,7 @@
   "tools": [
     {
       "name": "get_pixel_art_guide",
-      "description": "Load the pixel-art playbook — call this first each session before drawing. Covers composition, palettes, shading, material recipes, character patterns, the draw-look-fix loop, and anti-patterns. Pass topic workflow, shading, composition, or tools; omit for the full playbook.",
+      "description": "Load the pixel-art playbook and attached top-down storybook-RPG quality reference — call this first each session before drawing. Pass topic storybook-rpg, workflow, shading, composition, or tools; omit for the full playbook.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -12,6 +12,7 @@
               "workflow",
               "shading",
               "composition",
+              "storybook-rpg",
               "tools",
               "full"
             ],
@@ -30,7 +31,7 @@
     },
     {
       "name": "set_palette",
-      "description": "Create, update, or select a reusable named color profile. Make multiple profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Rich composed scenes may naturally exceed 100 unique colors through separate base, reflected-light, shadow, and highlight ramps. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
+      "description": "Create, update, or select a reusable named color profile. Make profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Prefer cohesive base, reflected-light, shadow, and highlight ramps over maximizing unique colors. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -85,7 +86,7 @@
     },
     {
       "name": "place_text",
-      "description": "Rasterize words into the selected layer at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
+      "description": "Rasterize words into a topmost reusable Story layer at x,y (0–1 fractions or pixel coords), so animated assets cannot cover the text. Uses Inter glyphs at size 1–8 (default 2).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -149,14 +150,60 @@
       }
     },
     {
+      "name": "review_asset",
+      "description": "Record an actual vision judgment for the latest inspected asset revision. Use revise when silhouettes, material ramps, clustered pixels, or lighting need work; only approved revisions may be stamped.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Asset id from get_asset_image"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Revision returned by get_asset_image"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "revise",
+              "approved"
+            ]
+          },
+          "observations": {
+            "type": "string",
+            "description": "Concrete visual observations about silhouette, shading ramps, pixel clusters, lighting, and needed fixes"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "verdict",
+          "observations"
+        ]
+      }
+    },
+    {
       "name": "paint_asset",
-      "description": "Paint an asset or animation frame. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤4096 detail pixels/call); color \"\" erases. frameIndex defaults to 0; using the next frame index appends a copy of the previous frame for small motion edits. frameDuration sets shared timing in milliseconds and may be passed alone. Each call returns that frame's PNG — compare before the next pass or frame.",
+      "description": "Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤4096 detail pixels/call); color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "description": "Asset id to paint into"
+          },
+          "pass": {
+            "type": "string",
+            "enum": [
+              "outline",
+              "fill",
+              "shadow",
+              "highlight",
+              "cleanup"
+            ],
+            "description": "The visual construction pass being applied"
           },
           "frameIndex": {
             "type": "integer",
@@ -297,7 +344,8 @@
           }
         },
         "required": [
-          "id"
+          "id",
+          "pass"
         ]
       }
     },
@@ -597,6 +645,41 @@
             "description": "Nearest-neighbor upscale (default 1)"
           }
         }
+      }
+    },
+    {
+      "name": "review_page",
+      "description": "Record a vision judgment for the latest inspected page revision. Check top-down perspective, story-text stacking, depth overlap, lighting, density, and focal hierarchy before approving.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Page id from get_page_image"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Revision returned by get_page_image"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "revise",
+              "approved"
+            ]
+          },
+          "observations": {
+            "type": "string",
+            "description": "Concrete visual observations about perspective, stacking, overlap, lighting, density, and needed fixes"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "verdict",
+          "observations"
+        ]
       }
     }
   ]

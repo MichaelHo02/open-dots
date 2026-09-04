@@ -33,7 +33,7 @@ export function AssetImageImport({ api, disabled }: { api: FilmApi; disabled: bo
         output.width = size.width; output.height = size.height;
         const outputContext = output.getContext("2d", { willReadFrequently: true });
         if (!outputContext) throw new Error("Image processing is unavailable in this browser.");
-        outputContext.imageSmoothingEnabled = true;
+        outputContext.imageSmoothingEnabled = false;
         outputContext.drawImage(source, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, size.width, size.height);
         const pixels = quantizePixels(outputContext.getImageData(0, 0, size.width, size.height), api.film.palette);
         const name = file.name.replace(/\.[^.]+$/, "") || "Imported image";

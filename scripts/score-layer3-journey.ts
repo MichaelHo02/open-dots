@@ -63,6 +63,9 @@ function scoreJourney(calls: Call[]) {
   const paints = calls.map((call, i) => ({ ...call, i })).filter((call) => call.toolName === "paint_asset" && call.succeeded
     && typeof call.result?.painted === "number" && call.result.painted > 0);
   const allCreatedPainted = assets.length > 0 && assets.every((asset) => paints.some((paint) => paint.input.id === asset.input.id && paint.i > asset.i));
+  const approvedAssets = new Set(calls.filter((call) => call.toolName === "review_asset" && call.succeeded
+    && call.input.verdict === "approved").map((call) => call.input.id));
+  const allCreatedReviewed = assets.length > 0 && assets.every((asset) => approvedAssets.has(asset.input.id));
   const stamps: Array<Record<string, unknown> & { i: number }> = calls.map((call, i) => ({ ...call, i })).filter((call) => call.toolName === "stamp_assets" && call.succeeded
     && call.result?.stamped === (Array.isArray(call.input.stamps) ? call.input.stamps.length : -1)).flatMap((call) =>
     (Array.isArray(call.input.stamps) ? call.input.stamps as Array<Record<string, unknown>> : []).map((stamp) => ({ ...stamp, i: call.i })),
@@ -80,6 +83,8 @@ function scoreJourney(calls: Call[]) {
     && call.result?.width === 256 && call.result?.height === 144 && call.result?.empty === false
     && typeof call.result?.placementCount === "number" && call.result.placementCount >= stamps.length);
   const lastMutation = calls.reduce((last, call, i) => mutations.has(call.toolName) ? i : last, -1);
+  const finalReview = calls.findLastIndex((call) => call.toolName === "review_page" && call.succeeded
+    && call.input.verdict === "approved");
 
   const milestones: Milestone[] = [
     { name: "safe_start", weight: 10, score: guide >= 0 && storybook >= 0 && guide < firstMutation && storybook < firstMutation ? 10 : 0, evidence: "Guide and storybook before mutation" },
@@ -87,12 +92,13 @@ function scoreJourney(calls: Call[]) {
     { name: "background", weight: 10, score: paintPage > addPage && addPage >= 0 ? 10 : 0, evidence: "Page background painted after page creation" },
     { name: "story_text", weight: 10, score: text >= 0 ? 10 : 0, evidence: "Exact rasterized sentence" },
     { name: "required_assets", weight: 25, score: Math.round(25 * created / requiredAssets.length), evidence: `${created}/${requiredAssets.length} named assets created` },
-    { name: "asset_iteration", weight: 10, score: allCreatedPainted ? 10 : 0, evidence: "Every created asset painted after creation; extra inspections are neutral" },
+    { name: "asset_iteration", weight: 10, score: allCreatedPainted && allCreatedReviewed ? 10 : 0, evidence: "Every created asset was painted and approved at an inspected revision" },
     { name: "composition", weight: 10, score: compositionComplete ? 10 : coreStamped && stampIdsValid ? 5 : 0, evidence: `${stamps.length} valid stamps; core=${coreStamped}; repeated scenery=${repeatedScenery}` },
-    { name: "final_verification", weight: 10, score: finalImage > lastMutation ? 10 : 0, evidence: "Successful 256x144 final page inspected after composition" },
+    { name: "final_verification", weight: 10, score: finalImage > lastMutation && finalReview > finalImage ? 10 : 0, evidence: "Successful 256x144 final page inspected and approved after composition" },
   ];
   const totalScore = milestones.reduce((sum, item) => sum + item.score, 0);
-  const complete = coreAssets.every((name) => assetNames.has(name)) && compositionComplete && finalImage > lastMutation;
+  const complete = coreAssets.every((name) => assetNames.has(name)) && allCreatedReviewed && compositionComplete
+    && finalImage > lastMutation && finalReview > finalImage;
   return {
     scoreType: "semantic-workflow",
     visualScore: null,
@@ -112,9 +118,15 @@ async function main() {
       call("get_pixel_art_guide"), call("get_storybook"), call("get_storybook"), call("set_palette", { name: "Night", colors: ["#000000"] }),
       call("add_page", { width: 256 }, { size: { width: 256, height: 144 } }), call("paint_page", {}, { painted: 1 }),
       call("place_text", { body: "Mira followed the little fox." }, { body: "Mira followed the little fox." }),
-      ...requiredAssets.flatMap((name, i) => [call("add_asset", { name, id: `a${i}` }), call("paint_asset", { id: `a${i}` }, { painted: 1 })]),
+      ...requiredAssets.flatMap((name, i) => [
+        call("add_asset", { name, id: `a${i}` }),
+        call("paint_asset", { id: `a${i}`, pass: "outline" }, { painted: 1 }),
+        call("get_asset_image", { id: `a${i}` }, { revision: 1 }),
+        call("review_asset", { id: `a${i}`, revision: 1, verdict: "approved", observations: "Clear silhouette and material ramp." }),
+      ]),
       call("stamp_assets", { stamps: [0, 1, 2, 3, 4, 4, 4, 4, 5, 5, 5].map((i) => ({ assetId: `a${i}` })) }, { stamped: 11 }),
       call("get_page_image", {}, { width: 256, height: 144, empty: false, placementCount: 11 }),
+      call("review_page", { revision: 1, verdict: "approved", observations: "Readable hierarchy and correct stacking." }),
     ]);
     assert.equal(complete.verdict, "pass");
     assert.equal(complete.totalScore, 100);

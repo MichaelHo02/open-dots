@@ -35,16 +35,32 @@ function rgb(hex: string) {
   return [Number.parseInt(value.slice(0, 2), 16), Number.parseInt(value.slice(2, 4), 16), Number.parseInt(value.slice(4, 6), 16)];
 }
 
+function oklab([r8, g8, b8]: number[]) {
+  const linear = (value: number) => {
+    const channel = value / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  };
+  const r = linear(r8), g = linear(g8), b = linear(b8);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+  ];
+}
+
 export function quantizePixels(image: RgbaPixels, palette: string[]) {
-  const colors = palette.filter(color => /^#[0-9a-f]{6}$/i.test(color)).map(color => ({ hex: color.toLowerCase(), rgb: rgb(color) }));
+  const colors = palette.filter(color => /^#[0-9a-f]{6}$/i.test(color)).map(color => ({ hex: color.toLowerCase(), lab: oklab(rgb(color)) }));
   if (!colors.length) throw new Error("The active color profile has no usable colors.");
   const pixels: string[] = [];
   for (let index = 0; index < image.data.length; index += 4) {
     if (image.data[index + 3] < 96) { pixels.push(""); continue; }
-    const [r, g, b] = [image.data[index], image.data[index + 1], image.data[index + 2]];
+    const sample = oklab([image.data[index], image.data[index + 1], image.data[index + 2]]);
     let best = colors[0], distance = Infinity;
     for (const color of colors) {
-      const next = (r - color.rgb[0]) ** 2 + (g - color.rgb[1]) ** 2 + (b - color.rgb[2]) ** 2;
+      const next = (sample[0] - color.lab[0]) ** 2 + (sample[1] - color.lab[1]) ** 2 + (sample[2] - color.lab[2]) ** 2;
       if (next < distance) { best = color; distance = next; }
     }
     pixels.push(best.hex);

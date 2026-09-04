@@ -40,6 +40,7 @@ import {
   type PixelArtGuideTopic,
 } from "./pixel-art-guide";
 import {
+  assetRevision,
   buildNextRequired,
   emptyAssetNextRequired,
   assetHasPaintedPixels,
@@ -47,11 +48,16 @@ import {
   guideNextRequired,
   inferPassHint,
   inferSceneHint,
+  markAssetInspected,
   pageSceneHintContext,
   markAssetEdited,
-  markAssetVerified,
   markGuideLoaded,
+  markPageEdited,
+  markPageInspected,
+  pageRevision,
   recordStampedAssets,
+  reviewAsset,
+  reviewPage,
   type PassHint,
 } from "./agent-session";
 import {
@@ -68,6 +74,30 @@ import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "
 import { indexedRowsToPixels } from "./image-asset-import";
 
 type ApiRef = { current: FilmApi };
+
+const ASSET_PASSES = ["outline", "fill", "shadow", "highlight", "cleanup"] as const;
+type AssetPass = (typeof ASSET_PASSES)[number];
+
+function asAssetPass(value: unknown): AssetPass | undefined {
+  return typeof value === "string" && (ASSET_PASSES as readonly string[]).includes(value)
+    ? value as AssetPass
+    : undefined;
+}
+
+async function loadGuideImage(): Promise<string | null> {
+  try {
+    const response = await fetch("/agent-guides/storybook-rpg-quality-reference.png");
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary);
+  } catch {
+    return null;
+  }
+}
 
 /** Stable ref object — execute closures always read the latest editor API. */
 const sharedApiRef: ApiRef = { current: null! };
@@ -455,7 +485,7 @@ function editorState(api: FilmApi) {
 function assetMutationFeedback(
   asset: Asset,
   summary: Record<string, unknown>,
-  options?: { dots?: Array<{ x: number; y: number; color: string }> },
+  options?: { dots?: Array<{ x: number; y: number; color: string }>; pass?: AssetPass },
 ) {
   markAssetEdited(asset.id);
   const stats = computePixelStats(asset.pixels, asset.width, asset.height);
@@ -468,6 +498,8 @@ function assetMutationFeedback(
     {
       ...summary,
       assetId: asset.id,
+      revision: assetRevision(asset.id),
+      completedPass: options?.pass,
       passHint,
       nextRequired: buildNextRequired(passHint),
     },
@@ -636,14 +668,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "get_pixel_art_guide",
       description:
-        "Load the pixel-art playbook — call this first each session before drawing. Covers composition, palettes, shading, material recipes, character patterns, the draw-look-fix loop, and anti-patterns. Pass topic workflow, shading, composition, or tools; omit for the full playbook.",
+        "Load the pixel-art playbook and attached top-down storybook-RPG quality reference — call this first each session before drawing. Pass topic storybook-rpg, workflow, shading, composition, or tools; omit for the full playbook.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {
           topic: {
             type: "string",
-            enum: ["workflow", "shading", "composition", "tools", "full"],
+            enum: ["workflow", "shading", "composition", "storybook-rpg", "tools", "full"],
             description: "Section to return; omit for full playbook",
           },
         },
@@ -651,7 +683,15 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       execute: async (input) => {
         const topic: PixelArtGuideTopic = normalizeGuideTopic(input.topic);
         markGuideLoaded();
-        return toolResult(buildPixelArtGuide(topic));
+        const guide = buildPixelArtGuide(topic);
+        if (topic === "tools") return toolResult(guide);
+        const image = await loadGuideImage();
+        return image
+          ? toolResultWithImage(
+              { ...guide, visualReference: "Attached top-down storybook-RPG quality target. Inspect it before drawing." },
+              { data: image, mimeType: "image/png" },
+            )
+          : toolResult({ ...guide, visualReference: "Preview unavailable; continue with the written quality bar." });
       },
     },
     {
@@ -665,7 +705,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "set_palette",
       description:
-        "Create, update, or select a reusable named color profile. Make multiple profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Rich composed scenes may naturally exceed 100 unique colors through separate base, reflected-light, shadow, and highlight ramps. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
+        "Create, update, or select a reusable named color profile. Make profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Prefer cohesive base, reflected-light, shadow, and highlight ramps over maximizing unique colors. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
       inputSchema: {
         type: "object",
         properties: {
@@ -744,6 +784,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           api.setDensity(width);
         }
         const active = api.active ?? page;
+        markPageEdited(active.id);
         return toolResult({
           id: active.id,
           index: api.film.activeIndex,
@@ -779,7 +820,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "place_text",
       description:
-        "Rasterize words into the selected layer at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
+        "Rasterize words into a topmost reusable Story layer at x,y (0–1 fractions or pixel coords), so animated assets cannot cover the text. Uses Inter glyphs at size 1–8 (default 2).",
       inputSchema: {
         type: "object",
         properties: {
@@ -802,6 +843,23 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           return toolError("body is required");
         }
         const api = apiRef.current;
+        const page = api.active;
+        if (!page) return toolError("No active page");
+        let layers = pageLayers(page);
+        let storyLayer = layers.find((layer) => layer.name === "Story");
+        if (!storyLayer) {
+          const added = api.addLayer();
+          if (!added) return toolError("Could not create Story layer");
+          storyLayer = added;
+          api.updateLayer(added.id, { name: "Story" });
+        } else {
+          if (storyLayer.locked) return toolError("Story layer is locked");
+          api.selectLayer(storyLayer.id);
+        }
+        layers = pageLayers(api.active!);
+        for (let index = layers.findIndex((layer) => layer.id === storyLayer.id); index < layers.length - 1; index += 1) {
+          api.moveLayer(storyLayer.id, 1);
+        }
         const size = activeSize(api);
         const mark = api.addText({
           x: asUnit(input.x, size.width) ?? 0.08,
@@ -814,6 +872,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (!mark) {
           return toolError("No active page");
         }
+        markPageEdited(page.id);
         return toolResult(mark);
       },
     },
@@ -866,7 +925,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           return toolError("Could not rasterize asset image (canvas unavailable)");
         }
         const includeRows = input.includeRows === undefined ? true : asBoolean(input.includeRows);
-        markAssetVerified(asset.id);
+        const revision = markAssetInspected(asset.id);
         const stats = computePixelStats(framePixels, asset.width, asset.height);
         const summary = {
           id: asset.id,
@@ -876,6 +935,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           frameIndex,
           frameCount,
           frameDuration: asset.frameDuration ?? 400,
+          revision,
           imageScale: scale,
           renderedWidth: asset.width * scale,
           renderedHeight: asset.height * scale,
@@ -889,22 +949,58 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             includeRows === false
               ? undefined
               : pixelsToRows(framePixels, asset.width, asset.height),
-          verified: true,
+          inspected: true,
           nextRequired:
-            "Compare the PNG to your reference. Fix with paint_asset (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
+            "Compare the PNG to the visual reference. Submit review_asset with this revision; revise first if silhouettes, ramps, clusters, or lighting are weak.",
           hint: "Compare the attached PNG at native scale (use scale 4–8 to peep). Text fallback: rows in the response.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
     {
+      name: "review_asset",
+      description:
+        "Record an actual vision judgment for the latest inspected asset revision. Use revise when silhouettes, material ramps, clustered pixels, or lighting need work; only approved revisions may be stamped.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Asset id from get_asset_image" },
+          revision: { type: "integer", minimum: 0, description: "Revision returned by get_asset_image" },
+          verdict: { type: "string", enum: ["revise", "approved"] },
+          observations: {
+            type: "string",
+            description: "Concrete visual observations about silhouette, shading ramps, pixel clusters, lighting, and needed fixes",
+          },
+        },
+        required: ["id", "revision", "verdict", "observations"],
+      },
+      execute: async (input) => {
+        const id = asString(input.id);
+        const revision = asInteger(input.revision);
+        const verdict = asString(input.verdict);
+        const observations = asString(input.observations)?.trim();
+        if (!id || revision === undefined || (verdict !== "revise" && verdict !== "approved") || !observations) {
+          return toolError("id, revision, verdict, and concrete observations are required");
+        }
+        if (!apiRef.current.getAsset(id)) return toolError(`Asset not found: ${id}`);
+        const error = reviewAsset({ assetId: id, revision, verdict, observations });
+        if (error) return toolError(error);
+        return toolResult({ id, revision, verdict, observations, approved: verdict === "approved" });
+      },
+    },
+    {
       name: "paint_asset",
       description:
-        `Paint an asset or animation frame. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); color \"\" erases. frameIndex defaults to 0; using the next frame index appends a copy of the previous frame for small motion edits. frameDuration sets shared timing in milliseconds and may be passed alone. Each call returns that frame's PNG — compare before the next pass or frame.`,
+        `Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.`,
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", description: "Asset id to paint into" },
+          pass: {
+            type: "string",
+            enum: ASSET_PASSES,
+            description: "The visual construction pass being applied",
+          },
           frameIndex: {
             type: "integer",
             minimum: 0,
@@ -945,13 +1041,15 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             description: "Added to every y (default 0)",
           },
         },
-        required: ["id"],
+        required: ["id", "pass"],
       },
       execute: async (input) => {
         const id = asString(input.id);
         if (!id) {
           return toolError("id is required");
         }
+        const pass = asAssetPass(input.pass);
+        if (!pass) return toolError(`pass must be one of ${ASSET_PASSES.join(", ")}`);
         const dots = asDots(input.pixels) ?? [];
         if (dots.length > MAX_DRAW_PIXELS) {
           return toolError(drawPixelsLimitError(dots.length));
@@ -997,7 +1095,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             frameCount: updated.frames?.length ?? 1,
             frameDuration: updated.frameDuration ?? 400,
           },
-          { dots: changed },
+          { dots: changed, pass },
         );
       },
     },
@@ -1149,6 +1247,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (!api.active) {
           return toolError("No active page — call add_page or select_page first");
         }
+        const missing = stamps.find((stamp) => !api.getAsset(stamp.id));
+        if (missing) return toolError(`Asset not found: ${missing.id}. Call get_storybook for valid ids.`);
+        const unreviewed = recordStampedAssets([...new Set(stamps.map((stamp) => stamp.id))]);
+        if (unreviewed.length) {
+          return toolError(
+            `Assets need an approved review_asset verdict for their latest revision before stamping: ${unreviewed.join(", ")}`,
+          );
+        }
         const placed: Array<{
           index: number;
           id: string;
@@ -1192,18 +1298,12 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             height: result.height,
           });
         }
-        const stampedIds = [...new Set(placed.map((stamp) => stamp.id))];
-        const unverifiedStamped = recordStampedAssets(stampedIds);
         const response: Record<string, unknown> = {
           stamped: placed.length,
           stamps: placed,
         };
-        if (unverifiedStamped.length > 0) {
-          response.warning = `Stamped ${unverifiedStamped.length} asset(s) without visual verify since last edit: ${unverifiedStamped.join(", ")}. Call get_asset_image on each before finalizing composition.`;
-          response.unverifiedAssetIds = unverifiedStamped;
-          response.nextRequired =
-            "Call get_asset_image on unverified assets and compare PNGs to your reference before continuing.";
-        }
+        markPageEdited(api.active.id);
+        response.nextRequired = "Call get_page_image, inspect the composition, then submit review_page for that revision.";
         return toolResult(response);
       },
     },
@@ -1266,6 +1366,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         const next = applyBufferOps(page.pixels, size, ops);
         const changed = diffToDots(page.pixels, next, size.width);
         const painted = api.drawPixels(changed);
+        markPageEdited(page.id);
         return toolResult({
           painted,
           offsetX,
@@ -1378,9 +1479,11 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           pageHeight,
         );
         const placements = pageLayers(page).filter(layer => layer.visible).flatMap(layer => layer.placements);
+        const revision = hasRegion ? pageRevision(page.id) : markPageInspected(page.id);
         const summary = {
           pageIndex: pageIndex ?? apiRef.current.film.activeIndex,
           id: page.id,
+          revision,
           region: hasRegion
             ? { x: regionX, y: regionY, width: regionWidth, height: regionHeight }
             : null,
@@ -1414,9 +1517,40 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
                 pageSceneHintContext(page, assets.length, backgroundStats.coverage),
               ),
           nextRequired:
-            "Compare this PNG and important region crops to your reference. Fix silhouettes, empty space, overlap, lighting, and material-specific shadow/highlight ramps; placement count alone does not prove visual quality.",
+            "Compare this PNG to the attached style target and inspect important crops. Submit review_page with this revision; revise first if perspective, stacking, lighting, or density is weak.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
+      },
+    },
+    {
+      name: "review_page",
+      description:
+        "Record a vision judgment for the latest inspected page revision. Check top-down perspective, story-text stacking, depth overlap, lighting, density, and focal hierarchy before approving.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Page id from get_page_image" },
+          revision: { type: "integer", minimum: 0, description: "Revision returned by get_page_image" },
+          verdict: { type: "string", enum: ["revise", "approved"] },
+          observations: {
+            type: "string",
+            description: "Concrete visual observations about perspective, stacking, overlap, lighting, density, and needed fixes",
+          },
+        },
+        required: ["id", "revision", "verdict", "observations"],
+      },
+      execute: async (input) => {
+        const id = asString(input.id);
+        const revision = asInteger(input.revision);
+        const verdict = asString(input.verdict);
+        const observations = asString(input.observations)?.trim();
+        if (!id || revision === undefined || (verdict !== "revise" && verdict !== "approved") || !observations) {
+          return toolError("id, revision, verdict, and concrete observations are required");
+        }
+        if (!apiRef.current.film.pages.some((page) => page.id === id)) return toolError(`Page not found: ${id}`);
+        const error = reviewPage({ pageId: id, revision, verdict, observations });
+        if (error) return toolError(error);
+        return toolResult({ id, revision, verdict, observations, approved: verdict === "approved" });
       },
     },
   ];

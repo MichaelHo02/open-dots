@@ -27,7 +27,18 @@ import {
   registerFilmTools,
   unregisterFilmTools,
 } from "../lib/register-tools";
-import { inferSceneHint, pageSceneHintContext } from "../lib/agent-session";
+import {
+  inferSceneHint,
+  isAssetVerifiedSinceEdit,
+  markAssetEdited,
+  markAssetInspected,
+  markPageEdited,
+  markPageInspected,
+  pageRevision,
+  pageSceneHintContext,
+  reviewAsset,
+  reviewPage,
+} from "../lib/agent-session";
 import type { FilmApi } from "../lib/types";
 import { getModelContext, type WebMCPTool } from "../lib/webmcp-polyfill";
 
@@ -175,6 +186,32 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
 
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
+  const assetId = "asset-quality-gate-check";
+  markAssetEdited(assetId);
+  const assetRevision = markAssetInspected(assetId);
+  const reviseError = reviewAsset({ assetId, revision: assetRevision, verdict: "revise", observations: "Flat fill; missing shadow and highlight clusters." });
+  const approvedAfterRevise = isAssetVerifiedSinceEdit(assetId);
+  const approveError = reviewAsset({ assetId, revision: assetRevision, verdict: "approved", observations: "Readable silhouette and coherent four-tone ramp after correction." });
+  const approved = isAssetVerifiedSinceEdit(assetId);
+  markAssetEdited(assetId);
+  if (!reviseError && !approvedAfterRevise && !approveError && approved && !isAssetVerifiedSinceEdit(assetId)) {
+    pass("asset approval is revision-bound and invalidated by edits");
+  } else {
+    fail("asset visual review gate", "revise/approve/revision behavior was not enforced");
+  }
+
+  const pageId = "page-quality-gate-check";
+  markPageEdited(pageId);
+  const pageRevisionValue = markPageInspected(pageId);
+  const pageReviewError = reviewPage({ pageId, revision: pageRevisionValue, verdict: "approved", observations: "Top-down depth, text stacking, and lighting are coherent." });
+  markPageEdited(pageId);
+  const stalePageError = reviewPage({ pageId, revision: pageRevisionValue, verdict: "approved", observations: "Stale review." });
+  if (!pageReviewError && pageRevision(pageId) !== pageRevisionValue && stalePageError) {
+    pass("page approval is revision-bound and stale reviews fail");
+  } else {
+    fail("page visual review gate", "stale page review was accepted");
+  }
+
   const paintAssetProperties = getSchema(byName.get("paint_asset")!)?.properties ?? {};
   if ("frameIndex" in paintAssetProperties && "frameDuration" in paintAssetProperties) {
     pass("paint_asset exposes animation frame and timing controls");
@@ -194,7 +231,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
   } else {
     const result = (await guide.execute({ topic: "tools" })) as ToolResult;
     const guideText = JSON.stringify(result);
-    if (isResult(result) && !result.isError && guideText.includes("multiple reusable") && guideText.includes("100+")) {
+    if (isResult(result) && !result.isError && guideText.includes("multiple reusable") && guideText.includes("cohesive")) {
       pass("get_pixel_art_guide returns content without a browser");
     } else {
       fail("get_pixel_art_guide", `unexpected result: ${JSON.stringify(result)}`);
@@ -274,7 +311,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     ),
   );
   if (!richColorHint.toLowerCase().includes("noisy")) {
-    pass("sceneHint accepts 100+ purposeful composed colors");
+    pass("sceneHint treats color count as evidence, not a quality target");
   } else {
     fail("sceneHint rich color count", richColorHint);
   }
@@ -287,7 +324,9 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     ["add_asset", {}],
     ["paint_asset", {}],
     ["get_asset_image", {}],
+    ["review_asset", {}],
     ["stamp_assets", {}],
+    ["review_page", {}],
   ];
   for (const [name, input] of missingRequired) {
     const tool = byName.get(name);
@@ -436,10 +475,10 @@ async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise
     const first = await registerFilmTools(apiRef);
     const context = getModelContext();
     const registered = await context?.getTools();
-    if (first.count === 12 && registered?.length === 12) {
-      pass("editor mount registers 12 tools");
+    if (first.count === 14 && registered?.length === 14) {
+      pass("editor mount registers 14 tools");
     } else {
-      fail("editor mount registration", `expected 12 tools, got ${registered?.length ?? 0}`);
+      fail("editor mount registration", `expected 14 tools, got ${registered?.length ?? 0}`);
     }
 
     unregisterFilmTools();
@@ -451,7 +490,7 @@ async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise
     }
 
     const second = await registerFilmTools(apiRef);
-    if (second.count === 12 && (await context?.getTools())?.length === 12) {
+    if (second.count === 14 && (await context?.getTools())?.length === 14) {
       pass("returning to the editor registers a fresh tool set");
     } else {
       fail("editor remount registration", "tools did not register again after cleanup");

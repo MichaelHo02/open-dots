@@ -6,16 +6,16 @@ Open Dots is a [WebMCP Challenge](https://webmcp.devpost.com/) app: agents paint
 
 **WebMCP** exposes site-defined tools to an in-browser agent (ChatGPT’s browser, Chrome with `chrome://flags/#enable-webmcp-testing`, Cursor, etc.). The agent discovers tools via `document.modelContext.getTools()`, calls them via `executeTool`, and receives structured results.
 
-Open Dots registers **12 agent-focused tools** (4 read / 8 write) on `document.modelContext` while the editor route is mounted:
+Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.modelContext` while the editor route is mounted:
 
 | Read | Write |
 | --- | --- |
 | `get_pixel_art_guide` | `set_palette`, `add_page`, `select_page`, `place_text` |
-| `get_storybook` | `add_asset`, `paint_asset`, `stamp_assets` |
-| `get_asset_image` | `paint_page` |
+| `get_storybook` | `add_asset`, `paint_asset`, `review_asset`, `stamp_assets` |
+| `get_asset_image` | `paint_page`, `review_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features (pages, reusable assets, stamp) and bulk ops: `paint_asset` and `paint_page` accept **rects / lines / fills / pixels** in one call (one rect fills any block server-side; `color ""` erases). `add_asset` also accepts a compact direct bitmap (`bitmapPalette` + comma-separated `indexedRows`, with `.` for transparency). A Codex agent that generated an image file can use the existing visible **Import image** control; both routes create the same editable asset. `paint_asset` creates animation frames with `frameIndex` and sets shared timing with `frameDuration`; `get_asset_image` inspects any frame. UI-only drawing controls (brush, workshop, tool picker, stage zoom) are not exposed.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features and bulk ops. `paint_asset` declares its visual pass; `get_asset_image` returns the current revision; `review_asset` records a concrete vision verdict for that revision. Only approved asset revisions can be stamped. Full pages follow the same `get_page_image` → `review_page` loop. Generated images can be imported as editable assets, then cleaned with hard-edged pixel passes.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
@@ -48,7 +48,7 @@ FilmApp
         ├── syncWebmcpApiRef(apiRef)     — every render; stable sharedApiRef
         └── registerFilmTools(apiRef)    — once per document load (deferred 2× rAF)
               ├── ensureWebMCPPolyfill()
-              ├── buildFilmTools()       — 12 tools, withToolAnnotations + withSafeExecute
+              ├── buildFilmTools()       — 14 tools, withToolAnnotations + withSafeExecute
               ├── register get_storybook first — agents can poll readiness immediately
               ├── register rest (silent)
               └── flushToolChanges()     — one toolchange
@@ -76,7 +76,7 @@ Storybook data (pages, assets, named color profiles) **persists** in `localStora
 
 `get_storybook` sets `nextRequired` while `webmcp.ready` is false so agents wait instead of drawing blind.
 
-Typical session start after tools are ready: `get_pixel_art_guide` → create several reusable named palettes for material/asset families → generate/import complex clean PNG assets when available or draw them in outline/fill/shade/light passes → add animation frames with `paint_asset.frameIndex` → `stamp_assets` back-to-front → compare full and cropped `get_page_image` PNGs. Rich scenes may naturally exceed 100 purposeful colors; profiles are working sets, not hard-bound to assets.
+Typical session start after tools are ready: `get_pixel_art_guide` and inspect its attached quality target → create cohesive material ramps → generate/import a clean PNG reference or draw explicit outline/fill/shadow/highlight/cleanup passes → `get_asset_image` → `review_asset` → stamp approved assets back-to-front → `get_page_image` → `review_page`.
 
 ## Chrome best practices we follow
 
@@ -89,7 +89,7 @@ Aligned with [Chrome’s WebMCP docs](https://developer.chrome.com/docs/ai/webmc
 | **Intent-rich descriptions** | Each tool says what it does, when to use it, and key constraints (coords, erase via `color ""`, PNG feedback) — no repo file paths |
 | **Graceful errors** | `toolError()` for validation; `withSafeExecute` backstop for runtime throws |
 | **Route-scoped registration** | One shared `AbortSignal`; editor unmount removes all tools; initial registration batches `toolchange` |
-| **Vision loop** | Mutating asset tools return inline PNG + `passHint` / `nextRequired`; `get_asset_image` inspects individual animation frames; `get_page_image` composites overlay stamps and returns composition hints |
+| **Vision loop** | Guide returns a visual quality target; reviews are bound to inspected asset/page revisions; edits invalidate approval; unapproved assets cannot be stamped |
 | **Evals** | Chrome-format suite + deterministic CI runner (see below) |
 
 ## Running evals
@@ -124,7 +124,7 @@ The hook is a good fit when a tool’s **scope matches a component’s lifetime*
 - A wizard step that registers `confirm_step_2` until the user advances
 - A ephemeral panel whose tools should disappear when the panel unmounts
 
-For Open Dots, one route-level `WebMCPBridge` is smaller and clearer than 12 individual hook calls. The important behavior is the same: register on editor mount and unregister with an `AbortSignal` on unmount.
+For Open Dots, one route-level `WebMCPBridge` is smaller and clearer than 14 individual hook calls. The important behavior is the same: register on editor mount and unregister with an `AbortSignal` on unmount.
 
 ## Related files
 
