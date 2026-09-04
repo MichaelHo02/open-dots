@@ -302,14 +302,14 @@ const QUALITY_LOOP = {
     "1. get_pixel_art_guide (this) at session start.",
     "2. Study the reference: list distinct objects. Aim for 12–30+ small assets.",
     "3. Create multiple named palettes for material/asset families. They are reusable working profiles, not hard-bound to assets; prefer cohesive ramps over raw color count.",
-    "4. When image generation is available, use it for complex organic characters or props and import each clean PNG with the visible Import image control; use WebMCP primitives for tiles, corrections, and deliberate pixel cleanup.",
+    "4. When image generation is available, use it for complex organic characters or props and pass each clean PNG as add_asset imageDataUrl; use WebMCP primitives for tiles, corrections, and deliberate pixel cleanup.",
     "5. add_page with a width that fits scene density (160–224 for rich rooms).",
     "5a. Add long titles at Text size 1 first and inspect them before stamping assets. If text clips, clear its pixels from the active Story layer with paint_page color \"\", then rerender smaller.",
-    "6. Choose the asset route: generate/import expressive organic characters, hair, fur, or fabric; use paint_asset for geometric props, tiles, cleanup, and small frame deltas. Do not force rectangle-first construction onto anatomy.",
+    "6. Choose the asset route: generate/import expressive organic characters, hair, fur, or fabric; use paint_asset for geometric props, tiles, cleanup, and small frame deltas. Do not force rectangle-first construction onto anatomy. A request for simple art means fewer colors and a clearer pose, never box-shaped heads, torsos, or animals.",
     "7. Per hand-drawn asset: add_asset template \"empty\" → monochrome cluster sketch → inspect pose/expression/perspective → paint_asset passes (outline → fill → shade → reflected light → highlight), comparing the PNG each pass.",
     "8. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
     "9. stamp_assets back-to-front as movable overlays (floor tiles → emblem/shadows → furniture → plants/characters). Inspect get_page_image, then update existing placements with placementId until overlap and focal hierarchy pass.",
-    "10. Animate only the focal asset: append a copied frame with frameIndex, use translateRegion for a bounded 1–2px blink/breath/limb shift plus cleanup pixels, inspect every frame, then judge the loop in Present mode.",
+    "10. If the brief contains visibly active motifs such as flame, stars, water, wind, or an expressive character, animate the one or two story-critical assets. Append copied frames with frameIndex, use translateRegion or cleanup pixels for a bounded 1–2px change, inspect every frame, then verify the loop in Present mode.",
     "11. get_page_image (full, then region crops) — compare to reference, read sceneHint, iterate until the frame is full and layered.",
     "12. paint_page only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene.",
   ],
@@ -364,7 +364,7 @@ const TOOL_WORKFLOW = {
     { name: "set_palette", when: "Create/select multiple reusable material or asset-family profiles" },
     { name: "add_page", when: "New page + optional width for pixel density" },
     { name: "select_page", when: "Switch active page by index" },
-    { name: "add_asset", when: "Create sprite — direct indexed bitmap, template empty, hex rows, fill, or page copy" },
+    { name: "add_asset", when: "Create sprite — generated imageDataUrl, direct indexed bitmap, template empty, hex rows, fill, or page copy" },
     { name: "paint_asset", when: "Declared drawing pass or bounded copied-frame translateRegion animation; returns a new revision PNG" },
     { name: "review_asset", when: "Record revise/approved vision observations for the inspected asset revision" },
     { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
@@ -373,7 +373,7 @@ const TOOL_WORKFLOW = {
     { name: "review_page", when: "Record revise/approved vision observations for the inspected full page" },
   ],
   notes:
-    "Choose the shortest asset path: expressive organic subject → ImageGen reference → visible Import image control → cleanup; geometric prop/tile → add_asset empty → cluster sketch and declared paint_asset passes; exact small bitmap → add_asset bitmapPalette+indexedRows. Inspect and approve before stamping. After composition inspection, correct existing placementIds rather than layering duplicates.",
+    "Choose the shortest asset path: expressive organic subject → ImageGen PNG → add_asset imageDataUrl → cleanup; geometric prop/tile → add_asset empty → cluster sketch and declared paint_asset passes; exact small bitmap → add_asset bitmapPalette+indexedRows. Inspect and approve before stamping. After composition inspection, correct existing placementIds rather than layering duplicates.",
 };
 
 const ANTI_PATTERNS = {

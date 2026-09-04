@@ -428,13 +428,17 @@
     },
     {
       "name": "add_asset",
-      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤100). For a direct bitmap, pass bitmapPalette plus indexedRows: comma-separated zero-based palette indexes with \".\" for transparency; size is inferred. Otherwise start with template \"empty\" then paint, or pass hex rows, flat pixels, a solid fill, or a page rect. If Codex generated an image file, use the visible Import image control instead. Painted assets return an inline PNG — compare before the next pass.",
+      "description": "Save a reusable sprite to the library (each side 1–96px; library ≤100). Pass imageDataUrl for a generated PNG/JPEG/WebP; transparent bounds are cropped, resized, and quantized to the active palette. For an exact bitmap, pass bitmapPalette plus indexedRows. Otherwise start with template \"empty\" then paint, or pass pixels, fill, or a page rect. Imported or painted assets return an inline PNG — compare before the next pass.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
             "description": "Label shown in the Assets list"
+          },
+          "imageDataUrl": {
+            "type": "string",
+            "description": "Base64 data URL for a PNG, JPEG, or WebP image (maximum 10 MB); crops transparency, fits within 96×96, and quantizes to the active palette"
           },
           "width": {
             "type": "integer",

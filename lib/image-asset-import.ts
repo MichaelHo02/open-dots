@@ -1,5 +1,12 @@
 export type RgbaPixels = { data: Uint8ClampedArray; width: number; height: number };
 
+export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
+export function isSupportedImageDataUrl(value: string) {
+  return /^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value)
+    && value.length <= Math.ceil(MAX_IMPORT_BYTES * 4 / 3) + 64;
+}
+
 export function indexedRowsToPixels(rows: unknown, palette: unknown, maxSide = 96) {
   if (!Array.isArray(rows) || !rows.length || rows.length > maxSide || !Array.isArray(palette) || !palette.length) return null;
   const colors = palette.map(color => typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : null);
@@ -66,4 +73,28 @@ export function quantizePixels(image: RgbaPixels, palette: string[]) {
     pixels.push(best.hex);
   }
   return pixels;
+}
+
+export async function rasterizeImageBlob(blob: Blob, palette: string[]) {
+  if (blob.size > MAX_IMPORT_BYTES) throw new Error("Image must be 10 MB or smaller.");
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const source = document.createElement("canvas");
+    source.width = bitmap.width; source.height = bitmap.height;
+    const sourceContext = source.getContext("2d", { willReadFrequently: true });
+    if (!sourceContext) throw new Error("Image processing is unavailable in this browser.");
+    sourceContext.drawImage(bitmap, 0, 0);
+    const bounds = opaqueBounds(sourceContext.getImageData(0, 0, source.width, source.height));
+    if (!bounds) throw new Error("The image is fully transparent.");
+    const size = fitAssetSize(bounds.width, bounds.height);
+    const output = document.createElement("canvas");
+    output.width = size.width; output.height = size.height;
+    const outputContext = output.getContext("2d", { willReadFrequently: true });
+    if (!outputContext) throw new Error("Image processing is unavailable in this browser.");
+    outputContext.imageSmoothingEnabled = false;
+    outputContext.drawImage(source, bounds.x, bounds.y, bounds.width, bounds.height, 0, 0, size.width, size.height);
+    return { ...size, pixels: quantizePixels(outputContext.getImageData(0, 0, size.width, size.height), palette) };
+  } finally {
+    bitmap.close();
+  }
 }

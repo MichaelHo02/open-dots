@@ -72,7 +72,7 @@ import {
   type WebMCPTool,
 } from "./webmcp-polyfill";
 import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "./draw";
-import { indexedRowsToPixels } from "./image-asset-import";
+import { indexedRowsToPixels, isSupportedImageDataUrl, rasterizeImageBlob } from "./image-asset-import";
 
 type ApiRef = { current: FilmApi };
 
@@ -1297,11 +1297,15 @@ export function buildFilmTools(): WebMCPTool[] {
     {
       name: "add_asset",
       description:
-        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). For a direct bitmap, pass bitmapPalette plus indexedRows: comma-separated zero-based palette indexes with \".\" for transparency; size is inferred. Otherwise start with template \"empty\" then paint, or pass hex rows, flat pixels, a solid fill, or a page rect. If Codex generated an image file, use the visible Import image control instead. Painted assets return an inline PNG — compare before the next pass.`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Pass imageDataUrl for a generated PNG/JPEG/WebP; transparent bounds are cropped, resized, and quantized to the active palette. For an exact bitmap, pass bitmapPalette plus indexedRows. Otherwise start with template \"empty\" then paint, or pass pixels, fill, or a page rect. Imported or painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Label shown in the Assets list" },
+          imageDataUrl: {
+            type: "string",
+            description: "Base64 data URL for a PNG, JPEG, or WebP image (maximum 10 MB); crops transparency, fits within 96×96, and quantizes to the active palette",
+          },
           width: {
             type: "integer",
             description: `Width in pixels, 1–${MAX_ASSET_SIDE}`,
@@ -1354,7 +1358,14 @@ export function buildFilmTools(): WebMCPTool[] {
         if (!name?.trim()) {
           return toolError("name is required");
         }
-        const resolved = resolveAssetPixels(input);
+        const imageDataUrl = asString(input.imageDataUrl);
+        if (imageDataUrl && !isSupportedImageDataUrl(imageDataUrl)) {
+          return toolError("imageDataUrl must be a base64 PNG, JPEG, or WebP data URL no larger than 10 MB");
+        }
+        const imported = imageDataUrl
+          ? await rasterizeImageBlob(await (await fetch(imageDataUrl)).blob(), apiRef.current.film.palette)
+          : null;
+        const resolved = imported ?? resolveAssetPixels(input);
         const asset = resolved
           ? apiRef.current.addAsset({
               name,
@@ -1373,7 +1384,7 @@ export function buildFilmTools(): WebMCPTool[] {
             });
         if (!asset) {
           return toolError(
-            `Need a valid asset: bitmapPalette+indexedRows, pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect. Indexed rows use comma-separated zero-based palette indexes and \".\" for transparency; all rows must have equal width.`,
+            `Need a valid asset: imageDataUrl, bitmapPalette+indexedRows, pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect.`,
           );
         }
         const isEmptyTemplate =

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { fitAssetSize, indexedRowsToPixels, opaqueBounds, quantizePixels } from "../lib/image-asset-import";
+import { fitAssetSize, indexedRowsToPixels, isSupportedImageDataUrl, opaqueBounds, quantizePixels } from "../lib/image-asset-import";
 
 const data = new Uint8ClampedArray(4 * 3 * 4);
 data[(1 * 4 + 1) * 4 + 3] = 255;
@@ -13,4 +13,6 @@ assert.deepEqual(indexedRowsToPixels([".,0,1", "1,0,."], ["#FF0000", "#0000ff"])
 });
 assert.equal(indexedRowsToPixels(["0,2"], ["#ff0000"]), null);
 assert.equal(indexedRowsToPixels(["0,0"], ["#ff0000"], 1), null);
+assert.equal(isSupportedImageDataUrl("data:image/png;base64,iVBORw0KGgo="), true);
+assert.equal(isSupportedImageDataUrl("https://example.com/image.png"), false);
 console.log("image asset import checks passed");
