@@ -17,6 +17,7 @@ import {
   type FilmApi,
   type Page,
   type Asset,
+  type Placement,
   type Size,
 } from "./types";
 import {
@@ -40,6 +41,7 @@ import {
   type PixelArtGuideTopic,
 } from "./pixel-art-guide";
 import {
+  assetRevision,
   buildNextRequired,
   emptyAssetNextRequired,
   assetHasPaintedPixels,
@@ -47,11 +49,16 @@ import {
   guideNextRequired,
   inferPassHint,
   inferSceneHint,
+  markAssetInspected,
   pageSceneHintContext,
   markAssetEdited,
-  markAssetVerified,
   markGuideLoaded,
+  markPageEdited,
+  markPageInspected,
+  pageRevision,
   recordStampedAssets,
+  reviewAsset,
+  reviewPage,
   type PassHint,
 } from "./agent-session";
 import {
@@ -65,9 +72,33 @@ import {
   type WebMCPTool,
 } from "./webmcp-polyfill";
 import { compositedPagePixels, drawLine, fillRect, floodFill, setPixels } from "./draw";
-import { indexedRowsToPixels } from "./image-asset-import";
+import { indexedRowsToPixels, isSupportedImageDataUrl, rasterizeImageBlob } from "./image-asset-import";
 
 type ApiRef = { current: FilmApi };
+
+const ASSET_PASSES = ["outline", "fill", "shadow", "highlight", "cleanup"] as const;
+type AssetPass = (typeof ASSET_PASSES)[number];
+
+function asAssetPass(value: unknown): AssetPass | undefined {
+  return typeof value === "string" && (ASSET_PASSES as readonly string[]).includes(value)
+    ? value as AssetPass
+    : undefined;
+}
+
+async function loadGuideImage(): Promise<string | null> {
+  try {
+    const response = await fetch("/agent-guides/storybook-rpg-quality-reference.png");
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary);
+  } catch {
+    return null;
+  }
+}
 
 /** Stable ref object — execute closures always read the latest editor API. */
 const sharedApiRef: ApiRef = { current: null! };
@@ -138,6 +169,8 @@ const MAX_SHAPE_OPS = 512;
 type RectOp = { x: number; y: number; width: number; height: number; color: string };
 type LineOp = { x0: number; y0: number; x1: number; y1: number; color: string };
 type FillOp = { x: number; y: number; color: string };
+type MirrorMode = "left-right" | "top-bottom" | "both";
+type RepeatSpec = { columns: number; rows: number; stepX: number; stepY: number };
 
 /** Structural ops shared by asset and page painters — the bulk advantage over per-pixel tools. */
 interface BufferOps {
@@ -258,6 +291,91 @@ function applyBufferOps(base: string[], size: Size, ops: BufferOps): string[] {
   return next;
 }
 
+function offsetBufferOps(ops: BufferOps, x: number, y: number): BufferOps {
+  return {
+    rects: ops.rects.map((op) => ({ ...op, x: op.x + x, y: op.y + y })),
+    lines: ops.lines.map((op) => ({
+      ...op,
+      x0: op.x0 + x,
+      y0: op.y0 + y,
+      x1: op.x1 + x,
+      y1: op.y1 + y,
+    })),
+    fills: ops.fills.map((op) => ({ ...op, x: op.x + x, y: op.y + y })),
+    dots: ops.dots.map((op) => ({ ...op, x: op.x + x, y: op.y + y })),
+  };
+}
+
+function mergeBufferOps(parts: BufferOps[]): BufferOps {
+  return {
+    rects: parts.flatMap((part) => part.rects),
+    lines: parts.flatMap((part) => part.lines),
+    fills: parts.flatMap((part) => part.fills),
+    dots: parts.flatMap((part) => part.dots),
+  };
+}
+
+function repeatBufferOps(ops: BufferOps, repeat?: RepeatSpec): BufferOps {
+  if (!repeat) return ops;
+  const copies: BufferOps[] = [];
+  for (let row = 0; row < repeat.rows; row += 1) {
+    for (let column = 0; column < repeat.columns; column += 1) {
+      copies.push(offsetBufferOps(ops, column * repeat.stepX, row * repeat.stepY));
+    }
+  }
+  return mergeBufferOps(copies);
+}
+
+function mirrorBufferOps(ops: BufferOps, size: Size, mirror?: MirrorMode): BufferOps {
+  if (!mirror) return ops;
+  const flip = (part: BufferOps, leftRight: boolean, topBottom: boolean): BufferOps => ({
+    rects: part.rects.map((op) => ({
+      ...op,
+      x: leftRight ? size.width - op.x - op.width : op.x,
+      y: topBottom ? size.height - op.y - op.height : op.y,
+    })),
+    lines: part.lines.map((op) => ({
+      ...op,
+      x0: leftRight ? size.width - 1 - op.x0 : op.x0,
+      x1: leftRight ? size.width - 1 - op.x1 : op.x1,
+      y0: topBottom ? size.height - 1 - op.y0 : op.y0,
+      y1: topBottom ? size.height - 1 - op.y1 : op.y1,
+    })),
+    fills: part.fills.map((op) => ({
+      ...op,
+      x: leftRight ? size.width - 1 - op.x : op.x,
+      y: topBottom ? size.height - 1 - op.y : op.y,
+    })),
+    dots: part.dots.map((op) => ({
+      ...op,
+      x: leftRight ? size.width - 1 - op.x : op.x,
+      y: topBottom ? size.height - 1 - op.y : op.y,
+    })),
+  });
+  const copies = [ops];
+  if (mirror === "left-right" || mirror === "both") copies.push(flip(ops, true, false));
+  if (mirror === "top-bottom" || mirror === "both") copies.push(flip(ops, false, true));
+  if (mirror === "both") copies.push(flip(ops, true, true));
+  return mergeBufferOps(copies);
+}
+
+function parseRepeat(value: unknown): RepeatSpec | string | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") return "repeat must be an object";
+  const input = value as Record<string, unknown>;
+  const columns = asInteger(input.columns);
+  const rows = asInteger(input.rows);
+  const stepX = asInteger(input.stepX);
+  const stepY = asInteger(input.stepY);
+  if (columns === undefined || rows === undefined || stepX === undefined || stepY === undefined) {
+    return "repeat requires integer columns, rows, stepX, and stepY";
+  }
+  if (columns < 1 || columns > 16 || rows < 1 || rows > 16) {
+    return "repeat columns and rows must each be between 1 and 16";
+  }
+  return { columns, rows, stepX, stepY };
+}
+
 /** Changed cells between two equal-length buffers, as {x,y,color} dots ("" = erase). */
 function diffToDots(
   before: string[],
@@ -333,6 +451,7 @@ function drawPixelsLimitError(count: number) {
 
 type StampInput = {
   id: string;
+  placementId?: string;
   x: number;
   y: number;
   scale?: number;
@@ -360,6 +479,7 @@ function parseStampList(
     }
     stamps.push({
       id,
+      placementId: asString(row.placementId),
       x,
       y,
       scale: asNumber(row.scale),
@@ -368,6 +488,66 @@ function parseStampList(
     });
   }
   return stamps;
+}
+
+type TranslateRegion = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  dx: number;
+  dy: number;
+};
+
+function parseTranslateRegion(value: unknown, size: Size): TranslateRegion | string | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") return "translateRegion must be an object";
+  const input = value as Record<string, unknown>;
+  const x = asInteger(input.x);
+  const y = asInteger(input.y);
+  const width = asInteger(input.width);
+  const height = asInteger(input.height);
+  const dx = asInteger(input.dx);
+  const dy = asInteger(input.dy);
+  if ([x, y, width, height, dx, dy].some((item) => item === undefined)) {
+    return "translateRegion requires integer x, y, width, height, dx, and dy";
+  }
+  const region = { x: x!, y: y!, width: width!, height: height!, dx: dx!, dy: dy! };
+  if (region.width < 1 || region.height < 1 || region.width * region.height > MAX_DRAW_PIXELS) {
+    return `translateRegion area must be between 1 and ${MAX_DRAW_PIXELS} pixels`;
+  }
+  if (region.dx === 0 && region.dy === 0) return "translateRegion dx or dy must be non-zero";
+  if (Math.abs(region.dx) > 16 || Math.abs(region.dy) > 16) {
+    return "translateRegion dx and dy must each be between -16 and 16";
+  }
+  if (
+    region.x < 0 || region.y < 0 ||
+    region.x + region.width > size.width || region.y + region.height > size.height ||
+    region.x + region.dx < 0 || region.y + region.dy < 0 ||
+    region.x + region.dx + region.width > size.width ||
+    region.y + region.dy + region.height > size.height
+  ) {
+    return "translateRegion source and destination must stay inside the asset";
+  }
+  return region;
+}
+
+function translatePaintedRegion(base: string[], size: Size, region?: TranslateRegion): string[] {
+  if (!region) return base;
+  const next = base.slice();
+  const painted: Array<{ x: number; y: number; color: string }> = [];
+  for (let y = region.y; y < region.y + region.height; y += 1) {
+    for (let x = region.x; x < region.x + region.width; x += 1) {
+      const color = base[y * size.width + x] ?? "";
+      if (!color) continue;
+      painted.push({ x, y, color });
+      next[y * size.width + x] = "";
+    }
+  }
+  for (const pixel of painted) {
+    next[(pixel.y + region.dy) * size.width + pixel.x + region.dx] = pixel.color;
+  }
+  return next;
 }
 
 function resolveAssetPixels(input: Record<string, unknown>): {
@@ -455,7 +635,7 @@ function editorState(api: FilmApi) {
 function assetMutationFeedback(
   asset: Asset,
   summary: Record<string, unknown>,
-  options?: { dots?: Array<{ x: number; y: number; color: string }> },
+  options?: { dots?: Array<{ x: number; y: number; color: string }>; pass?: AssetPass },
 ) {
   markAssetEdited(asset.id);
   const stats = computePixelStats(asset.pixels, asset.width, asset.height);
@@ -468,6 +648,8 @@ function assetMutationFeedback(
     {
       ...summary,
       assetId: asset.id,
+      revision: assetRevision(asset.id),
+      completedPass: options?.pass,
       passHint,
       nextRequired: buildNextRequired(passHint),
     },
@@ -630,20 +812,20 @@ function summarize(api: FilmApi) {
   };
 }
 
-export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
+export function buildFilmTools(): WebMCPTool[] {
   const apiRef = sharedApiRef;
   const tools: WebMCPTool[] = [
     {
       name: "get_pixel_art_guide",
       description:
-        "Load the pixel-art playbook — call this first each session before drawing. Covers composition, palettes, shading, material recipes, character patterns, the draw-look-fix loop, and anti-patterns. Pass topic workflow, shading, composition, or tools; omit for the full playbook.",
+        "Load the pixel-art playbook and attached top-down storybook-RPG quality reference — call this first each session before drawing. Pass topic storybook-rpg, workflow, shading, composition, or tools; omit for the full playbook.",
       annotations: { readOnlyHint: true },
       inputSchema: {
         type: "object",
         properties: {
           topic: {
             type: "string",
-            enum: ["workflow", "shading", "composition", "tools", "full"],
+            enum: ["workflow", "shading", "composition", "storybook-rpg", "tools", "full"],
             description: "Section to return; omit for full playbook",
           },
         },
@@ -651,7 +833,15 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
       execute: async (input) => {
         const topic: PixelArtGuideTopic = normalizeGuideTopic(input.topic);
         markGuideLoaded();
-        return toolResult(buildPixelArtGuide(topic));
+        const guide = buildPixelArtGuide(topic);
+        if (topic === "tools") return toolResult(guide);
+        const image = await loadGuideImage();
+        return image
+          ? toolResultWithImage(
+              { ...guide, visualReference: "Attached top-down storybook-RPG quality target. Inspect it before drawing." },
+              { data: image, mimeType: "image/png" },
+            )
+          : toolResult({ ...guide, visualReference: "Preview unavailable; continue with the written quality bar." });
       },
     },
     {
@@ -665,7 +855,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "set_palette",
       description:
-        "Create, update, or select a reusable named color profile. Make multiple profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Rich composed scenes may naturally exceed 100 unique colors through separate base, reflected-light, shadow, and highlight ramps. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
+        "Create, update, or select a reusable named color profile. Make profiles for material or asset families (for example Milo, sheep wool, bedroom wood, moonlight); profiles are not bound to assets, so select or reuse whichever profile fits the next asset. Pass any number of #rrggbb swatches — there is no count cap, and Default is never overwritten. Prefer cohesive base, reflected-light, shadow, and highlight ramps over maximizing unique colors. Extra #rrggbb colors can also be used inline in draw ops without adding them to a profile.",
       inputSchema: {
         type: "object",
         properties: {
@@ -744,6 +934,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           api.setDensity(width);
         }
         const active = api.active ?? page;
+        markPageEdited(active.id);
         return toolResult({
           id: active.id,
           index: api.film.activeIndex,
@@ -779,7 +970,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "place_text",
       description:
-        "Rasterize words into the selected layer at x,y (0–1 fractions or pixel coords). Uses Inter glyphs at size 1–8 (default 2). For decorations, draw with rects/lines/fills or stamp assets — do not add a story form or caption box.",
+        "Rasterize words into a topmost reusable Story layer at x,y (0–1 fractions or pixel coords), so animated assets cannot cover the text. Uses Inter glyphs at size 1–8 (default 2).",
       inputSchema: {
         type: "object",
         properties: {
@@ -802,6 +993,23 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           return toolError("body is required");
         }
         const api = apiRef.current;
+        const page = api.active;
+        if (!page) return toolError("No active page");
+        let layers = pageLayers(page);
+        let storyLayer = layers.find((layer) => layer.name === "Story");
+        if (!storyLayer) {
+          const added = api.addLayer();
+          if (!added) return toolError("Could not create Story layer");
+          storyLayer = added;
+          api.updateLayer(added.id, { name: "Story" });
+        } else {
+          if (storyLayer.locked) return toolError("Story layer is locked");
+          api.selectLayer(storyLayer.id);
+        }
+        layers = pageLayers(api.active!);
+        for (let index = layers.findIndex((layer) => layer.id === storyLayer.id); index < layers.length - 1; index += 1) {
+          api.moveLayer(storyLayer.id, 1);
+        }
         const size = activeSize(api);
         const mark = api.addText({
           x: asUnit(input.x, size.width) ?? 0.08,
@@ -814,6 +1022,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (!mark) {
           return toolError("No active page");
         }
+        markPageEdited(page.id);
         return toolResult(mark);
       },
     },
@@ -866,7 +1075,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           return toolError("Could not rasterize asset image (canvas unavailable)");
         }
         const includeRows = input.includeRows === undefined ? true : asBoolean(input.includeRows);
-        markAssetVerified(asset.id);
+        const revision = markAssetInspected(asset.id);
         const stats = computePixelStats(framePixels, asset.width, asset.height);
         const summary = {
           id: asset.id,
@@ -876,6 +1085,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           frameIndex,
           frameCount,
           frameDuration: asset.frameDuration ?? 400,
+          revision,
           imageScale: scale,
           renderedWidth: asset.width * scale,
           renderedHeight: asset.height * scale,
@@ -889,22 +1099,58 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             includeRows === false
               ? undefined
               : pixelsToRows(framePixels, asset.width, asset.height),
-          verified: true,
+          inspected: true,
           nextRequired:
-            "Compare the PNG to your reference. Fix with paint_asset (rects/lines/fills or pixels; color \"\" erases) before the next pass or stamp_assets.",
+            "Compare the PNG to the visual reference. Submit review_asset with this revision; revise first if silhouettes, ramps, clusters, or lighting are weak.",
           hint: "Compare the attached PNG at native scale (use scale 4–8 to peep). Text fallback: rows in the response.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
       },
     },
     {
+      name: "review_asset",
+      description:
+        "Record an actual vision judgment for the latest inspected asset revision. Use revise when silhouettes, material ramps, clustered pixels, or lighting need work; only approved revisions may be stamped.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Asset id from get_asset_image" },
+          revision: { type: "integer", minimum: 0, description: "Revision returned by get_asset_image" },
+          verdict: { type: "string", enum: ["revise", "approved"] },
+          observations: {
+            type: "string",
+            description: "Concrete visual observations about silhouette, shading ramps, pixel clusters, lighting, and needed fixes",
+          },
+        },
+        required: ["id", "revision", "verdict", "observations"],
+      },
+      execute: async (input) => {
+        const id = asString(input.id);
+        const revision = asInteger(input.revision);
+        const verdict = asString(input.verdict);
+        const observations = asString(input.observations)?.trim();
+        if (!id || revision === undefined || (verdict !== "revise" && verdict !== "approved") || !observations) {
+          return toolError("id, revision, verdict, and concrete observations are required");
+        }
+        if (!apiRef.current.getAsset(id)) return toolError(`Asset not found: ${id}`);
+        const error = reviewAsset({ assetId: id, revision, verdict, observations });
+        if (error) return toolError(error);
+        return toolResult({ id, revision, verdict, observations, approved: verdict === "approved" });
+      },
+    },
+    {
       name: "paint_asset",
       description:
-        `Paint an asset or animation frame. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); color \"\" erases. frameIndex defaults to 0; using the next frame index appends a copy of the previous frame for small motion edits. frameDuration sets shared timing in milliseconds and may be passed alone. Each call returns that frame's PNG — compare before the next pass or frame.`,
+        `Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror/repeat drafts or translate one painted region on a copied frame for animation. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.`,
       inputSchema: {
         type: "object",
         properties: {
           id: { type: "string", description: "Asset id to paint into" },
+          pass: {
+            type: "string",
+            enum: ASSET_PASSES,
+            description: "The visual construction pass being applied",
+          },
           frameIndex: {
             type: "integer",
             minimum: 0,
@@ -936,6 +1182,35 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               required: ["x", "y", "color"],
             },
           },
+          mirror: {
+            type: "string",
+            enum: ["left-right", "top-bottom", "both"],
+            description: "Duplicate supplied operations across the asset axes while keeping the originals",
+          },
+          repeat: {
+            type: "object",
+            description: "Repeat supplied operations as a grid, including the original at row 0, column 0",
+            properties: {
+              columns: { type: "integer", minimum: 1, maximum: 16 },
+              rows: { type: "integer", minimum: 1, maximum: 16 },
+              stepX: { type: "integer", description: "Horizontal pixels between copies" },
+              stepY: { type: "integer", description: "Vertical pixels between copies" },
+            },
+            required: ["columns", "rows", "stepX", "stepY"],
+          },
+          translateRegion: {
+            type: "object",
+            description: "Move painted pixels in one bounded region on this frame; useful after appending a copied frame for a 1–2px blink, breath, limb, or hair motion.",
+            properties: {
+              x: { type: "integer" },
+              y: { type: "integer" },
+              width: { type: "integer", minimum: 1 },
+              height: { type: "integer", minimum: 1 },
+              dx: { type: "integer", minimum: -16, maximum: 16 },
+              dy: { type: "integer", minimum: -16, maximum: 16 },
+            },
+            required: ["x", "y", "width", "height", "dx", "dy"],
+          },
           offsetX: {
             type: "integer",
             description: "Added to every x (default 0) — use to tile regions",
@@ -945,17 +1220,15 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             description: "Added to every y (default 0)",
           },
         },
-        required: ["id"],
+        required: ["id", "pass"],
       },
       execute: async (input) => {
         const id = asString(input.id);
         if (!id) {
           return toolError("id is required");
         }
-        const dots = asDots(input.pixels) ?? [];
-        if (dots.length > MAX_DRAW_PIXELS) {
-          return toolError(drawPixelsLimitError(dots.length));
-        }
+        const pass = asAssetPass(input.pass);
+        if (!pass) return toolError(`pass must be one of ${ASSET_PASSES.join(", ")}`);
         const asset = apiRef.current.getAsset(id);
         if (!asset) {
           return toolError(`Asset not found: ${id}`);
@@ -972,15 +1245,32 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (input.frameDuration !== undefined && (frameDuration === undefined || frameDuration < 100 || frameDuration > 2000)) {
           return toolError("frameDuration must be an integer between 100 and 2000 milliseconds");
         }
-        const ops = collectBufferOps(input, offsetX, offsetY);
-        if (bufferOpCount(ops) === 0 && frameDuration === undefined) {
+        const mirror = asString(input.mirror);
+        if (input.mirror !== undefined && mirror !== "left-right" && mirror !== "top-bottom" && mirror !== "both") {
+          return toolError("mirror must be left-right, top-bottom, or both");
+        }
+        const repeat = parseRepeat(input.repeat);
+        if (typeof repeat === "string") return toolError(repeat);
+        const size: Size = { width: asset.width, height: asset.height };
+        const translateRegion = parseTranslateRegion(input.translateRegion, size);
+        if (typeof translateRegion === "string") return toolError(translateRegion);
+        let ops = collectBufferOps(input, offsetX, offsetY);
+        ops = repeatBufferOps(ops, repeat);
+        ops = mirrorBufferOps(ops, size, mirror as MirrorMode | undefined);
+        const structuralOps = ops.rects.length + ops.lines.length + ops.fills.length;
+        if (structuralOps > MAX_SHAPE_OPS) {
+          return toolError(`Algorithmic expansion creates ${structuralOps} structural operations; maximum is ${MAX_SHAPE_OPS}`);
+        }
+        if (ops.dots.length > MAX_DRAW_PIXELS) {
+          return toolError(`Algorithmic expansion creates ${ops.dots.length} detail pixels; maximum is ${MAX_DRAW_PIXELS}`);
+        }
+        if (bufferOpCount(ops) === 0 && frameDuration === undefined && !translateRegion) {
           return toolError(
-            "Provide pixels, rects, lines, fills, or frameDuration. color \"\" erases.",
+            "Provide pixels, rects, lines, fills, translateRegion, or frameDuration. color \"\" erases.",
           );
         }
-        const size: Size = { width: asset.width, height: asset.height };
         const source = asset.frames?.[frameIndex] ?? asset.frames?.at(-1) ?? asset.pixels;
-        const next = applyBufferOps(source, size, ops);
+        const next = applyBufferOps(translatePaintedRegion(source, size, translateRegion), size, ops);
         const changed = diffToDots(source, next, asset.width);
         const painted = apiRef.current.drawAssetPixels(id, changed, frameIndex, frameDuration);
         const updated = apiRef.current.getAsset(id);
@@ -996,19 +1286,26 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             frameIndex,
             frameCount: updated.frames?.length ?? 1,
             frameDuration: updated.frameDuration ?? 400,
+            ...((mirror || repeat || translateRegion) ? {
+              algorithmic: { mirror: mirror ?? null, repeat: repeat ?? null, translateRegion: translateRegion ?? null },
+            } : {}),
           },
-          { dots: changed },
+          { dots: changed, pass },
         );
       },
     },
     {
       name: "add_asset",
       description:
-        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). For a direct bitmap, pass bitmapPalette plus indexedRows: comma-separated zero-based palette indexes with \".\" for transparency; size is inferred. Otherwise start with template \"empty\" then paint, or pass hex rows, flat pixels, a solid fill, or a page rect. If Codex generated an image file, use the visible Import image control instead. Painted assets return an inline PNG — compare before the next pass.`,
+        `Save a reusable sprite to the library (each side 1–${MAX_ASSET_SIDE}px; library ≤${MAX_ASSETS}). Pass imageDataUrl for a generated PNG/JPEG/WebP; transparent bounds are cropped, resized, and quantized to the active palette. For an exact bitmap, pass bitmapPalette plus indexedRows. Otherwise start with template \"empty\" then paint, or pass pixels, fill, or a page rect. Imported or painted assets return an inline PNG — compare before the next pass.`,
       inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Label shown in the Assets list" },
+          imageDataUrl: {
+            type: "string",
+            description: "Base64 data URL for a PNG, JPEG, or WebP image (maximum 10 MB); crops transparency, fits within 96×96, and quantizes to the active palette",
+          },
           width: {
             type: "integer",
             description: `Width in pixels, 1–${MAX_ASSET_SIDE}`,
@@ -1061,7 +1358,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (!name?.trim()) {
           return toolError("name is required");
         }
-        const resolved = resolveAssetPixels(input);
+        const imageDataUrl = asString(input.imageDataUrl);
+        if (imageDataUrl && !isSupportedImageDataUrl(imageDataUrl)) {
+          return toolError("imageDataUrl must be a base64 PNG, JPEG, or WebP data URL no larger than 10 MB");
+        }
+        const imported = imageDataUrl
+          ? await rasterizeImageBlob(await (await fetch(imageDataUrl)).blob(), apiRef.current.film.palette)
+          : null;
+        const resolved = imported ?? resolveAssetPixels(input);
         const asset = resolved
           ? apiRef.current.addAsset({
               name,
@@ -1080,7 +1384,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             });
         if (!asset) {
           return toolError(
-            `Need a valid asset: bitmapPalette+indexedRows, pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect. Indexed rows use comma-separated zero-based palette indexes and \".\" for transparency; all rows must have equal width.`,
+            `Need a valid asset: imageDataUrl, bitmapPalette+indexedRows, pixels/rows/fill/template+width+height (each side 1–${MAX_ASSET_SIDE}), or a page rect.`,
           );
         }
         const isEmptyTemplate =
@@ -1108,7 +1412,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "stamp_assets",
       description:
-        `Add movable overlay placements on the selected layer of the active page (max ${MAX_ASSETS} per call) — they are NOT baked into page.pixels. Each item needs id, x, y; optional scale (default 1 = native size) or width/height. Array order is z-index, back-to-front: floor tiles → emblem/shadows → furniture → plants/characters. Transparent asset pixels do not punch holes. Repeat the same asset (plants ×4). On failure, reports which stamp index failed.`,
+        `Add or update movable overlay placements on the selected layer of the active page (max ${MAX_ASSETS} per call). Each item needs asset id, x, y; pass placementId from get_storybook/get_page_image to reposition or resize an existing stamp after visual review. Optional scale or width/height stays proportional. Array order for new stamps is back-to-front.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1119,6 +1423,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               type: "object",
               properties: {
                 id: { type: "string", description: "Asset id from add_asset or get_storybook" },
+                placementId: { type: "string", description: "Existing placement id to move/resize instead of adding a duplicate" },
                 x: { type: "integer", description: "Page column of the stamp top-left (0 = left)" },
                 y: { type: "integer", description: "Page row of the stamp top-left (0 = top)" },
                 scale: {
@@ -1130,7 +1435,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               },
               required: ["id", "x", "y"],
             },
-            description: "Stamps applied in array order (back-to-front)",
+            description: "New stamps apply in array order (back-to-front); placementId updates an existing stamp in place",
           },
         },
         required: ["stamps"],
@@ -1149,6 +1454,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (!api.active) {
           return toolError("No active page — call add_page or select_page first");
         }
+        const missing = stamps.find((stamp) => !api.getAsset(stamp.id));
+        if (missing) return toolError(`Asset not found: ${missing.id}. Call get_storybook for valid ids.`);
+        const unreviewed = recordStampedAssets([...new Set(stamps.map((stamp) => stamp.id))]);
+        if (unreviewed.length) {
+          return toolError(
+            `Assets need an approved review_asset verdict for their latest revision before stamping: ${unreviewed.join(", ")}`,
+          );
+        }
         const placed: Array<{
           index: number;
           id: string;
@@ -1159,6 +1472,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           width: number;
           height: number;
         }> = [];
+        let updatedCount = 0;
         for (let index = 0; index < stamps.length; index += 1) {
           const stamp = stamps[index]!;
           if (!api.getAsset(stamp.id)) {
@@ -1166,16 +1480,43 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               `Stamp ${index}: asset not found "${stamp.id}". Call get_storybook for valid ids.`,
             );
           }
-          const result = api.stampAsset({
-            id: stamp.id,
-            x: stamp.x,
-            y: stamp.y,
-            scale: stamp.scale,
-            width: stamp.width,
-            height: stamp.height,
-            keepFloating: false,
-            recordUndo: index === 0,
-          });
+          let result: Placement | null = null;
+          if (stamp.placementId) {
+            const current = api.active.placements.find((placement) => placement.id === stamp.placementId);
+            if (!current || current.assetId !== stamp.id) {
+              return toolError(`Stamp ${index}: placement not found for asset \"${stamp.id}\": ${stamp.placementId}`);
+            }
+            const asset = api.getAsset(stamp.id)!;
+            if ((stamp.scale !== undefined && stamp.scale <= 0) ||
+                (stamp.width !== undefined && stamp.width < 1) ||
+                (stamp.height !== undefined && stamp.height < 1)) {
+              return toolError(`Stamp ${index}: scale and dimensions must be positive`);
+            }
+            const resizeScale = stamp.scale ?? (
+              stamp.width !== undefined || stamp.height !== undefined
+                ? Math.max((stamp.width ?? asset.width) / asset.width, (stamp.height ?? asset.height) / asset.height)
+                : undefined
+            );
+            const requestedWidth = resizeScale === undefined ? undefined : Math.round(asset.width * resizeScale);
+            const requestedHeight = resizeScale === undefined ? undefined : Math.round(asset.height * resizeScale);
+            api.movePlacement(stamp.placementId, stamp.x, stamp.y, index === 0);
+            if (requestedWidth !== undefined || requestedHeight !== undefined) {
+              api.resizePlacement(stamp.placementId, requestedWidth ?? current.width, requestedHeight ?? current.height);
+            }
+            result = api.active.placements.find((placement) => placement.id === stamp.placementId) ?? null;
+            updatedCount += 1;
+          } else {
+            result = api.stampAsset({
+              id: stamp.id,
+              x: stamp.x,
+              y: stamp.y,
+              scale: stamp.scale,
+              width: stamp.width,
+              height: stamp.height,
+              keepFloating: false,
+              recordUndo: index === 0,
+            });
+          }
           if (!result) {
             return toolError(
               `Stamp ${index}: failed to place "${stamp.id}" at (${stamp.x},${stamp.y}) — use positive dimensions with each scaled side at most 256 pixels`,
@@ -1192,18 +1533,14 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             height: result.height,
           });
         }
-        const stampedIds = [...new Set(placed.map((stamp) => stamp.id))];
-        const unverifiedStamped = recordStampedAssets(stampedIds);
         const response: Record<string, unknown> = {
           stamped: placed.length,
+          added: placed.length - updatedCount,
+          updated: updatedCount,
           stamps: placed,
         };
-        if (unverifiedStamped.length > 0) {
-          response.warning = `Stamped ${unverifiedStamped.length} asset(s) without visual verify since last edit: ${unverifiedStamped.join(", ")}. Call get_asset_image on each before finalizing composition.`;
-          response.unverifiedAssetIds = unverifiedStamped;
-          response.nextRequired =
-            "Call get_asset_image on unverified assets and compare PNGs to your reference before continuing.";
-        }
+        markPageEdited(api.active.id);
+        response.nextRequired = "Call get_page_image, inspect the composition, then pass placementId back to stamp_assets for any correction before review_page.";
         return toolResult(response);
       },
     },
@@ -1266,6 +1603,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         const next = applyBufferOps(page.pixels, size, ops);
         const changed = diffToDots(page.pixels, next, size.width);
         const painted = api.drawPixels(changed);
+        markPageEdited(page.id);
         return toolResult({
           painted,
           offsetX,
@@ -1378,9 +1716,11 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
           pageHeight,
         );
         const placements = pageLayers(page).filter(layer => layer.visible).flatMap(layer => layer.placements);
+        const revision = hasRegion ? pageRevision(page.id) : markPageInspected(page.id);
         const summary = {
           pageIndex: pageIndex ?? apiRef.current.film.activeIndex,
           id: page.id,
+          revision,
           region: hasRegion
             ? { x: regionX, y: regionY, width: regionWidth, height: regionHeight }
             : null,
@@ -1414,9 +1754,40 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
                 pageSceneHintContext(page, assets.length, backgroundStats.coverage),
               ),
           nextRequired:
-            "Compare this PNG and important region crops to your reference. Fix silhouettes, empty space, overlap, lighting, and material-specific shadow/highlight ramps; placement count alone does not prove visual quality.",
+            "Compare this PNG to the attached style target and inspect important crops. Submit review_page with this revision; revise first if perspective, stacking, lighting, or density is weak.",
         };
         return toolResultWithImage(summary, { data: png, mimeType: "image/png" });
+      },
+    },
+    {
+      name: "review_page",
+      description:
+        "Record a vision judgment for the latest inspected page revision. Check top-down perspective, story-text stacking, depth overlap, lighting, density, and focal hierarchy before approving.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "string", description: "Page id from get_page_image" },
+          revision: { type: "integer", minimum: 0, description: "Revision returned by get_page_image" },
+          verdict: { type: "string", enum: ["revise", "approved"] },
+          observations: {
+            type: "string",
+            description: "Concrete visual observations about perspective, stacking, overlap, lighting, density, and needed fixes",
+          },
+        },
+        required: ["id", "revision", "verdict", "observations"],
+      },
+      execute: async (input) => {
+        const id = asString(input.id);
+        const revision = asInteger(input.revision);
+        const verdict = asString(input.verdict);
+        const observations = asString(input.observations)?.trim();
+        if (!id || revision === undefined || (verdict !== "revise" && verdict !== "approved") || !observations) {
+          return toolError("id, revision, verdict, and concrete observations are required");
+        }
+        if (!apiRef.current.film.pages.some((page) => page.id === id)) return toolError(`Page not found: ${id}`);
+        const error = reviewPage({ pageId: id, revision, verdict, observations });
+        if (error) return toolError(error);
+        return toolResult({ id, revision, verdict, observations, approved: verdict === "approved" });
       },
     },
   ];
@@ -1501,7 +1872,7 @@ async function registerFilmToolsOnce(
   sharedApiRef.current = apiRef.current;
   const context = ensureWebMCPPolyfill();
   const native = !("isPolyfill" in context && context.isPolyfill);
-  const tools = buildFilmTools(apiRef);
+  const tools = buildFilmTools();
   const expectedCount = tools.length;
 
   const existingWin = getWindowRegistration();

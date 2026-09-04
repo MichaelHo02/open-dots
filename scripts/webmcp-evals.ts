@@ -25,10 +25,22 @@ import { dirname, resolve } from "node:path";
 import {
   buildFilmTools,
   registerFilmTools,
+  syncWebmcpApiRef,
   unregisterFilmTools,
 } from "../lib/register-tools";
-import { inferSceneHint, pageSceneHintContext } from "../lib/agent-session";
-import type { FilmApi } from "../lib/types";
+import {
+  inferSceneHint,
+  isAssetVerifiedSinceEdit,
+  markAssetEdited,
+  markAssetInspected,
+  markPageEdited,
+  markPageInspected,
+  pageRevision,
+  pageSceneHintContext,
+  reviewAsset,
+  reviewPage,
+} from "../lib/agent-session";
+import type { Asset, FilmApi } from "../lib/types";
 import { getModelContext, type WebMCPTool } from "../lib/webmcp-polyfill";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -175,11 +187,163 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
 
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
+  const assetId = "asset-quality-gate-check";
+  markAssetEdited(assetId);
+  const assetRevision = markAssetInspected(assetId);
+  const reviseError = reviewAsset({ assetId, revision: assetRevision, verdict: "revise", observations: "Flat fill; missing shadow and highlight clusters." });
+  const approvedAfterRevise = isAssetVerifiedSinceEdit(assetId);
+  const approveError = reviewAsset({ assetId, revision: assetRevision, verdict: "approved", observations: "Readable silhouette and coherent four-tone ramp after correction." });
+  const approved = isAssetVerifiedSinceEdit(assetId);
+  markAssetEdited(assetId);
+  if (!reviseError && !approvedAfterRevise && !approveError && approved && !isAssetVerifiedSinceEdit(assetId)) {
+    pass("asset approval is revision-bound and invalidated by edits");
+  } else {
+    fail("asset visual review gate", "revise/approve/revision behavior was not enforced");
+  }
+
+  const pageId = "page-quality-gate-check";
+  markPageEdited(pageId);
+  const pageRevisionValue = markPageInspected(pageId);
+  const pageReviewError = reviewPage({ pageId, revision: pageRevisionValue, verdict: "approved", observations: "Top-down depth, text stacking, and lighting are coherent." });
+  markPageEdited(pageId);
+  const stalePageError = reviewPage({ pageId, revision: pageRevisionValue, verdict: "approved", observations: "Stale review." });
+  if (!pageReviewError && pageRevision(pageId) !== pageRevisionValue && stalePageError) {
+    pass("page approval is revision-bound and stale reviews fail");
+  } else {
+    fail("page visual review gate", "stale page review was accepted");
+  }
+
   const paintAssetProperties = getSchema(byName.get("paint_asset")!)?.properties ?? {};
-  if ("frameIndex" in paintAssetProperties && "frameDuration" in paintAssetProperties) {
+  if ("frameIndex" in paintAssetProperties && "frameDuration" in paintAssetProperties && "translateRegion" in paintAssetProperties) {
     pass("paint_asset exposes animation frame and timing controls");
   } else {
-    fail("paint_asset animation schema", "frameIndex and frameDuration are required");
+    fail("paint_asset animation schema", "frameIndex, frameDuration, and translateRegion are required");
+  }
+  if ("mirror" in paintAssetProperties && "repeat" in paintAssetProperties) {
+    pass("paint_asset exposes declarative mirror and repeat controls");
+  } else {
+    fail("paint_asset algorithmic schema", "mirror and repeat are required");
+  }
+
+  let proceduralAsset: Asset = {
+    id: "asset-procedural-check",
+    name: "Procedural check",
+    width: 5,
+    height: 3,
+    pixels: Array.from({ length: 15 }, () => ""),
+  };
+  let drawn: Array<{ x: number; y: number; color: string }> = [];
+  const proceduralApi = {
+    getAsset: (id: string) => id === proceduralAsset.id ? proceduralAsset : null,
+    drawAssetPixels: (_id: string, dots: typeof drawn) => {
+      drawn = dots;
+      const pixels = proceduralAsset.pixels.slice();
+      for (const dot of dots) pixels[dot.y * proceduralAsset.width + dot.x] = dot.color;
+      proceduralAsset = { ...proceduralAsset, pixels };
+      return dots.length;
+    },
+  } as unknown as FilmApi;
+  syncWebmcpApiRef({ current: proceduralApi });
+  const proceduralTool = buildFilmTools().find((tool) => tool.name === "paint_asset");
+  await proceduralTool?.execute({
+    id: proceduralAsset.id,
+    pass: "outline",
+    pixels: [{ x: 0, y: 0, color: "#ffffff" }],
+    repeat: { columns: 1, rows: 2, stepX: 0, stepY: 1 },
+    mirror: "left-right",
+  });
+  const proceduralDots = new Set(drawn.map((dot) => `${dot.x},${dot.y}`));
+  if (["0,0", "4,0", "0,1", "4,1"].every((dot) => proceduralDots.has(dot))) {
+    pass("paint_asset expands repeated and mirrored pixels deterministically");
+  } else {
+    fail("paint_asset algorithmic expansion", `unexpected dots: ${[...proceduralDots].join(" ")}`);
+  }
+  drawn = [];
+  const invalidRepeat = await proceduralTool?.execute({
+    id: proceduralAsset.id,
+    pass: "outline",
+    pixels: [{ x: 0, y: 0, color: "#ffffff" }],
+    repeat: { columns: 17, rows: 1, stepX: 1, stepY: 0 },
+  }) as ToolResult | undefined;
+  if (invalidRepeat?.isError === true && drawn.length === 0) {
+    pass("paint_asset rejects oversized algorithmic repeats before mutation");
+  } else {
+    fail("paint_asset repeat validation", "invalid repeat mutated the asset or did not return isError");
+  }
+  proceduralAsset = {
+    id: "asset-region-translate-check",
+    name: "Region translate check",
+    width: 4,
+    height: 3,
+    pixels: ["", "", "", "", "", "#ffffff", "", "", "", "", "", ""],
+  };
+  drawn = [];
+  await proceduralTool?.execute({
+    id: proceduralAsset.id,
+    pass: "cleanup",
+    translateRegion: { x: 1, y: 1, width: 1, height: 1, dx: 1, dy: 0 },
+  });
+  if (drawn.some((dot) => dot.x === 1 && dot.y === 1 && dot.color === "") &&
+      drawn.some((dot) => dot.x === 2 && dot.y === 1 && dot.color === "#ffffff")) {
+    pass("paint_asset translates a bounded painted region deterministically");
+  } else {
+    fail("paint_asset translateRegion", `unexpected dots: ${JSON.stringify(drawn)}`);
+  }
+
+  const stampTool = byName.get("stamp_assets");
+  const stampProperties = getSchema(stampTool!)?.properties ?? {};
+  const stampItems = ((stampProperties.stamps as { items?: { properties?: Record<string, unknown> } })?.items?.properties) ?? {};
+  if ("placementId" in stampItems) {
+    pass("stamp_assets exposes placementId correction controls");
+  } else {
+    fail("stamp_assets placement update schema", "placementId is required");
+  }
+  const placedAsset: Asset = {
+    id: "asset-placement-update-check",
+    name: "Placement update check",
+    width: 4,
+    height: 4,
+    pixels: Array.from({ length: 16 }, () => "#ffffff"),
+  };
+  let placement = { id: "place-update-check", assetId: placedAsset.id, x: 0, y: 0, width: 4, height: 4 };
+  const active = {
+    id: "page-placement-update-check", width: 32, height: 18,
+    pixels: Array.from({ length: 576 }, () => ""), texts: [], placements: [placement], boardX: 0, boardY: 0,
+  };
+  markAssetEdited(placedAsset.id);
+  const placedRevision = markAssetInspected(placedAsset.id);
+  reviewAsset({ assetId: placedAsset.id, revision: placedRevision, verdict: "approved", observations: "Fixture is visible." });
+  const placementApi = {
+    active,
+    getAsset: (id: string) => id === placedAsset.id ? placedAsset : null,
+    movePlacement: (_id: string, x: number, y: number) => {
+      placement = { ...placement, x, y };
+      active.placements = [placement];
+      return true;
+    },
+    resizePlacement: (_id: string, width: number, height: number) => {
+      placement = { ...placement, width, height };
+      active.placements = [placement];
+      return true;
+    },
+  } as unknown as FilmApi;
+  syncWebmcpApiRef({ current: placementApi });
+  const placementResult = await stampTool?.execute({
+    stamps: [{ id: placedAsset.id, placementId: placement.id, x: 3, y: 2, scale: 2 }],
+  }) as ToolResult | undefined;
+  if (!placementResult?.isError && placement.x === 3 && placement.y === 2 && placement.width === 8 && placement.height === 8 && active.placements.length === 1) {
+    pass("stamp_assets updates an existing placement without adding a duplicate");
+  } else {
+    fail("stamp_assets placement update", `unexpected placement/result: ${JSON.stringify({ placement, placementResult })}`);
+  }
+  const beforeInvalidPlacement = { ...placement };
+  const invalidPlacementResult = await stampTool?.execute({
+    stamps: [{ id: placedAsset.id, placementId: placement.id, x: 3, y: 2, scale: 0 }],
+  }) as ToolResult | undefined;
+  if (invalidPlacementResult?.isError && JSON.stringify(placement) === JSON.stringify(beforeInvalidPlacement)) {
+    pass("stamp_assets rejects invalid placement updates before mutation");
+  } else {
+    fail("stamp_assets placement validation", "invalid scale mutated the placement or did not return isError");
   }
   const getAssetProperties = getSchema(byName.get("get_asset_image")!)?.properties ?? {};
   if ("frameIndex" in getAssetProperties) {
@@ -194,7 +358,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
   } else {
     const result = (await guide.execute({ topic: "tools" })) as ToolResult;
     const guideText = JSON.stringify(result);
-    if (isResult(result) && !result.isError && guideText.includes("multiple reusable") && guideText.includes("100+")) {
+    if (isResult(result) && !result.isError && guideText.includes("multiple reusable") && guideText.includes("cohesive")) {
       pass("get_pixel_art_guide returns content without a browser");
     } else {
       fail("get_pixel_art_guide", `unexpected result: ${JSON.stringify(result)}`);
@@ -274,7 +438,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     ),
   );
   if (!richColorHint.toLowerCase().includes("noisy")) {
-    pass("sceneHint accepts 100+ purposeful composed colors");
+    pass("sceneHint treats color count as evidence, not a quality target");
   } else {
     fail("sceneHint rich color count", richColorHint);
   }
@@ -287,7 +451,9 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     ["add_asset", {}],
     ["paint_asset", {}],
     ["get_asset_image", {}],
+    ["review_asset", {}],
     ["stamp_assets", {}],
+    ["review_page", {}],
   ];
   for (const [name, input] of missingRequired) {
     const tool = byName.get(name);
@@ -436,10 +602,10 @@ async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise
     const first = await registerFilmTools(apiRef);
     const context = getModelContext();
     const registered = await context?.getTools();
-    if (first.count === 12 && registered?.length === 12) {
-      pass("editor mount registers 12 tools");
+    if (first.count === 14 && registered?.length === 14) {
+      pass("editor mount registers 14 tools");
     } else {
-      fail("editor mount registration", `expected 12 tools, got ${registered?.length ?? 0}`);
+      fail("editor mount registration", `expected 14 tools, got ${registered?.length ?? 0}`);
     }
 
     unregisterFilmTools();
@@ -451,7 +617,7 @@ async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise
     }
 
     const second = await registerFilmTools(apiRef);
-    if (second.count === 12 && (await context?.getTools())?.length === 12) {
+    if (second.count === 14 && (await context?.getTools())?.length === 14) {
       pass("returning to the editor registers a fresh tool set");
     } else {
       fail("editor remount registration", "tools did not register again after cleanup");
@@ -470,7 +636,7 @@ async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise
 async function main(): Promise<void> {
   console.log("WebMCP eval runner \u2014 Open Dots (deterministic, no browser/LLM)");
   const apiRef = { current: null as unknown as FilmApi };
-  const tools = buildFilmTools(apiRef);
+  const tools = buildFilmTools();
 
   lintTools(tools);
   await testDeterministic(tools);

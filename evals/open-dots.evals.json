@@ -153,7 +153,28 @@
     "expectedCall": [
       {
         "functionName": "paint_asset",
-        "arguments": { "id": { "$any": true } }
+        "arguments": { "id": { "$any": true }, "pass": "outline" }
+      }
+    ]
+  },
+  {
+    "name": "Build a repeated symmetric asset draft",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Quickly draft a symmetric fence asset by mirroring one side and repeating its posts in a grid."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "paint_asset",
+        "arguments": {
+          "id": { "$any": true },
+          "pass": { "$any": true },
+          "mirror": "left-right",
+          "repeat": { "$type": "object" }
+        }
       }
     ]
   },
@@ -170,6 +191,27 @@
       {
         "functionName": "get_asset_image",
         "arguments": { "id": { "$any": true } }
+      }
+    ]
+  },
+  {
+    "name": "Review the inspected sprite before stamping",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "The latest sprite PNG has a clear silhouette, four-tone material ramp, clustered highlights, and consistent upper-left light. Approve that inspected revision."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "review_asset",
+        "arguments": {
+          "id": { "$any": true },
+          "revision": { "$any": true },
+          "verdict": "approved",
+          "observations": { "$any": true }
+        }
       }
     ]
   },
@@ -222,6 +264,27 @@
     ]
   },
   {
+    "name": "Review the inspected page composition",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Review the latest full-page PNG for top-down perspective, text stacking, depth, lighting, and scene density. Approve it only if those are visually sound."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "review_page",
+        "arguments": {
+          "id": { "$any": true },
+          "revision": { "$any": true },
+          "verdict": { "$any": true },
+          "observations": { "$any": true }
+        }
+      }
+    ]
+  },
+  {
     "name": "Rasterize story text onto the page",
     "messages": [
       {
@@ -267,8 +330,16 @@
           },
           {
             "functionName": "paint_asset",
-            "arguments": { "id": { "$any": true } },
+            "arguments": { "id": { "$any": true }, "pass": { "$any": true } },
             "optional": true
+          },
+          {
+            "functionName": "get_asset_image",
+            "arguments": { "id": { "$any": true } }
+          },
+          {
+            "functionName": "review_asset",
+            "arguments": { "id": { "$any": true }, "revision": { "$any": true }, "verdict": "approved", "observations": { "$any": true } }
           },
           {
             "functionName": "stamp_assets",
@@ -277,6 +348,10 @@
           {
             "functionName": "get_page_image",
             "arguments": {}
+          },
+          {
+            "functionName": "review_page",
+            "arguments": { "id": { "$any": true }, "revision": { "$any": true }, "verdict": { "$any": true }, "observations": { "$any": true } }
           }
         ]
       }

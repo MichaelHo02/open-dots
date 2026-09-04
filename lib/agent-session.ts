@@ -6,6 +6,17 @@ export type PassHint = "outline" | "fill" | "shade" | "highlight" | "verify";
 
 export interface AgentAssetVerifyRecord {
   assetId: string;
+  revision: number;
+  verdict: "revise" | "approved";
+  observations: string;
+  timestamp: number;
+}
+
+export interface AgentPageReviewRecord {
+  pageId: string;
+  revision: number;
+  verdict: "revise" | "approved";
+  observations: string;
   timestamp: number;
 }
 
@@ -13,22 +24,36 @@ export interface AgentChecklist {
   guideLoaded: boolean;
   lastAssetVerify: AgentAssetVerifyRecord | null;
   assetsPendingVerify: string[];
+  lastPageReview: AgentPageReviewRecord | null;
+  pagesPendingReview: string[];
 }
 
 interface AgentSessionState {
   guideLoaded: boolean;
   lastAssetVerify: AgentAssetVerifyRecord | null;
   assetsPendingVerify: string[];
-  assetLastEditedAt: Record<string, number>;
-  assetLastVerifiedAt: Record<string, number>;
+  pagesPendingReview: string[];
+  assetRevisions: Record<string, number>;
+  assetInspectedRevisions: Record<string, number>;
+  assetApprovedRevisions: Record<string, number>;
+  pageRevisions: Record<string, number>;
+  pageInspectedRevisions: Record<string, number>;
+  pageApprovedRevisions: Record<string, number>;
+  lastPageReview: AgentPageReviewRecord | null;
 }
 
 const session: AgentSessionState = {
   guideLoaded: false,
   lastAssetVerify: null,
   assetsPendingVerify: [],
-  assetLastEditedAt: {},
-  assetLastVerifiedAt: {},
+  pagesPendingReview: [],
+  assetRevisions: {},
+  assetInspectedRevisions: {},
+  assetApprovedRevisions: {},
+  pageRevisions: {},
+  pageInspectedRevisions: {},
+  pageApprovedRevisions: {},
+  lastPageReview: null,
 };
 
 export function markGuideLoaded(): void {
@@ -36,29 +61,43 @@ export function markGuideLoaded(): void {
 }
 
 export function markAssetEdited(assetId: string): void {
-  const now = Date.now();
-  session.assetLastEditedAt[assetId] = now;
-  session.assetsPendingVerify = session.assetsPendingVerify.filter(
-    (id) => id !== assetId,
-  );
+  session.assetRevisions[assetId] = (session.assetRevisions[assetId] ?? 0) + 1;
+  if (!session.assetsPendingVerify.includes(assetId)) {
+    session.assetsPendingVerify.push(assetId);
+  }
 }
 
-export function markAssetVerified(assetId: string): void {
-  const now = Date.now();
-  session.assetLastVerifiedAt[assetId] = now;
-  session.lastAssetVerify = { assetId, timestamp: now };
-  session.assetsPendingVerify = session.assetsPendingVerify.filter(
-    (id) => id !== assetId,
-  );
+export function assetRevision(assetId: string): number {
+  return session.assetRevisions[assetId] ?? 0;
+}
+
+export function markAssetInspected(assetId: string): number {
+  const revision = assetRevision(assetId);
+  session.assetInspectedRevisions[assetId] = revision;
+  return revision;
+}
+
+export function reviewAsset(input: Omit<AgentAssetVerifyRecord, "timestamp">): string | null {
+  const currentRevision = assetRevision(input.assetId);
+  if (input.revision !== currentRevision) {
+    return `Asset changed: review revision ${input.revision}, current revision ${currentRevision}. Inspect the latest PNG first.`;
+  }
+  if (session.assetInspectedRevisions[input.assetId] !== currentRevision) {
+    return "Call get_asset_image for this revision before submitting a visual review.";
+  }
+  const record = { ...input, timestamp: Date.now() };
+  session.lastAssetVerify = record;
+  if (input.verdict === "approved") {
+    session.assetApprovedRevisions[input.assetId] = currentRevision;
+    session.assetsPendingVerify = session.assetsPendingVerify.filter((id) => id !== input.assetId);
+  } else if (!session.assetsPendingVerify.includes(input.assetId)) {
+    session.assetsPendingVerify.push(input.assetId);
+  }
+  return null;
 }
 
 export function isAssetVerifiedSinceEdit(assetId: string): boolean {
-  const editedAt = session.assetLastEditedAt[assetId];
-  if (editedAt === undefined) {
-    return session.assetLastVerifiedAt[assetId] !== undefined;
-  }
-  const verifiedAt = session.assetLastVerifiedAt[assetId];
-  return verifiedAt !== undefined && verifiedAt >= editedAt;
+  return session.assetApprovedRevisions[assetId] === assetRevision(assetId);
 }
 
 export function recordStampedAssets(assetIds: string[]): string[] {
@@ -79,7 +118,43 @@ export function getAgentChecklist(): AgentChecklist {
     guideLoaded: session.guideLoaded,
     lastAssetVerify: session.lastAssetVerify,
     assetsPendingVerify: [...session.assetsPendingVerify],
+    lastPageReview: session.lastPageReview,
+    pagesPendingReview: [...session.pagesPendingReview],
   };
+}
+
+export function markPageEdited(pageId: string): void {
+  session.pageRevisions[pageId] = (session.pageRevisions[pageId] ?? 0) + 1;
+  if (!session.pagesPendingReview.includes(pageId)) session.pagesPendingReview.push(pageId);
+}
+
+export function pageRevision(pageId: string): number {
+  return session.pageRevisions[pageId] ?? 0;
+}
+
+export function markPageInspected(pageId: string): number {
+  const revision = pageRevision(pageId);
+  session.pageInspectedRevisions[pageId] = revision;
+  return revision;
+}
+
+export function reviewPage(input: Omit<AgentPageReviewRecord, "timestamp">): string | null {
+  const currentRevision = pageRevision(input.pageId);
+  if (input.revision !== currentRevision) {
+    return `Page changed: review revision ${input.revision}, current revision ${currentRevision}. Inspect the latest PNG first.`;
+  }
+  if (session.pageInspectedRevisions[input.pageId] !== currentRevision) {
+    return "Call get_page_image for this revision before submitting a visual review.";
+  }
+  const record = { ...input, timestamp: Date.now() };
+  session.lastPageReview = record;
+  if (input.verdict === "approved") {
+    session.pageApprovedRevisions[input.pageId] = currentRevision;
+    session.pagesPendingReview = session.pagesPendingReview.filter((id) => id !== input.pageId);
+  } else if (!session.pagesPendingReview.includes(input.pageId)) {
+    session.pagesPendingReview.push(input.pageId);
+  }
+  return null;
 }
 
 export function guideNextRequired(): string | undefined {
