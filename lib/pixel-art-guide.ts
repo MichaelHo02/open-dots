@@ -28,7 +28,7 @@ const QUALITY_BAR = {
   reads: [
     "A rich scene FILLS the frame — little empty canvas. Sparse pages read as unfinished.",
     "It is built from MANY small assets (12–30+): floor/wall tiles, furniture, props, characters — not 4 big flat shapes.",
-    "Taste: every sprite needs a 4–12 tone ramp (outline, base, shadow, highlight, optional specular). One flat fill looks like a coloring book. After composing many assets, page colorCount can be high — that is expected, not a goal to inflate unique hexes.",
+    "Every material needs a planned ramp: outline, base, shadow, reflected light, highlight, and optional specular. Complex assets combine several ramps; across many assets, 100+ unique scene colors is normal when those colors describe real lighting and material detail.",
     "One consistent light direction across the whole scene (usually above and slightly left).",
     "Depth via five layers and overlap — not separate icons with equal gaps. A quiet central route keeps dense scenes readable.",
     "Tiling: repeated small tiles build floors/walls cheaply and cohesively; vary selected tile interiors so the grid is not identical everywhere.",
@@ -63,11 +63,11 @@ const COMPOSITION_GRAMMAR = {
 const PALETTE_GUIDE = {
   title: "Palette taste",
   sidebarVsDraw:
-    "set_palette creates or updates a named color profile and selects it (pass name + colors). The built-in Default profile is never overwritten. No swatch-count cap. paint_asset, paint_page, and asset rows may use additional #rrggbb colors freely — use as many as the design needs.",
+    "set_palette creates, updates, or selects reusable named color profiles. Create multiple named profiles for material or asset families; profiles are not bound to assets, so most bespoke assets may use a dedicated profile while related assets reuse one. Default is never overwritten and there is no swatch-count cap.",
   themeFirst:
-    "Call set_palette with a name (e.g. Bedtime) and as many #rrggbb swatches as the design needs BEFORE drawing. Extra colors can also be used inline in draw ops. Omit name to update the current non-Default theme or to create Theme N. Pass name without colors to select an existing profile. After refresh, get_storybook lists palettes + activePaletteId.",
+    "Before drawing, plan several named profiles such as Bedroom wood, Milo skin and pajamas, Sheep wool, Moonlight, and Meadow. Call set_palette for each, then select or reuse the relevant profile while building or importing an asset. Extra colors can still be used inline. get_storybook lists every profile plus activePaletteId.",
   materialRamps:
-    "Taste, not a limit: build color ramps by material, not one universal ramp. Use as many colors as the design needs.",
+    "Build color ramps by material, not one universal ramp: deep occlusion, cast shadow, base, reflected light, direct light, highlight, and specular where appropriate. Use as many colors as visible structure requires.",
   colorFamilies: {
     inkAndShadow: ["#09090a", "#111111", "#2b1919", "#313545"],
     coolStructure: ["#404751", "#465d69", "#6c769e", "#8d97b3", "#b49fbb", "#c7dbd0", "#dee1dd"],
@@ -80,7 +80,7 @@ const PALETTE_GUIDE = {
   saturation:
     "Do not use every bright color at equal strength. Let cool gray-blue and pink occupy most of the image; reserve saturated cyan, coral, lime, violet, and gold for focal areas.",
   perSprite:
-    "Taste, not a limit: keep each sprite readable with a 4–12 related-tone ramp (outline, base, shadow, highlight) rather than dumping every bright color at equal strength. After composing many assets, scene colorCount can be high — that is expected. Do not maximize unique hexes or chase thousands of page colors. The book palette has no count cap; Default is preserved. Keep hues consistent across assets.",
+    "A simple material may need 4–12 related tones; a character or detailed prop can combine several material ramps and use 12–32+ purposeful colors. Across 12–30 assets, 100+ unique scene colors is expected. More colors help only when they encode form, shadow, reflected light, or material differences.",
 };
 
 const PIXEL_SHAPE_LANGUAGE = {
@@ -138,7 +138,7 @@ const OUTLINE_SHADING = {
     "Cream highlights → warm white.",
   ],
   materialTiers:
-    "Taste, not a limit: per sprite plan a 4–12 tone ramp up front — outline, base, shadow (~20–30% darker, same hue), highlight (~20% lighter). E.g. red couch = #d94b4b base / #a83232 shadow / #f08a8a highlight. Scene colorCount can be high after many assets; do not maximize unique hexes.",
+    "Plan each material ramp up front: occlusion, cast shadow, base, reflected light, lit plane, highlight, and optional specular. Complex assets combine multiple ramps, so the finished scene may naturally exceed 100 colors.",
   avoid: [
     "Pillow shading — darkening every edge regardless of light source.",
     "Mixing black outlines and colored outlines on the same sprite without intent.",
@@ -240,7 +240,7 @@ const FEEDBACK_LOOP = {
     "Inspect the attached PNG (get_asset_image scale 4–8 to pixel-peep).",
     "Fix mistakes with another paint_asset call (color \"\" erases) — each returns a fresh PNG.",
     "Only stamp_assets once the sprite PNG matches your intent. Stamps are movable overlays (not baked into page.pixels); transparent pixels do not punch holes. Repeat the same asset (plants ×4).",
-    "After stamping, call get_page_image (region crop, scale 2–4) and read sceneHint — if it flags few placements, huge stamps, full-page paint, or noisy colorCount, add overlays or 4–12 tone ramps (do not maximize unique hexes).",
+    "After stamping, call get_page_image for the full scene and important region crops. Treat colorCount and placementCount as evidence only; judge silhouettes, empty space, overlap, material ramps, and lighting in the PNG itself.",
   ],
 };
 
@@ -281,13 +281,14 @@ const QUALITY_LOOP = {
   steps: [
     "1. get_pixel_art_guide (this) at session start.",
     "2. Study the reference: list distinct objects. Aim for 12–30+ small assets.",
-    "3. set_palette — named theme (name + as many #rrggbb swatches as the design needs, with base/shadow/highlight tiers); Default stays intact. Extra colors can also be used inline in draw ops.",
-    "4. add_page with a width that fits scene density (160–224 for rich rooms).",
-    "5. Per asset: add_asset template \"empty\" → paint_asset passes (outline → fill → shade → highlight), comparing the PNG each pass.",
-    "6. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
-    "7. stamp_assets back-to-front as movable overlays (floor tiles → emblem/shadows → furniture → plants/characters). Repeat stamps (plants ×4). Transparent pixels do not punch holes.",
-    "8. get_page_image (full, then region crops) — compare to reference, read sceneHint, iterate until the frame is full and layered.",
-    "9. paint_page only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene or maximize unique hexes.",
+    "3. Create multiple named palettes for material/asset families. They are reusable working profiles, not hard-bound to assets; 100+ combined scene colors is normal when ramps carry real shading detail.",
+    "4. When image generation is available, use it for complex organic characters or props and import each clean PNG with the visible Import image control; use WebMCP primitives for tiles, corrections, and deliberate pixel cleanup.",
+    "5. add_page with a width that fits scene density (160–224 for rich rooms).",
+    "6. Per hand-drawn asset: add_asset template \"empty\" → paint_asset passes (outline → fill → shade → reflected light → highlight), comparing the PNG each pass.",
+    "7. Build floor tiles first, then emblem/shadows, furniture, plants, and characters.",
+    "8. stamp_assets back-to-front as movable overlays (floor tiles → emblem/shadows → furniture → plants/characters). Repeat stamps (plants ×4). Transparent pixels do not punch holes.",
+    "9. get_page_image (full, then region crops) — compare to reference, read sceneHint, iterate until the frame is full and layered.",
+    "10. paint_page only for flat sky/floor fills and tiny page touch-ups — never to paint a whole scene.",
   ],
 };
 
@@ -313,7 +314,7 @@ const QUALITY_CHECK = {
     "The frame reads as one place, not a catalog of sprites.",
     "Large, medium, and tiny shapes all appear.",
     "At least three depth layers overlap visibly.",
-    "Major materials have their own 4–12 color ramps (not thousands of unique hexes).",
+    "Major materials have distinct ramps for shadow, reflected light, base, and highlight; a rich multi-asset scene may exceed 100 purposeful colors.",
     "Highlights follow one lighting direction.",
     "Characters have contact shadows and readable silhouettes.",
     "Large surfaces contain structural detail without becoming noisy.",
@@ -337,17 +338,17 @@ const TOOL_WORKFLOW = {
     { name: "get_page_image", when: "Full page or region PNG + sceneHint after stamping (composites overlays)" },
   ],
   write: [
-    { name: "set_palette", when: "Create/select a named theme profile (Default is never overwritten)" },
+    { name: "set_palette", when: "Create/select multiple reusable material or asset-family profiles" },
     { name: "add_page", when: "New page + optional width for pixel density" },
     { name: "select_page", when: "Switch active page by index" },
     { name: "add_asset", when: "Create sprite — direct indexed bitmap, template empty, hex rows, fill, or page copy" },
-    { name: "paint_asset", when: "Bulk sprite ops: rects/lines/fills/pixels, returns PNG" },
+    { name: "paint_asset", when: "Bulk sprite or animation-frame ops; frameIndex appends frames and frameDuration sets timing" },
     { name: "paint_page", when: "Page backgrounds/touch-ups: rects/lines/fills/pixels" },
     { name: "stamp_assets", when: "Add movable overlay placements (array order = z-index; not baked into pixels)" },
     { name: "place_text", when: "Rasterize story words onto the page" },
   ],
   notes:
-    "Choose the shortest asset path: Codex-generated file → visible Import image control; exact small bitmap → add_asset bitmapPalette+indexedRows; iterative drawing → add_asset empty then paint_asset. Indexed rows use comma-separated zero-based palette indexes and . for transparency. All paths create the same editable asset. Compare the returned or requested PNG before stamping.",
+    "Choose the shortest asset path: Codex-generated file → visible Import image control; exact small bitmap → add_asset bitmapPalette+indexedRows; iterative drawing → add_asset empty then paint_asset. Profiles are reusable working sets, not hard-bound to assets. For animation, paint frame 0 then frameIndex 1, 2, and so on; get_asset_image inspects each frame. Compare PNGs before stamping; erase with color \"\" and repaint.",
 };
 
 const ANTI_PATTERNS = {
@@ -358,7 +359,7 @@ const ANTI_PATTERNS = {
     "One-shotting a complex sprite or whole scene without inspecting and correcting the returned PNG.",
     "Painting entire pages with paint_page (or a giant pixels array) instead of overlay stamp_assets.",
     "One huge asset covering the page instead of many small overlay stamps.",
-    "Maximizing unique hexes or chasing thousands of page colors. Each sprite uses a 4–12 tone ramp; scene colorCount can be high after composing many assets — that is expected, not a goal to inflate.",
+    "Adding colors without a lighting or material purpose. Many named profiles and 100+ scene colors are valid; random near-duplicates and one unique color per pixel are not shading.",
     "Skipping the inline PNG compare between passes (drawing blind).",
     "Losing asset ids after a refresh — call get_storybook to recover them; wait for webmcp.ready before mutating.",
     "More than one light-source direction within a sprite.",
@@ -427,7 +428,7 @@ export function buildPixelArtGuide(topic: PixelArtGuideTopic = "full") {
 
   if (topic === "full") {
     guide.examplePrompt =
-      "set_palette name+tiered swatches (Default stays) → add_page width 192 → per asset: add_asset empty → paint_asset outline (lines) → fill (fills) → shade (rects) → highlight (pixels), comparing the PNG each pass → stamp_assets overlays back-to-front (floor tiles → emblem/shadows → furniture → plants ×4 → characters) → get_page_image region compare, read sceneHint, iterate until the frame is full and layered.";
+      "set_palette several reusable material/asset profiles → add_page width 192 → generate/import complex clean PNG assets when available, or add_asset empty → paint_asset outline → fill → shade → reflected light → highlight, comparing each PNG → add animation frames with frameIndex and timing with frameDuration → stamp_assets back-to-front → get_page_image full and region comparisons until the frame is full and layered.";
   }
 
   return guide;

@@ -175,12 +175,26 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
 
   const byName = new Map(tools.map((tool) => [tool.name, tool]));
 
+  const paintAssetProperties = getSchema(byName.get("paint_asset")!)?.properties ?? {};
+  if ("frameIndex" in paintAssetProperties && "frameDuration" in paintAssetProperties) {
+    pass("paint_asset exposes animation frame and timing controls");
+  } else {
+    fail("paint_asset animation schema", "frameIndex and frameDuration are required");
+  }
+  const getAssetProperties = getSchema(byName.get("get_asset_image")!)?.properties ?? {};
+  if ("frameIndex" in getAssetProperties) {
+    pass("get_asset_image can inspect a specific animation frame");
+  } else {
+    fail("get_asset_image animation schema", "frameIndex is required");
+  }
+
   const guide = byName.get("get_pixel_art_guide");
   if (!guide) {
     fail("get_pixel_art_guide present", "tool missing");
   } else {
     const result = (await guide.execute({ topic: "tools" })) as ToolResult;
-    if (isResult(result) && !result.isError && (result.content?.length ?? 0) > 0) {
+    const guideText = JSON.stringify(result);
+    if (isResult(result) && !result.isError && guideText.includes("multiple reusable") && guideText.includes("100+")) {
       pass("get_pixel_art_guide returns content without a browser");
     } else {
       fail("get_pixel_art_guide", `unexpected result: ${JSON.stringify(result)}`);
@@ -234,7 +248,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
   } else {
     fail("sceneHint few placements", fewHint);
   }
-  const noisyHint = inferSceneHint(
+  const richColorHint = inferSceneHint(
     {
       width: 128,
       height: 72,
@@ -243,7 +257,7 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
       coverage: 0.87,
       bounds: { minX: 0, minY: 0, maxX: 127, maxY: 71, width: 128, height: 72 },
       colorHistogram: {},
-      colorCount: 900,
+      colorCount: 120,
     },
     pageSceneHintContext(
       {
@@ -259,10 +273,10 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
       0.2,
     ),
   );
-  if (noisyHint.toLowerCase().includes("noisy") && !noisyHint.includes("15000")) {
-    pass("sceneHint flags noisy colorCount without maximizing hexes");
+  if (!richColorHint.toLowerCase().includes("noisy")) {
+    pass("sceneHint accepts 100+ purposeful composed colors");
   } else {
-    fail("sceneHint noisy colorCount", noisyHint);
+    fail("sceneHint rich color count", richColorHint);
   }
 
   // Tools that must reject missing required args BEFORE touching the editor API.

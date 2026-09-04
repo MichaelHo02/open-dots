@@ -157,8 +157,8 @@ export function buildNextRequired(passHint: PassHint): string {
 
 /**
  * Scene-level nudge for get_page_image: flags few overlay stamps, huge
- * assets, full-page painting, or noisy unique-hex counts. Encourages
- * tiled overlays and 4–12 tone ramps per sprite — not maximizing page colors.
+ * assets or full-page painting. Color counts are reported as evidence but are
+ * not a quality cap: a composed scene can legitimately exceed 100 colors.
  */
 export interface SceneHintContext {
   assetCount: number;
@@ -174,7 +174,6 @@ const FEW_PLACEMENTS = 8;
 const HUGE_PLACEMENT_RATIO = 0.4;
 const FULL_PAGE_BG_COVERAGE = 0.55;
 const FULL_PAGE_FEW_PLACEMENTS = 4;
-const NOISY_COLOR_COUNT = 512;
 
 export function inferSceneHint(
   stats: PixelStats,
@@ -206,11 +205,8 @@ export function inferSceneHint(
   if (stats.coverage < 0.35) {
     return "Page reads sparse (low coverage). Fill the frame with tiled floor/wall stamps and overlapping props so there is little empty canvas.";
   }
-  if (stats.colorCount > NOISY_COLOR_COUNT) {
-    return "colorCount is noisy (too many unique hexes). Each sprite should use a 4–12 tone ramp, not a unique color per pixel. Scene totals can be high after composing many assets — that is expected — but do not maximize distinct hexes.";
-  }
   if (stats.colorCount <= 6 && uniqueStampedAssets < 8) {
-    return "Palette reads flat. Give each sprite a 4–12 tone ramp (outline, base, shadow, highlight). After many assets the page colorCount can be high; do not chase thousands of unique hexes.";
+    return "Palette reads flat. Create several reusable named profiles for material or asset families, then use separate base, reflected-light, shadow, and highlight ramps. Profiles are not bound to assets; rich scenes can naturally exceed 100 combined colors.";
   }
   if (assetCount < 8 && uniqueStampedAssets < 8) {
     return `Only ${assetCount} asset(s) in the library. Dense scenes use 12–30+ small assets — decompose further into tiles, props, and characters.`;
