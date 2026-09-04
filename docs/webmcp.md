@@ -15,7 +15,7 @@ Open Dots registers **14 agent-focused tools** (4 read / 10 write) on `document.
 | `get_asset_image` | `paint_page`, `review_page` |
 | `get_page_image` | |
 
-The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features and bulk ops. `paint_asset` declares its visual pass; `get_asset_image` returns the current revision; `review_asset` records a concrete vision verdict for that revision. Only approved asset revisions can be stamped. Full pages follow the same `get_page_image` → `review_page` loop. Generated images can be imported as editable assets, then cleaned with hard-edged pixel passes.
+The surface is intentionally minimal — inspired by [pixel-art-cli](https://github.com/vossenwout/pixel-art-cli) (`set_pixel` / `fill_rect` / `line` / `clear` + export) — with book features and bulk ops. `paint_asset` declares its visual pass and can mirror or repeat the supplied operations for fast procedural drafts without exposing arbitrary code execution. `get_asset_image` returns the current revision; `review_asset` records a concrete vision verdict for that revision. Only approved asset revisions can be stamped. Full pages follow the same `get_page_image` → `review_page` loop. Generated images can be imported as editable assets, then cleaned with hard-edged pixel passes.
 
 **Polyfill:** `lib/webmcp-polyfill.ts` installs a spec-shaped `document.modelContext` when the native API is missing, so judges and local dev can inspect tools without the Chrome flag. If native WebMCP is already present, the polyfill does not replace it.
 
@@ -87,6 +87,7 @@ Aligned with [Chrome’s WebMCP docs](https://developer.chrome.com/docs/ai/webmc
 | **`readOnlyHint` on every tool** | `withToolAnnotations` in `lib/webmcp-polyfill.ts`; getters set `readOnlyHint: true` |
 | **JSON Schema** | Each tool has `inputSchema: { type: "object", properties, required, enum, maxItems }` |
 | **Intent-rich descriptions** | Each tool says what it does, when to use it, and key constraints (coords, erase via `color ""`, PNG feedback) — no repo file paths |
+| **Atomic, non-overlapping tools** | Procedural mirror/repeat controls extend `paint_asset`; no competing code-execution tool is registered |
 | **Graceful errors** | `toolError()` for validation; `withSafeExecute` backstop for runtime throws |
 | **Route-scoped registration** | One shared `AbortSignal`; editor unmount removes all tools; initial registration batches `toolchange` |
 | **Vision loop** | Guide returns a visual quality target; reviews are bound to inspected asset/page revisions; edits invalidate approval; unapproved assets cannot be stamped |

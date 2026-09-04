@@ -158,6 +158,27 @@
     ]
   },
   {
+    "name": "Build a repeated symmetric asset draft",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Quickly draft a symmetric fence asset by mirroring one side and repeating its posts in a grid."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "paint_asset",
+        "arguments": {
+          "id": { "$any": true },
+          "pass": { "$any": true },
+          "mirror": "left-right",
+          "repeat": { "$type": "object" }
+        }
+      }
+    ]
+  },
+  {
     "name": "Inspect a sprite after a pass",
     "messages": [
       {

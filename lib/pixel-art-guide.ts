@@ -238,6 +238,8 @@ const PRIMITIVES = {
     "paint_asset and paint_page each accept rects, lines, fills, and pixels in ONE call. This is the advantage over one-pixel-at-a-time tools: a single rect fills any block server-side (no per-pixel cap). Reserve the pixels array for fine detail.",
   ops: [
     "rects: [{x,y,width,height,color}] — solid blocks. Floors, walls, furniture bodies, shading bands. color \"\" erases the block.",
+    "paint_asset mirror: left-right, top-bottom, or both — duplicate the supplied operations across the asset axes for fast symmetric drafts.",
+    "paint_asset repeat: {columns,rows,stepX,stepY} — repeat supplied operations as a deterministic grid for patterns; refine the rasterized result by hand afterward.",
     "lines: [{x0,y0,x1,y1,color}] — straight edges. Silhouettes, seams, table/counter edges.",
     "fills: [{x,y,color}] — flood bucket from x,y. Outline a region first, then flood the enclosed area.",
     "pixels: [{x,y,color}] — fine detail, applied LAST so it wins. Eyes, highlights, single-pixel anti-aliasing. Cap " +

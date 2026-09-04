@@ -186,7 +186,7 @@
     },
     {
       "name": "paint_asset",
-      "description": "Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤4096 detail pixels/call); color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.",
+      "description": "Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror or repeat the same operations for fast procedural drafts. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -333,6 +333,45 @@
                 "color"
               ]
             }
+          },
+          "mirror": {
+            "type": "string",
+            "enum": [
+              "left-right",
+              "top-bottom",
+              "both"
+            ],
+            "description": "Duplicate supplied operations across the asset axes while keeping the originals"
+          },
+          "repeat": {
+            "type": "object",
+            "description": "Repeat supplied operations as a grid, including the original at row 0, column 0",
+            "properties": {
+              "columns": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+              },
+              "rows": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+              },
+              "stepX": {
+                "type": "integer",
+                "description": "Horizontal pixels between copies"
+              },
+              "stepY": {
+                "type": "integer",
+                "description": "Vertical pixels between copies"
+              }
+            },
+            "required": [
+              "columns",
+              "rows",
+              "stepX",
+              "stepY"
+            ]
           },
           "offsetX": {
             "type": "integer",

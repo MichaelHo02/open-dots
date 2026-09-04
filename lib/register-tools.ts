@@ -168,6 +168,8 @@ const MAX_SHAPE_OPS = 512;
 type RectOp = { x: number; y: number; width: number; height: number; color: string };
 type LineOp = { x0: number; y0: number; x1: number; y1: number; color: string };
 type FillOp = { x: number; y: number; color: string };
+type MirrorMode = "left-right" | "top-bottom" | "both";
+type RepeatSpec = { columns: number; rows: number; stepX: number; stepY: number };
 
 /** Structural ops shared by asset and page painters — the bulk advantage over per-pixel tools. */
 interface BufferOps {
@@ -286,6 +288,91 @@ function applyBufferOps(base: string[], size: Size, ops: BufferOps): string[] {
     next = setPixels(next, size, ops.dots);
   }
   return next;
+}
+
+function offsetBufferOps(ops: BufferOps, x: number, y: number): BufferOps {
+  return {
+    rects: ops.rects.map((op) => ({ ...op, x: op.x + x, y: op.y + y })),
+    lines: ops.lines.map((op) => ({
+      ...op,
+      x0: op.x0 + x,
+      y0: op.y0 + y,
+      x1: op.x1 + x,
+      y1: op.y1 + y,
+    })),
+    fills: ops.fills.map((op) => ({ ...op, x: op.x + x, y: op.y + y })),
+    dots: ops.dots.map((op) => ({ ...op, x: op.x + x, y: op.y + y })),
+  };
+}
+
+function mergeBufferOps(parts: BufferOps[]): BufferOps {
+  return {
+    rects: parts.flatMap((part) => part.rects),
+    lines: parts.flatMap((part) => part.lines),
+    fills: parts.flatMap((part) => part.fills),
+    dots: parts.flatMap((part) => part.dots),
+  };
+}
+
+function repeatBufferOps(ops: BufferOps, repeat?: RepeatSpec): BufferOps {
+  if (!repeat) return ops;
+  const copies: BufferOps[] = [];
+  for (let row = 0; row < repeat.rows; row += 1) {
+    for (let column = 0; column < repeat.columns; column += 1) {
+      copies.push(offsetBufferOps(ops, column * repeat.stepX, row * repeat.stepY));
+    }
+  }
+  return mergeBufferOps(copies);
+}
+
+function mirrorBufferOps(ops: BufferOps, size: Size, mirror?: MirrorMode): BufferOps {
+  if (!mirror) return ops;
+  const flip = (part: BufferOps, leftRight: boolean, topBottom: boolean): BufferOps => ({
+    rects: part.rects.map((op) => ({
+      ...op,
+      x: leftRight ? size.width - op.x - op.width : op.x,
+      y: topBottom ? size.height - op.y - op.height : op.y,
+    })),
+    lines: part.lines.map((op) => ({
+      ...op,
+      x0: leftRight ? size.width - 1 - op.x0 : op.x0,
+      x1: leftRight ? size.width - 1 - op.x1 : op.x1,
+      y0: topBottom ? size.height - 1 - op.y0 : op.y0,
+      y1: topBottom ? size.height - 1 - op.y1 : op.y1,
+    })),
+    fills: part.fills.map((op) => ({
+      ...op,
+      x: leftRight ? size.width - 1 - op.x : op.x,
+      y: topBottom ? size.height - 1 - op.y : op.y,
+    })),
+    dots: part.dots.map((op) => ({
+      ...op,
+      x: leftRight ? size.width - 1 - op.x : op.x,
+      y: topBottom ? size.height - 1 - op.y : op.y,
+    })),
+  });
+  const copies = [ops];
+  if (mirror === "left-right" || mirror === "both") copies.push(flip(ops, true, false));
+  if (mirror === "top-bottom" || mirror === "both") copies.push(flip(ops, false, true));
+  if (mirror === "both") copies.push(flip(ops, true, true));
+  return mergeBufferOps(copies);
+}
+
+function parseRepeat(value: unknown): RepeatSpec | string | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object") return "repeat must be an object";
+  const input = value as Record<string, unknown>;
+  const columns = asInteger(input.columns);
+  const rows = asInteger(input.rows);
+  const stepX = asInteger(input.stepX);
+  const stepY = asInteger(input.stepY);
+  if (columns === undefined || rows === undefined || stepX === undefined || stepY === undefined) {
+    return "repeat requires integer columns, rows, stepX, and stepY";
+  }
+  if (columns < 1 || columns > 16 || rows < 1 || rows > 16) {
+    return "repeat columns and rows must each be between 1 and 16";
+  }
+  return { columns, rows, stepX, stepY };
 }
 
 /** Changed cells between two equal-length buffers, as {x,y,color} dots ("" = erase). */
@@ -662,7 +749,7 @@ function summarize(api: FilmApi) {
   };
 }
 
-export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
+export function buildFilmTools(): WebMCPTool[] {
   const apiRef = sharedApiRef;
   const tools: WebMCPTool[] = [
     {
@@ -991,7 +1078,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
     {
       name: "paint_asset",
       description:
-        `Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Coords are asset-relative. Mix rects, lines, fills, and pixels (≤${MAX_DRAW_PIXELS} detail pixels/call); color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.`,
+        `Paint one declared asset pass: outline, fill, shadow, highlight, or cleanup. Mix rects, lines, fills, and pixels; mirror or repeat the same operations for fast procedural drafts. Color \"\" erases. Each call returns the new revision PNG; inspect it and submit review_asset before stamping.`,
       inputSchema: {
         type: "object",
         properties: {
@@ -1032,6 +1119,22 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
               required: ["x", "y", "color"],
             },
           },
+          mirror: {
+            type: "string",
+            enum: ["left-right", "top-bottom", "both"],
+            description: "Duplicate supplied operations across the asset axes while keeping the originals",
+          },
+          repeat: {
+            type: "object",
+            description: "Repeat supplied operations as a grid, including the original at row 0, column 0",
+            properties: {
+              columns: { type: "integer", minimum: 1, maximum: 16 },
+              rows: { type: "integer", minimum: 1, maximum: 16 },
+              stepX: { type: "integer", description: "Horizontal pixels between copies" },
+              stepY: { type: "integer", description: "Vertical pixels between copies" },
+            },
+            required: ["columns", "rows", "stepX", "stepY"],
+          },
           offsetX: {
             type: "integer",
             description: "Added to every x (default 0) — use to tile regions",
@@ -1050,10 +1153,6 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         }
         const pass = asAssetPass(input.pass);
         if (!pass) return toolError(`pass must be one of ${ASSET_PASSES.join(", ")}`);
-        const dots = asDots(input.pixels) ?? [];
-        if (dots.length > MAX_DRAW_PIXELS) {
-          return toolError(drawPixelsLimitError(dots.length));
-        }
         const asset = apiRef.current.getAsset(id);
         if (!asset) {
           return toolError(`Asset not found: ${id}`);
@@ -1070,13 +1169,28 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
         if (input.frameDuration !== undefined && (frameDuration === undefined || frameDuration < 100 || frameDuration > 2000)) {
           return toolError("frameDuration must be an integer between 100 and 2000 milliseconds");
         }
-        const ops = collectBufferOps(input, offsetX, offsetY);
+        const mirror = asString(input.mirror);
+        if (input.mirror !== undefined && mirror !== "left-right" && mirror !== "top-bottom" && mirror !== "both") {
+          return toolError("mirror must be left-right, top-bottom, or both");
+        }
+        const repeat = parseRepeat(input.repeat);
+        if (typeof repeat === "string") return toolError(repeat);
+        const size: Size = { width: asset.width, height: asset.height };
+        let ops = collectBufferOps(input, offsetX, offsetY);
+        ops = repeatBufferOps(ops, repeat);
+        ops = mirrorBufferOps(ops, size, mirror as MirrorMode | undefined);
+        const structuralOps = ops.rects.length + ops.lines.length + ops.fills.length;
+        if (structuralOps > MAX_SHAPE_OPS) {
+          return toolError(`Algorithmic expansion creates ${structuralOps} structural operations; maximum is ${MAX_SHAPE_OPS}`);
+        }
+        if (ops.dots.length > MAX_DRAW_PIXELS) {
+          return toolError(`Algorithmic expansion creates ${ops.dots.length} detail pixels; maximum is ${MAX_DRAW_PIXELS}`);
+        }
         if (bufferOpCount(ops) === 0 && frameDuration === undefined) {
           return toolError(
             "Provide pixels, rects, lines, fills, or frameDuration. color \"\" erases.",
           );
         }
-        const size: Size = { width: asset.width, height: asset.height };
         const source = asset.frames?.[frameIndex] ?? asset.frames?.at(-1) ?? asset.pixels;
         const next = applyBufferOps(source, size, ops);
         const changed = diffToDots(source, next, asset.width);
@@ -1094,6 +1208,7 @@ export function buildFilmTools(_apiRef: ApiRef): WebMCPTool[] {
             frameIndex,
             frameCount: updated.frames?.length ?? 1,
             frameDuration: updated.frameDuration ?? 400,
+            ...((mirror || repeat) ? { algorithmic: { mirror: mirror ?? null, repeat: repeat ?? null } } : {}),
           },
           { dots: changed, pass },
         );
@@ -1635,7 +1750,7 @@ async function registerFilmToolsOnce(
   sharedApiRef.current = apiRef.current;
   const context = ensureWebMCPPolyfill();
   const native = !("isPolyfill" in context && context.isPolyfill);
-  const tools = buildFilmTools(apiRef);
+  const tools = buildFilmTools();
   const expectedCount = tools.length;
 
   const existingWin = getWindowRegistration();

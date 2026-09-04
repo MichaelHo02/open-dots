@@ -25,6 +25,7 @@ import { dirname, resolve } from "node:path";
 import {
   buildFilmTools,
   registerFilmTools,
+  syncWebmcpApiRef,
   unregisterFilmTools,
 } from "../lib/register-tools";
 import {
@@ -39,7 +40,7 @@ import {
   reviewAsset,
   reviewPage,
 } from "../lib/agent-session";
-import type { FilmApi } from "../lib/types";
+import type { Asset, FilmApi } from "../lib/types";
 import { getModelContext, type WebMCPTool } from "../lib/webmcp-polyfill";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -217,6 +218,57 @@ async function testDeterministic(tools: WebMCPTool[]): Promise<void> {
     pass("paint_asset exposes animation frame and timing controls");
   } else {
     fail("paint_asset animation schema", "frameIndex and frameDuration are required");
+  }
+  if ("mirror" in paintAssetProperties && "repeat" in paintAssetProperties) {
+    pass("paint_asset exposes declarative mirror and repeat controls");
+  } else {
+    fail("paint_asset algorithmic schema", "mirror and repeat are required");
+  }
+
+  let proceduralAsset: Asset = {
+    id: "asset-procedural-check",
+    name: "Procedural check",
+    width: 5,
+    height: 3,
+    pixels: Array.from({ length: 15 }, () => ""),
+  };
+  let drawn: Array<{ x: number; y: number; color: string }> = [];
+  const proceduralApi = {
+    getAsset: (id: string) => id === proceduralAsset.id ? proceduralAsset : null,
+    drawAssetPixels: (_id: string, dots: typeof drawn) => {
+      drawn = dots;
+      const pixels = proceduralAsset.pixels.slice();
+      for (const dot of dots) pixels[dot.y * proceduralAsset.width + dot.x] = dot.color;
+      proceduralAsset = { ...proceduralAsset, pixels };
+      return dots.length;
+    },
+  } as unknown as FilmApi;
+  syncWebmcpApiRef({ current: proceduralApi });
+  const proceduralTool = buildFilmTools().find((tool) => tool.name === "paint_asset");
+  await proceduralTool?.execute({
+    id: proceduralAsset.id,
+    pass: "outline",
+    pixels: [{ x: 0, y: 0, color: "#ffffff" }],
+    repeat: { columns: 1, rows: 2, stepX: 0, stepY: 1 },
+    mirror: "left-right",
+  });
+  const proceduralDots = new Set(drawn.map((dot) => `${dot.x},${dot.y}`));
+  if (["0,0", "4,0", "0,1", "4,1"].every((dot) => proceduralDots.has(dot))) {
+    pass("paint_asset expands repeated and mirrored pixels deterministically");
+  } else {
+    fail("paint_asset algorithmic expansion", `unexpected dots: ${[...proceduralDots].join(" ")}`);
+  }
+  drawn = [];
+  const invalidRepeat = await proceduralTool?.execute({
+    id: proceduralAsset.id,
+    pass: "outline",
+    pixels: [{ x: 0, y: 0, color: "#ffffff" }],
+    repeat: { columns: 17, rows: 1, stepX: 1, stepY: 0 },
+  }) as ToolResult | undefined;
+  if (invalidRepeat?.isError === true && drawn.length === 0) {
+    pass("paint_asset rejects oversized algorithmic repeats before mutation");
+  } else {
+    fail("paint_asset repeat validation", "invalid repeat mutated the asset or did not return isError");
   }
   const getAssetProperties = getSchema(byName.get("get_asset_image")!)?.properties ?? {};
   if ("frameIndex" in getAssetProperties) {
@@ -509,7 +561,7 @@ async function checkRegistrationLifecycle(apiRef: { current: FilmApi }): Promise
 async function main(): Promise<void> {
   console.log("WebMCP eval runner \u2014 Open Dots (deterministic, no browser/LLM)");
   const apiRef = { current: null as unknown as FilmApi };
-  const tools = buildFilmTools(apiRef);
+  const tools = buildFilmTools();
 
   lintTools(tools);
   await testDeterministic(tools);
